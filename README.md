@@ -4,19 +4,37 @@ Oracle PL/SQL export utilities
 
 # Examples
 
-## Export an APEX App
+## Backup of an APEX application
 
 ```sql
 BEGIN
-  --> set the APEX workspace to be able to send emails from within SQL tool
-  apex_util.set_security_group_id(apex_util.find_security_group_id(p_workspace => 'HR'));
-  
-  --> all active channels will work parallel, see also package spec for possible channels
-  plex.g_channel_apex_mail := 'ottmar.gobrecht@gmail.com';
+  plex.set_apex_workspace('your_workspace_name');
+  plex.set_channels(p_apex_mail   => 'email@example.com');
+  plex.apex_backapp(
+    p_app_id          => your_app_id,
+    p_object_prefix   => 'AB_',
+    p_include_data    => true
+  );
+END;
+/
+```
 
-  plex.apex_backapp(p_app_id             => 200,
-                    p_object_prefix      => 'CTLG_',
-                    p_include_data       => TRUE);
+## Export one or more queries as csv data within a zip file:
+
+```sql
+BEGIN
+  plex.set_apex_workspace('your_workspace_name');
+  plex.set_channels(p_apex_mail   => 'email@example.com');
+  plex.add_query(
+    p_query       => 'select * from user_tables',
+    p_file_name   => 'user_tables'
+  );
+  plex.add_query(
+    p_query       => 'select * from user_tab_columns',
+    p_file_name   => 'user_tab_columns',
+    p_max_rows    => 1000
+  );
+  plex.queries_to_csv(p_zip_file_name => 'user-tables');
 END;
 /
 ```
