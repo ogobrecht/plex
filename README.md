@@ -1,4 +1,4 @@
-# plex
+# PLEX
 
 Oracle PL/SQL export utilities
 
@@ -8,13 +8,11 @@ Oracle PL/SQL export utilities
 
 ```sql
 BEGIN
-  plex.set_apex_workspace('your_workspace_name');
-  plex.set_channels(p_apex_mail   => 'email@example.com');
-  plex.apex_backapp(
-    p_app_id          => your_app_id,
-    p_object_prefix   => 'AB_',
-    p_include_data    => true
+  plex.set_channels(
+    p_apex_mail             => 'email@example.com',
+    p_apex_mail_workspace   => 'YOUR_WORKSPACE_NAME' --> only needed for mail channel when running outside of an APEX session
   );
+  plex.apex_backapp(p_app_id   => your_app_id);
 END;
 /
 ```
@@ -23,8 +21,10 @@ END;
 
 ```sql
 BEGIN
-  plex.set_apex_workspace('your_workspace_name');
-  plex.set_channels(p_apex_mail   => 'email@example.com');
+  plex.set_channels(
+    p_apex_mail             => 'email@example.com',
+    p_apex_mail_workspace   => 'YOUR_WORKSPACE_NAME' --> only needed for mail channel when running outside of an APEX session
+  );
   plex.add_query(
     p_query       => 'select * from user_tables',
     p_file_name   => 'user_tables'
@@ -32,9 +32,9 @@ BEGIN
   plex.add_query(
     p_query       => 'select * from user_tab_columns',
     p_file_name   => 'user_tab_columns',
-    p_max_rows    => 1000
+    p_max_rows    => 10000
   );
-  plex.queries_to_csv(p_zip_file_name => 'user-tables');
+  plex.queries_to_csv(p_zip_file_name   => 'user-tables');
 END;
 /
 ```
