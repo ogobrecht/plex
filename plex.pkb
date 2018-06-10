@@ -6,54 +6,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     max_rows  NUMBER DEFAULT 100000);
   TYPE t_tab_queries IS TABLE OF t_row_queries INDEX BY PLS_INTEGER;
 
-  --
-
-  g_file_blob      BLOB;
-  g_file_name      VARCHAR2(256 CHAR);
-  g_file_mime_type VARCHAR2(64 CHAR);
-
   g_file_clob          CLOB;
   g_file_varchar_cache VARCHAR2(32767char);
+  g_queries_array      t_tab_queries;
 
-  g_csv_delimiter       VARCHAR2(1 CHAR);
-  g_csv_quote_mark      VARCHAR2(1 CHAR);
-  g_csv_line_terminator VARCHAR2(1 CHAR);
-  g_csv_header_prefix   VARCHAR(100 CHAR);
-
-  g_ba_include_app_ddl          BOOLEAN;
-  g_ba_app_public_reports       BOOLEAN;
-  g_ba_app_private_reports      BOOLEAN;
-  g_ba_app_report_subscriptions BOOLEAN;
-  g_ba_app_translations         BOOLEAN;
-  g_ba_app_subscriptions        BOOLEAN;
-  g_ba_app_original_ids         BOOLEAN;
-  g_ba_app_packaged_app_mapping BOOLEAN;
-  g_ba_include_object_ddl       BOOLEAN;
-  g_ba_object_prefix            VARCHAR2(100 CHAR);
-  g_ba_include_data             BOOLEAN;
-  g_ba_data_max_rows            NUMBER;
-
-  g_channel_apex_mail_to           VARCHAR2(1000 CHAR);
-  g_channel_apex_mail_from         VARCHAR2(128 CHAR);
-  g_channel_apex_mail_workspace_id VARCHAR2(128 CHAR);
-  g_channel_apex_download          BOOLEAN := FALSE;
-  g_channel_apex_collection        VARCHAR2(128 CHAR);
-  g_channel_table_column           VARCHAR2(1000 CHAR);
-  g_channel_ora_dir                VARCHAR2(128 CHAR);
-
-  g_queries_array t_tab_queries;
-
-  --
-
-  PROCEDURE util_init_package IS
-  BEGIN
-    dbms_lob.createtemporary(lob_loc => g_file_clob, cache => FALSE);
-    dbms_lob.createtemporary(lob_loc => g_file_blob, cache => FALSE);
-    set_channels;
-    set_csv_options;
-    set_backapp_options;
-  END;
-  
   --
 
   PROCEDURE util_setup_dbms_metadata
@@ -137,7 +93,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   --
 
   FUNCTION util_file_clob_to_blob RETURN BLOB IS
-  
     l_blob         BLOB;
     l_dest_offset  INTEGER := 1;
     l_src_offset   INTEGER := 1;
@@ -155,50 +110,21 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                              blob_csid    => nls_charset_id('AL32UTF8'),
                              lang_context => l_lang_context,
                              warning      => l_warning);
-    
     END IF;
-  
     RETURN l_blob;
   END util_file_clob_to_blob;
-
-  --
-
-  PROCEDURE util_deliver_apex_mail IS
-    l_mail_id NUMBER;
-  BEGIN
-    l_mail_id := apex_mail.send(p_to   => g_channel_apex_mail_to,
-                                p_from => nvl(g_channel_apex_mail_from, g_channel_apex_mail_to),
-                                p_subj => g_file_name,
-                                p_body => g_file_name);
-  
-    apex_mail.add_attachment(p_mail_id    => l_mail_id,
-                             p_attachment => g_file_blob,
-                             p_filename   => g_file_name,
-                             p_mime_type  => g_file_mime_type);
-  
-    COMMIT;
-    apex_mail.push_queue;
-  END util_deliver_apex_mail;
-
-  --
-
-  PROCEDURE util_deliver_apex_download IS
-  BEGIN
-    htp.flush;
-    owa_util.mime_header(ccontent_type => g_file_mime_type, bclose_header => FALSE, ccharset => 'UTF-8');
-  
-    htp.print('Content-Length: ' || dbms_lob.getlength(g_file_blob));
-    htp.print('Content-Disposition: attachment; filename=' || g_file_name || ';');
-    owa_util.http_header_close;
-    wpg_docload.download_file(g_file_blob);
-  END util_deliver_apex_download;
 
   --
 
   PROCEDURE util_query_to_csv
   (
     p_query    VARCHAR2,
-    p_max_rows NUMBER DEFAULT 100000
+    p_max_rows NUMBER DEFAULT 100000,
+    --
+    p_delimiter       VARCHAR2 DEFAULT ',',
+    p_quote_mark      VARCHAR2 DEFAULT '"',
+    p_line_terminator VARCHAR2 DEFAULT chr(10),
+    p_header_prefix   VARCHAR2 DEFAULT NULL
   ) IS
     -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
     l_cursor     PLS_INTEGER;
@@ -210,10 +136,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     --
     PROCEDURE local_temp_clob_append IS
     BEGIN
-      util_file_clob_append(CASE WHEN instr(nvl(l_buffer, ' '), g_csv_delimiter) = 0 THEN l_buffer ELSE
-                            g_csv_quote_mark ||
-                            REPLACE(l_buffer, g_csv_quote_mark, g_csv_quote_mark || g_csv_quote_mark) ||
-                            g_csv_quote_mark END);
+      util_file_clob_append(CASE WHEN instr(nvl(l_buffer, ' '), p_delimiter) = 0 THEN l_buffer ELSE
+                            p_quote_mark || REPLACE(l_buffer, p_quote_mark, p_quote_mark || p_quote_mark) ||
+                            p_quote_mark END);
     END local_temp_clob_append;
     --
   BEGIN
@@ -230,28 +155,28 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       l_rows := dbms_sql.execute(l_cursor);
     
       -- create header
-      util_file_clob_append(g_csv_header_prefix);
+      util_file_clob_append(p_header_prefix);
       FOR i IN 1 .. l_col_cnt LOOP
         IF i > 1 THEN
-          util_file_clob_append(g_csv_delimiter);
+          util_file_clob_append(p_delimiter);
         END IF;
         l_buffer := l_desc_tab(i).col_name;
         local_temp_clob_append;
       END LOOP;
     
-      util_file_clob_append(g_csv_line_terminator);
+      util_file_clob_append(p_line_terminator);
     
       -- create data
       LOOP
         EXIT WHEN dbms_sql.fetch_rows(l_cursor) = 0 OR l_data_count = p_max_rows;
         FOR i IN 1 .. l_col_cnt LOOP
           IF i > 1 THEN
-            util_file_clob_append(g_csv_delimiter);
+            util_file_clob_append(p_delimiter);
           END IF;
           dbms_sql.column_value(l_cursor, i, l_buffer);
           local_temp_clob_append;
         END LOOP;
-        util_file_clob_append(g_csv_line_terminator);
+        util_file_clob_append(p_line_terminator);
         l_data_count := l_data_count + 1;
       END LOOP;
     
@@ -277,37 +202,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   --
 
-  PROCEDURE util_export_start
-  (
-    p_file_name VARCHAR2,
-    p_mime_type VARCHAR2
-  ) IS
-  BEGIN
-    g_file_clob          := NULL;
-    g_file_blob          := NULL;
-    g_file_name          := p_file_name;
-    g_file_mime_type     := p_mime_type;
-    g_file_varchar_cache := NULL;
-    IF g_channel_apex_mail_workspace_id IS NOT NULL THEN
-      apex_util.set_security_group_id(apex_util.find_security_group_id(p_workspace => g_channel_apex_mail_workspace_id));
-    END IF;
-  END util_export_start;
-
-  --
-
-  PROCEDURE util_export_finish IS
-  BEGIN
-    apex_zip.finish(p_zipped_blob => g_file_blob);
-    IF g_channel_apex_mail_to IS NOT NULL THEN
-      util_deliver_apex_mail;
-    END IF;
-    IF g_channel_apex_download THEN
-      util_deliver_apex_download;
-    END IF;
-  END util_export_finish;
-
-  --
-
   FUNCTION util_bool_to_string(p_bool IN BOOLEAN) RETURN VARCHAR2 IS
   BEGIN
     RETURN CASE WHEN p_bool THEN 'Y' ELSE 'N' END;
@@ -315,103 +209,26 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   --
 
-  PROCEDURE set_channels
+  PROCEDURE apex_backapp
   (
-    p_apex_mail_to        VARCHAR2 DEFAULT NULL,
-    p_apex_mail_from      VARCHAR2 DEFAULT NULL,
-    p_apex_mail_workspace VARCHAR2 DEFAULT NULL,
-    p_apex_download       BOOLEAN DEFAULT FALSE --,
-    -- not yet implemented: apex_collection VARCHAR2 DEFAULT NULL,
-    -- not yet implemented: p_table_column    VARCHAR2 DEFAULT NULL,
-    -- not yet implemented: p_ora_dir         VARCHAR2 DEFAULT NULL
+    p_app_id IN NUMBER,
+    p_file   IN OUT plex.file,
+    --
+    p_include_app_ddl          IN BOOLEAN DEFAULT TRUE,
+    p_app_public_reports       IN BOOLEAN DEFAULT TRUE,
+    p_app_private_reports      IN BOOLEAN DEFAULT FALSE,
+    p_app_report_subscriptions IN BOOLEAN DEFAULT FALSE,
+    p_app_translations         IN BOOLEAN DEFAULT TRUE,
+    p_app_subscriptions        IN BOOLEAN DEFAULT TRUE,
+    p_app_original_ids         IN BOOLEAN DEFAULT FALSE,
+    p_app_packaged_app_mapping IN BOOLEAN DEFAULT FALSE,
+    --
+    p_include_object_ddl IN BOOLEAN DEFAULT TRUE,
+    p_object_prefix      IN VARCHAR2 DEFAULT NULL,
+    --
+    p_include_data  IN BOOLEAN DEFAULT FALSE,
+    p_data_max_rows IN NUMBER DEFAULT 1000
   ) IS
-  BEGIN
-    g_channel_apex_mail_to           := p_apex_mail_to;
-    g_channel_apex_mail_from         := p_apex_mail_from;
-    g_channel_apex_mail_workspace_id := p_apex_mail_workspace;
-    g_channel_apex_download          := p_apex_download;
-    -- not yet implemented: g_channel_apex_collection := apex_collection;
-    -- not yet implemented: g_channel_table_column    := p_table_column;
-    -- not yet implemented: g_channel_ora_dir         := p_ora_dir;
-    -- not yet implemented: g_channel_ip_fs           := p_ip_fs;
-  END set_channels;
-
-  --
-
-  PROCEDURE set_csv_options
-  (
-    p_delimiter       VARCHAR2 DEFAULT ',',
-    p_quote_mark      VARCHAR2 DEFAULT '"',
-    p_line_terminator VARCHAR2 DEFAULT chr(10),
-    p_header_prefix   VARCHAR2 DEFAULT NULL
-  ) IS
-  BEGIN
-    g_csv_delimiter       := p_delimiter;
-    g_csv_quote_mark      := p_quote_mark;
-    g_csv_line_terminator := p_line_terminator;
-    g_csv_header_prefix   := p_header_prefix;
-  END set_csv_options;
-
-  --
-
-  PROCEDURE set_backapp_options
-  (
-    p_include_app_ddl          BOOLEAN DEFAULT TRUE,
-    p_app_public_reports       BOOLEAN DEFAULT TRUE,
-    p_app_private_reports      BOOLEAN DEFAULT FALSE,
-    p_app_report_subscriptions BOOLEAN DEFAULT FALSE,
-    p_app_translations         BOOLEAN DEFAULT TRUE,
-    p_app_subscriptions        BOOLEAN DEFAULT TRUE,
-    p_app_original_ids         BOOLEAN DEFAULT FALSE,
-    p_app_packaged_app_mapping BOOLEAN DEFAULT FALSE,
-    --
-    p_include_object_ddl BOOLEAN DEFAULT TRUE,
-    p_object_prefix      VARCHAR2 DEFAULT NULL,
-    --
-    p_include_data  BOOLEAN DEFAULT FALSE,
-    p_data_max_rows NUMBER DEFAULT 1000
-  ) IS
-  BEGIN
-    g_ba_include_app_ddl          := p_include_app_ddl;
-    g_ba_app_public_reports       := p_app_public_reports;
-    g_ba_app_private_reports      := p_app_private_reports;
-    g_ba_app_report_subscriptions := p_app_report_subscriptions;
-    g_ba_app_translations         := p_app_translations;
-    g_ba_app_subscriptions        := p_app_subscriptions;
-    g_ba_app_original_ids         := p_app_original_ids;
-    g_ba_app_packaged_app_mapping := p_app_packaged_app_mapping;
-    --
-    g_ba_include_object_ddl := p_include_object_ddl;
-    g_ba_object_prefix      := p_object_prefix;
-    --
-    g_ba_include_data  := p_include_data;
-    g_ba_data_max_rows := p_data_max_rows;
-  END set_backapp_options;
-
-  --
-
-  FUNCTION get_file_blob RETURN BLOB IS
-  BEGIN
-    RETURN g_file_blob;
-  END get_file_blob;
-
-  --
-
-  FUNCTION get_file_name RETURN VARCHAR2 IS
-  BEGIN
-    RETURN g_file_name;
-  END get_file_name;
-
-  --
-
-  FUNCTION get_file_mime_type RETURN VARCHAR2 IS
-  BEGIN
-    RETURN g_file_mime_type;
-  END get_file_mime_type;
-
-  --
-
-  PROCEDURE apex_backapp(p_app_id NUMBER DEFAULT v('APP_ID')) IS
     l_owner VARCHAR2(128);
     l_clob  CLOB;
     --    
@@ -442,14 +259,14 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       -- https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
       -- unfortunately not available: wwv_flow_gen_api2.export which is used in application builder (app:4000, page:4900)
       l_clob := wwv_flow_utilities.export_application_to_clob(p_application_id            => p_app_id,
-                                                              p_export_ir_public_reports  => util_bool_to_string(g_ba_app_public_reports),
-                                                              p_export_ir_private_reports => util_bool_to_string(g_ba_app_private_reports),
-                                                              p_export_ir_notifications   => util_bool_to_string(g_ba_app_report_subscriptions),
-                                                              p_export_translations       => util_bool_to_string(g_ba_app_translations),
-                                                              p_export_pkg_app_mapping    => util_bool_to_string(g_ba_app_packaged_app_mapping),
-                                                              p_with_original_ids         => g_ba_app_original_ids,
+                                                              p_export_ir_public_reports  => util_bool_to_string(p_app_public_reports),
+                                                              p_export_ir_private_reports => util_bool_to_string(p_app_private_reports),
+                                                              p_export_ir_notifications   => util_bool_to_string(p_app_report_subscriptions),
+                                                              p_export_translations       => util_bool_to_string(p_app_translations),
+                                                              p_export_pkg_app_mapping    => util_bool_to_string(p_app_packaged_app_mapping),
+                                                              p_with_original_ids         => p_app_original_ids,
                                                               p_exclude_subscriptions     => CASE
-                                                                                               WHEN g_ba_app_subscriptions THEN
+                                                                                               WHEN p_app_subscriptions THEN
                                                                                                 FALSE
                                                                                                ELSE
                                                                                                 TRUE
@@ -457,7 +274,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       -- save as single file
       util_file_clob_reset;
       util_file_clob_append(l_clob);
-      apex_zip.add_file(p_zipped_blob => g_file_blob,
+      apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                         p_file_name   => 'App/UI/f' || p_app_id || '.sql',
                         p_content     => util_file_clob_to_blob);
       -- split into individual files                        
@@ -492,7 +309,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
           util_file_clob_append(substr(str1 => l_clob,
                                        pos  => l_file_content_start,
                                        len  => l_file_content_end - l_file_content_start) || chr(10));
-          apex_zip.add_file(p_zipped_blob => g_file_blob,
+          apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                             p_file_name   => 'App/UI/f' || p_app_id || '/' || l_file_path || '.sql',
                             p_content     => util_file_clob_to_blob);
           l_app_install_file(i) := l_file_path;
@@ -503,7 +320,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         FOR i IN 1 .. l_app_install_file.count LOOP
           util_file_clob_append('@' || l_app_install_file(i) || '.sql' || chr(10));
         END LOOP;
-        apex_zip.add_file(p_zipped_blob => g_file_blob,
+        apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                           p_file_name   => 'App/UI/f' || p_app_id || '/install.sql',
                           p_content     => util_file_clob_to_blob);
       END IF;
@@ -537,7 +354,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                    AND object_type NOT IN ('TABLE PARTITION', 'PACKAGE BODY', 'TYPE BODY', 'LOB')
                    AND object_name NOT LIKE 'SYS_PLSQL%'
                    AND object_name NOT LIKE 'ISEQ$$%'
-                   AND object_name LIKE nvl(g_ba_object_prefix, '%') || '%'
+                   AND object_name LIKE nvl(p_object_prefix, '%') || '%'
                  ORDER BY object_type) LOOP
         CASE i.object_type
           WHEN 'PACKAGE' THEN
@@ -548,13 +365,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                                1,
                                                regexp_instr(l_clob, 'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY') - 1),
                                         ' ' || chr(10)));
-            apex_zip.add_file(p_zipped_blob => g_file_blob,
+            apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                               p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.pks',
                               p_content     => util_file_clob_to_blob);
             -- body
             util_file_clob_reset;
             util_file_clob_append(substr(l_clob, regexp_instr(l_clob, 'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY')));
-            apex_zip.add_file(p_zipped_blob => g_file_blob,
+            apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                               p_file_name   => 'App/DDL/PackageBodies/' || i.object_name || '.pkb',
                               p_content     => util_file_clob_to_blob);
           WHEN 'VIEW' THEN
@@ -572,7 +389,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                                        1,
                                                        'im'),
                                         ' ' || chr(10)));
-            apex_zip.add_file(p_zipped_blob => g_file_blob,
+            apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                               p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.sql',
                               p_content     => util_file_clob_to_blob);
           ELSE
@@ -580,7 +397,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
             util_file_clob_append(dbms_metadata.get_ddl(object_type => i.object_type,
                                                         NAME        => i.object_name,
                                                         SCHEMA      => l_owner));
-            apex_zip.add_file(p_zipped_blob => g_file_blob,
+            apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                               p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.sql',
                               p_content     => util_file_clob_to_blob);
         END CASE;
@@ -593,31 +410,34 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                   FROM all_tables t
                  WHERE owner = l_owner
                    AND EXTERNAL = 'NO'
-                   AND table_name LIKE nvl(g_ba_object_prefix, '%') || '%') LOOP
+                   AND table_name LIKE nvl(p_object_prefix, '%') || '%') LOOP
         util_file_clob_reset;
-        util_query_to_csv(p_query    => 'select * from ' || l_owner || '.' || i.table_name,
-                          p_max_rows => g_ba_data_max_rows);
-        apex_zip.add_file(p_zipped_blob => g_file_blob,
+        util_query_to_csv(p_query => 'select * from ' || l_owner || '.' || i.table_name, p_max_rows => p_data_max_rows);
+        apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                           p_file_name   => 'App/Data/' || i.table_name || '.csv',
                           p_content     => util_file_clob_to_blob);
       END LOOP;
     END process_data;
     --
   BEGIN
-    util_export_start(p_file_name => 'ApexApp' || p_app_id || '-' || to_char(SYSDATE, 'yyyymmdd-hh24miss') || '.zip',
-                      p_mime_type => 'application/zip');
+    IF dbms_lob.istemporary(lob_loc => p_file.blob_content) = 0 THEN
+      dbms_lob.createtemporary(lob_loc => p_file.blob_content, cache => FALSE);
+    END IF;
+    p_file.file_name := 'ApexApp' || p_app_id || '-' || to_char(SYSDATE, 'yyyymmdd-hh24miss') || '.zip';
+    p_file.mime_type := 'application/zip';
     find_owner;
-    IF g_ba_include_app_ddl THEN
+    IF p_include_app_ddl THEN
       process_apex_app;
     END IF;
-    IF g_ba_include_object_ddl THEN
+    IF p_include_object_ddl THEN
       util_setup_dbms_metadata;
       process_object_ddl;
     END IF;
-    IF g_ba_include_data THEN
+    IF p_include_data THEN
       process_data;
     END IF;
-    util_export_finish;
+    apex_zip.finish(p_zipped_blob => p_file.blob_content);
+    util_file_clob_reset;
   END apex_backapp;
 
   --
@@ -638,19 +458,39 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   --
 
-  PROCEDURE queries_to_csv(p_zip_file_name VARCHAR2 DEFAULT 'csv-data') IS
+  PROCEDURE queries_to_csv(p_file IN OUT plex.file,
+                           --
+                           p_delimiter       IN VARCHAR2 DEFAULT ',',
+                           p_quote_mark      IN VARCHAR2 DEFAULT '"',
+                           p_line_terminator IN VARCHAR2 DEFAULT chr(10),
+                           p_header_prefix   IN VARCHAR2 DEFAULT NULL) IS
   BEGIN
-    util_export_start(p_file_name => regexp_replace(srcstr     => p_zip_file_name,
-                                                    pattern    => '\.zip$',
-                                                    replacestr => NULL,
-                                                    position   => 1,
-                                                    occurrence => 0,
-                                                    modifier   => 'i') || '.zip',
-                      p_mime_type => 'application/zip');
+  
+    IF dbms_lob.istemporary(lob_loc => p_file.blob_content) = 0 THEN
+      dbms_lob.createtemporary(lob_loc => p_file.blob_content, cache => FALSE);
+    END IF;
+    p_file.file_name := CASE
+                          WHEN p_file.file_name IS NOT NULL THEN
+                           regexp_replace(srcstr     => p_file.file_name,
+                                          pattern    => '\.zip$',
+                                          replacestr => NULL,
+                                          position   => 1,
+                                          occurrence => 0,
+                                          modifier   => 'i')
+                          ELSE
+                           'csv-data'
+                        END || '.zip';
+    p_file.mime_type := 'application/zip';
+  
     FOR i IN g_queries_array.first .. g_queries_array.last LOOP
       util_file_clob_reset;
-      util_query_to_csv(p_query => g_queries_array(i).query, p_max_rows => g_queries_array(i).max_rows);
-      apex_zip.add_file(p_zipped_blob => g_file_blob,
+      util_query_to_csv(p_query           => g_queries_array(i).query,
+                        p_max_rows        => g_queries_array(i).max_rows,
+                        p_delimiter       => p_delimiter,
+                        p_quote_mark      => p_quote_mark,
+                        p_line_terminator => p_line_terminator,
+                        p_header_prefix   => p_header_prefix);
+      apex_zip.add_file(p_zipped_blob => p_file.blob_content,
                         p_file_name   => regexp_replace(srcstr     => g_queries_array(i).file_name,
                                                         pattern    => '\.csv$',
                                                         replacestr => NULL,
@@ -659,13 +499,14 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                                         modifier   => 'i') || '.csv',
                         p_content     => util_file_clob_to_blob);
     END LOOP;
+    apex_zip.finish(p_zipped_blob => p_file.blob_content);
+    util_file_clob_reset;
     g_queries_array.delete;
-    util_export_finish;
   END queries_to_csv;
 
 --
 
 BEGIN
-  util_init_package;
+  dbms_lob.createtemporary(lob_loc => g_file_clob, cache => FALSE);
 END plex;
 /
