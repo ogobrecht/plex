@@ -40,10 +40,20 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   g_channel_apex_collection        VARCHAR2(128 CHAR);
   g_channel_table_column           VARCHAR2(1000 CHAR);
   g_channel_ora_dir                VARCHAR2(128 CHAR);
-  g_channel_ip_fs                  VARCHAR2(256 CHAR);
 
   g_queries_array t_tab_queries;
 
+  --
+
+  PROCEDURE util_init_package IS
+  BEGIN
+    dbms_lob.createtemporary(lob_loc => g_file_clob, cache => FALSE);
+    dbms_lob.createtemporary(lob_loc => g_file_blob, cache => FALSE);
+    set_channels;
+    set_csv_options;
+    set_backapp_options;
+  END;
+  
   --
 
   PROCEDURE util_setup_dbms_metadata
@@ -313,8 +323,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_apex_download       BOOLEAN DEFAULT FALSE --,
     -- not yet implemented: apex_collection VARCHAR2 DEFAULT NULL,
     -- not yet implemented: p_table_column    VARCHAR2 DEFAULT NULL,
-    -- not yet implemented: p_ora_dir         VARCHAR2 DEFAULT NULL,
-    -- not yet implemented: p_ip_fs           VARCHAR2 DEFAULT NULL
+    -- not yet implemented: p_ora_dir         VARCHAR2 DEFAULT NULL
   ) IS
   BEGIN
     g_channel_apex_mail_to           := p_apex_mail_to;
@@ -403,16 +412,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   --
 
   PROCEDURE apex_backapp(p_app_id NUMBER DEFAULT v('APP_ID')) IS
-    l_owner              VARCHAR2(128);
-    l_clob               CLOB;
-    l_count              PLS_INTEGER;
-    l_pattern            VARCHAR2(100 CHAR) := '^prompt --(application\/.*)$';
-    l_modifier           VARCHAR2(10 CHAR) := 'm';
-    l_file_content_start PLS_INTEGER;
-    l_file_content_end   PLS_INTEGER;
-    l_file_path          VARCHAR2(255 CHAR);
-    TYPE t_install_file IS TABLE OF VARCHAR2(255) INDEX BY BINARY_INTEGER;
-    l_app_install_file t_install_file;
+    l_owner VARCHAR2(128);
+    l_clob  CLOB;
     --    
     PROCEDURE find_owner IS
       CURSOR cur_owner IS
@@ -429,6 +430,14 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     END find_owner;
     --
     PROCEDURE process_apex_app IS
+      l_count              PLS_INTEGER;
+      l_pattern            VARCHAR2(100 CHAR) := '^prompt --(application\/.*)$';
+      l_modifier           VARCHAR2(10 CHAR) := 'm';
+      l_file_content_start PLS_INTEGER;
+      l_file_content_end   PLS_INTEGER;
+      l_file_path          VARCHAR2(255 CHAR);
+      TYPE t_install_file IS TABLE OF VARCHAR2(255) INDEX BY BINARY_INTEGER;
+      l_app_install_file t_install_file;
     BEGIN
       -- https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
       -- unfortunately not available: wwv_flow_gen_api2.export which is used in application builder (app:4000, page:4900)
@@ -500,39 +509,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       END IF;
     
     END process_apex_app;
-    --
-    PROCEDURE process_apex_workspace IS
-    BEGIN
-      NULL;
-      -- https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
-      -- unfortunately not available: wwv_flow_gen_api2.export (used in application builder app:4000, page:4900)
-      /*  FIXME: implement workspace export   
-      l_clob := wwv_flow_utilities.export_application_to_clob(p_application_id            => p_app_id,
-                                                              p_export_ir_public_reports  => util_bool_to_string(g_ba_app_public_reports),
-                                                              p_export_ir_private_reports => util_bool_to_string(g_ba_app_private_reports),
-                                                              p_export_ir_notifications   => util_bool_to_string(g_ba_app_report_subscriptions),
-                                                              p_export_translations       => util_bool_to_string(g_ba_app_translations),
-                                                              p_export_pkg_app_mapping    => util_bool_to_string(g_ba_app_packaged_app_mapping),
-                                                              p_with_original_ids         => g_ba_app_original_ids,
-                                                              p_exclude_subscriptions     => CASE
-                                                                                               WHEN g_ba_app_subscriptions THEN
-                                                                                                FALSE
-                                                                                               ELSE
-                                                                                                TRUE
-                                                                                             END);
-      util_file_clob_reset;
-      util_file_clob_append(l_clob);
-      apex_zip.add_file(p_zipped_blob => g_file_blob,
-                        p_file_name   => 'App/Workspace/ws' || p_app_id || '.sql',
-                        p_content     => util_file_clob_to_blob);
-      l_count := regexp_count(srcstr => l_clob, pattern => '^prompt --application\/.*$', position => 1, modifier => 'm');
-      IF l_count > 0 THEN
-        FOR i IN 1 .. l_count LOOP
-          NULL; -- FIXME: create the files here
-        END LOOP;
-      END IF;
-      */
-    END process_apex_workspace;
     --
     PROCEDURE process_object_ddl IS
     BEGIN
@@ -690,9 +666,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 --
 
 BEGIN
-  dbms_lob.createtemporary(lob_loc => g_file_clob, cache => FALSE);
-  dbms_lob.createtemporary(lob_loc => g_file_blob, cache => FALSE);
-  set_channels;
-  set_csv_options;
+  util_init_package;
 END plex;
 /

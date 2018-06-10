@@ -50,8 +50,7 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
     p_apex_download       BOOLEAN DEFAULT FALSE -- ,
     -- not yet implemented: p_apex_collection VARCHAR2 DEFAULT NULL,
     -- not yet implemented: p_table_column    VARCHAR2 DEFAULT NULL, -- 'table_name:file_blob_column:file_name_column:file_mime_type_column' (table must manage primary key by itself)
-    -- not yet implemented: p_ora_dir         VARCHAR2 DEFAULT NULL, -- Oracle directory name
-    -- not yet implemented: p_ip_fs           VARCHAR2 DEFAULT NULL -- a remote directory name (needs the additional project plipfs, which is in planning phase and using Node.js as backend technology...)
+    -- not yet implemented: p_ora_dir         VARCHAR2 DEFAULT NULL -- Oracle directory name
   );
 
   PROCEDURE set_csv_options
