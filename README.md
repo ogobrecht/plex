@@ -1,52 +1,69 @@
-# PLEX
+# PLEX - PL/SQL export utilities
 
-Oracle PL/SQL export utilities
 
-# Examples
+## APEX BackApp
 
-## Backup of an APEX application
+Get a zip file for an APEX application including:
+
+- The app export SQL file - full and splitted ready to use for version control
+- All objects DDL, object grants DDL
+- Optional the data in csv files - useful for small applications in cloud environments for a logical backup
+- Everything in a (hopefully) nice directory structure 
+
+### Simple Call
 
 ```sql
 DECLARE
-  l_file      plex.file;
-  l_mail_to   VARCHAR2(100 CHAR) := 'email@example.com';
-  l_mail_id   NUMBER;
+  l_zip_file blob;
 BEGIN
 
-  -- get the zip file
-  plex.apex_backapp(
-    p_app_id          => 2600,
-    p_file            => l_file
-  );
+  -- do the backapp
+  l_zip_file := plex.backapp(p_app_id => 100);
 
-  -- send it via APEX mail or do whatever with it
-  apex_util.set_security_group_id(apex_util.find_security_group_id('YOUR_WORKSPACE_NAME') );
-  l_mail_id   := apex_mail.send(
-    p_to     => l_mail_to,
-    p_from   => l_mail_to,
-    p_subj   => l_file.file_name,
-    p_body   => l_file.file_name
-  );
-  apex_mail.add_attachment(
-    p_mail_id      => l_mail_id,
-    p_attachment   => l_file.blob_content,
-    p_filename     => l_file.file_name,
-    p_mime_type    => l_file.mime_type
-  );
-  apex_mail.push_queue;
-
-  -- free the temp space, which was created by plex for the blob_content column
-  dbms_lob.freetemporary(l_file.blob_content);
+  -- do something with the zip file
 
 END;
 /
 ```
 
-## Export one or more queries as csv data within a zip file:
+
+### Signature
+
+```sql
+FUNCTION backapp
+(
+  p_app_id                   IN NUMBER DEFAULT NULL,   -- If not provided we simply skip the APEX app export.
+
+  p_include_app_ddl          IN BOOLEAN DEFAULT TRUE,  -- Include the SQL export file for the APEX application.
+  p_app_public_reports       IN BOOLEAN DEFAULT TRUE,  -- Include public reports in your application export.
+  p_app_private_reports      IN BOOLEAN DEFAULT FALSE, -- Include private reports in your application export.
+  p_app_report_subscriptions IN BOOLEAN DEFAULT FALSE, -- Include IRt or IG subscription settings in your application export.
+  p_app_translations         IN BOOLEAN DEFAULT TRUE,  -- Include translations in your application export.
+  p_app_subscriptions        IN BOOLEAN DEFAULT TRUE,  -- Include component subscriptions.
+  p_app_original_ids         IN BOOLEAN DEFAULT FALSE, -- Include original workspace id, application id and component ids.
+  p_app_packaged_app_mapping IN BOOLEAN DEFAULT FALSE, -- Include mapping between the application and packaged application if it exists.
+
+  p_include_object_ddl       IN BOOLEAN DEFAULT TRUE,  -- Include DDL of current user/schema objects and their grants.
+  p_object_prefix            IN VARCHAR2 DEFAULT NULL, -- Filter the schema objects with the provided object prefix.
+
+  p_include_data             IN BOOLEAN DEFAULT FALSE, -- Include CSV data of each table.
+  p_data_max_rows            IN NUMBER DEFAULT 1000,   -- Maximal number of rows per table.
+
+  p_debug                    BOOLEAN DEFAULT FALSE     -- Generate debug_log.md in the root of the zip file.
+) RETURN BLOB;
+```
+
+
+## Queries to CSV
+
+Export one or more queries as CSV data within a zip file.
+
+
+### Simple Call
 
 ```sql
 DECLARE
-  l_file plex.file;
+  l_zip_file blob;
 BEGIN
 
   --fill the queries array
@@ -60,15 +77,27 @@ BEGIN
     p_max_rows    => 10000
   );
 
-  -- get the zip file
-  l_file.file_name := 'user-tables';
-  plex.queries_to_csv(p_file => l_file);
+  -- process the queries
+  l_zip_file := plex.queries_to_csv;
 
   -- do something with the file...
-
-  -- free the temp space, which was created by plex for the blob_content column
-  dbms_lob.freetemporary(l_file.blob_content);
 
 END;
 /
 ```
+
+
+### Signature
+
+```sql
+FUNCTION queries_to_csv
+(
+  p_delimiter       IN VARCHAR2 DEFAULT ',',
+  p_quote_mark      IN VARCHAR2 DEFAULT '"',
+  p_line_terminator IN VARCHAR2 DEFAULT chr(10),
+  p_header_prefix   IN VARCHAR2 DEFAULT NULL,
+  p_debug           BOOLEAN DEFAULT FALSE -- Generate debug_log.md in the root of the zip file.
+) RETURN BLOB;
+```
+
+
