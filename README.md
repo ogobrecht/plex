@@ -1,9 +1,9 @@
 # PLEX - PL/SQL export utilities
 
 
-## APEX BackApp
+## BackApp
 
-Get a zip file for an APEX application including:
+Get a zip file for an APEX application (or schema) including:
 
 - The app export SQL file - full and splitted ready to use for version control
 - All objects DDL, object grants DDL
