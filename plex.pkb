@@ -44,6 +44,28 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   --
 
+  FUNCTION util_string_to_bool
+  (
+    p_bool_string IN VARCHAR2,
+    p_default     IN BOOLEAN
+  ) RETURN BOOLEAN IS
+    l_bool_string VARCHAR2(1 CHAR);
+    l_return      BOOLEAN;
+  BEGIN
+    l_bool_string := lower(substr(p_bool_string, 1, 1));
+    l_return := CASE
+                  WHEN l_bool_string IN ('1', 'y', 't') THEN
+                   TRUE
+                  WHEN l_bool_string IN ('0', 'n', 'f') THEN
+                   FALSE
+                  ELSE
+                   p_default
+                END;
+    RETURN l_return;
+  END util_string_to_bool;
+
+  --
+
   PROCEDURE util_setup_dbms_metadata
   (
     p_pretty               IN BOOLEAN DEFAULT TRUE,
@@ -319,7 +341,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   FUNCTION backapp
   (
     p_app_id                   IN NUMBER DEFAULT NULL,
-    p_include_app_ddl          IN BOOLEAN DEFAULT TRUE,
     p_app_public_reports       IN BOOLEAN DEFAULT TRUE,
     p_app_private_reports      IN BOOLEAN DEFAULT FALSE,
     p_app_report_subscriptions IN BOOLEAN DEFAULT FALSE,
@@ -331,11 +352,12 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_object_prefix            IN VARCHAR2 DEFAULT NULL,
     p_include_data             IN BOOLEAN DEFAULT FALSE,
     p_data_max_rows            IN NUMBER DEFAULT 1000,
-    p_debug                    BOOLEAN DEFAULT FALSE
+    p_debug                    IN BOOLEAN DEFAULT FALSE
   ) RETURN BLOB IS
     l_zip_file     BLOB;
     l_current_user user_objects.object_name%TYPE;
     l_app_owner    user_objects.object_name%TYPE;
+    l_the_point    VARCHAR2(30) := '. < this is the point ;-)';
     --    
     PROCEDURE check_owner IS
       CURSOR cur_owner IS
@@ -446,6 +468,55 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       -- END IF;
       dbms_lob.freetemporary(l_app_file);
     END process_apex_app;
+    --  
+    PROCEDURE process_user_ddl IS
+    BEGIN
+      -- user itself
+      util_ilog_start('ddl:USER:' || l_current_user);
+      util_g_clob_createtemporary;
+      util_g_clob_append(dbms_metadata.get_ddl('USER', l_current_user));
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'App/DDL/User/' || l_current_user || '.sql',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+      -- roles
+      util_ilog_start('ddl:USER:' || l_current_user || ':roles');
+      util_g_clob_createtemporary;
+      FOR i IN ( -- ensure we get no dbms_metadata error when no role privs exists
+                SELECT DISTINCT username FROM user_role_privs) LOOP
+        util_g_clob_append(dbms_metadata.get_granted_ddl('ROLE_GRANT', l_current_user));
+      END LOOP;
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'App/DDL/User/' || l_current_user || '_roles.sql',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+      -- system privileges
+      util_ilog_start('ddl:USER:' || l_current_user || ':system_privileges');
+      util_g_clob_createtemporary;
+      FOR i IN ( -- ensure we get no dbms_metadata error when no sys privs exists
+                SELECT DISTINCT username FROM user_sys_privs) LOOP
+        util_g_clob_append(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', l_current_user));
+      END LOOP;
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'App/DDL/User/' || l_current_user || '_system_privileges.sql',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+      -- object privileges
+      util_ilog_start('ddl:USER:' || l_current_user || ':object_privileges');
+      util_g_clob_createtemporary;
+      FOR i IN ( -- ensure we get no dbms_metadata error when no object grants exists
+                SELECT DISTINCT grantee FROM user_tab_privs WHERE grantee = l_current_user) LOOP
+        util_g_clob_append(dbms_metadata.get_granted_ddl('OBJECT_GRANT', l_current_user));
+      END LOOP;
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'App/DDL/User/' || l_current_user || '_object_privileges.sql',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END process_user_ddl;
     --
     PROCEDURE process_object_ddl IS
       l_ddl_file CLOB;
@@ -570,6 +641,64 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       END LOOP;
     END process_data;
     --
+    PROCEDURE process_docs_folder IS
+    BEGIN
+      util_ilog_start('folders:Docs');
+      util_g_clob_createtemporary;
+      util_g_clob_append(l_the_point);
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'Docs/_save_your_docs_here',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END process_docs_folder;
+    --
+    PROCEDURE process_scripts_folder IS
+    BEGIN
+      util_ilog_start('folders:Scripts');
+      util_g_clob_createtemporary;
+      util_g_clob_append(l_the_point);
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'Scripts/_save_your_scripts_here',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END process_scripts_folder;
+    --
+    PROCEDURE process_tests_folder IS
+    BEGIN
+      util_ilog_start('folders:Tests');
+      util_g_clob_createtemporary;
+      util_g_clob_append(l_the_point);
+      apex_zip.add_file(p_zipped_blob => l_zip_file,
+                        p_file_name   => 'Tests/_save_your_tests_here',
+                        p_content     => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END process_tests_folder;
+    --
+    PROCEDURE process_readme_dist IS
+    BEGIN
+      util_ilog_start('README.dist.md');
+      util_g_clob_createtemporary;
+      util_g_clob_append('# Your global README file
+      
+It is a good practice to have a README file in the root of your project with
+a high level overview of your application and links to detailed informations
+in the Docs folder when needed.
+
+You can start with a copy of this file. Name it README.md an try to use 
+Markdown when writing your content - this has many benefits and you don''t
+waist time by formatting your docs. If you are unsure have a look at some 
+projects at [Github][1] or any other code hosting platform.
+
+[1]: https://github.com
+');
+      apex_zip.add_file(p_zipped_blob => l_zip_file, p_file_name => 'README.dist.md', p_content => util_g_clob_to_blob);
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END process_readme_dist;
+    --
     PROCEDURE create_debug_log IS
     BEGIN
       IF p_debug THEN
@@ -578,22 +707,32 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
         
 ## Parameters
-  
-- p_app_id:                   ' || to_char(p_app_id) || '
-- p_include_app_ddl:          ' || util_bool_to_string(p_include_app_ddl) || '
-- p_app_public_reports:       ' || util_bool_to_string(p_app_public_reports) || '
-- p_app_private_reports:      ' || util_bool_to_string(p_app_private_reports) || '
-- p_app_report_subscriptions: ' || util_bool_to_string(p_app_report_subscriptions) || '
-- p_app_translations:         ' || util_bool_to_string(p_app_translations) || '
-- p_app_subscriptions:        ' || util_bool_to_string(p_app_subscriptions) || '
-- p_app_original_ids:         ' || util_bool_to_string(p_app_original_ids) || '
-- p_app_packaged_app_mapping: ' || util_bool_to_string(p_app_packaged_app_mapping) || '
-- p_include_object_ddl:       ' || util_bool_to_string(p_include_object_ddl) || '
-- p_object_prefix:            ' || p_object_prefix || '
-- p_include_data:             ' || util_bool_to_string(p_include_data) || '
-- p_data_max_rows:            ' || to_char(p_data_max_rows) || '
-- p_debug:                    ' || util_bool_to_string(p_debug) || '
 
+```sql
+DECLARE
+  l_zip BLOB;
+BEGIN
+  l_zip := plex.backapp(
+    p_app_id                   => ' || to_char(p_app_id) || ',
+    p_app_public_reports       => ' || util_bool_to_string(p_app_public_reports) || ',
+    p_app_private_reports      => ' || util_bool_to_string(p_app_private_reports) || ',
+    p_app_report_subscriptions => ' || util_bool_to_string(p_app_report_subscriptions) || ',
+    p_app_translations         => ' || util_bool_to_string(p_app_translations) || ',
+    p_app_subscriptions        => ' || util_bool_to_string(p_app_subscriptions) || ',
+    p_app_original_ids         => ' || util_bool_to_string(p_app_original_ids) || ',
+    p_app_packaged_app_mapping => ' || util_bool_to_string(p_app_packaged_app_mapping) || ',
+    p_include_object_ddl       => ' || util_bool_to_string(p_include_object_ddl) || ',
+    p_object_prefix            => ' || CASE WHEN p_object_prefix IS NOT NULL THEN
+                           '''' || p_object_prefix || '''' ELSE 'NULL'
+                           END || ',
+    p_include_data             => ' || util_bool_to_string(p_include_data) || ',
+    p_data_max_rows            => ' || to_char(p_data_max_rows) || ',
+    p_debug                    => ' || util_bool_to_string(p_debug) || ');
+    
+    --> do something with your zip file 
+END;
+/
+```
 
 ## Log Entries
 
@@ -601,7 +740,9 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
                            round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3) || ' seconds to finish.                         
 ');
         util_ilog_get_md_tab;
-        apex_zip.add_file(p_zipped_blob => l_zip_file, p_file_name => 'debug_log.md', p_content => util_g_clob_to_blob);
+        apex_zip.add_file(p_zipped_blob => l_zip_file,
+                          p_file_name   => 'plex_backapp_log.md',
+                          p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
       END IF;
     END;
@@ -611,9 +752,11 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
     dbms_lob.createtemporary(l_zip_file, TRUE);
     check_owner;
     --
-    IF p_include_app_ddl AND p_app_id IS NOT NULL THEN
+    IF p_app_id IS NOT NULL THEN
       process_apex_app;
     END IF;
+    --
+    process_user_ddl;
     --
     IF p_include_object_ddl THEN
       util_setup_dbms_metadata;
@@ -625,11 +768,50 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
       process_data;
     END IF;
     --
+    process_docs_folder;
+    process_scripts_folder;
+    process_tests_folder;
+    process_readme_dist;
+    --
     util_ilog_exit;
     create_debug_log;
     apex_zip.finish(l_zip_file);
     RETURN l_zip_file;
   END backapp;
+
+  --
+
+  FUNCTION backapp
+  (
+    p_app_id                   IN NUMBER DEFAULT NULL,
+    p_app_public_reports       IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_private_reports      IN VARCHAR2 DEFAULT 'FALSE',
+    p_app_report_subscriptions IN VARCHAR2 DEFAULT 'FALSE',
+    p_app_translations         IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_subscriptions        IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_original_ids         IN VARCHAR2 DEFAULT 'FALSE',
+    p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'FALSE',
+    p_include_object_ddl       IN VARCHAR2 DEFAULT 'TRUE',
+    p_object_prefix            IN VARCHAR2 DEFAULT NULL,
+    p_include_data             IN VARCHAR2 DEFAULT 'FALSE',
+    p_data_max_rows            IN NUMBER DEFAULT 1000,
+    p_debug                    IN VARCHAR2 DEFAULT 'FALSE'
+  ) RETURN BLOB IS
+  BEGIN
+    RETURN backapp(p_app_id                   => p_app_id,
+                   p_app_public_reports       => util_string_to_bool(p_app_public_reports, TRUE),
+                   p_app_private_reports      => util_string_to_bool(p_app_private_reports, FALSE),
+                   p_app_report_subscriptions => util_string_to_bool(p_app_report_subscriptions, FALSE),
+                   p_app_translations         => util_string_to_bool(p_app_translations, TRUE),
+                   p_app_subscriptions        => util_string_to_bool(p_app_subscriptions, TRUE),
+                   p_app_original_ids         => util_string_to_bool(p_app_original_ids, FALSE),
+                   p_app_packaged_app_mapping => util_string_to_bool(p_app_packaged_app_mapping, FALSE),
+                   p_include_object_ddl       => util_string_to_bool(p_include_object_ddl, TRUE),
+                   p_object_prefix            => p_object_prefix,
+                   p_include_data             => util_string_to_bool(p_include_data, FALSE),
+                   p_data_max_rows            => p_data_max_rows,
+                   p_debug                    => util_string_to_bool(p_debug, FALSE));
+  END;
 
   --
 

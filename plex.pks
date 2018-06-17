@@ -32,7 +32,6 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
   FUNCTION backapp
   (
     p_app_id                   IN NUMBER DEFAULT NULL, -- If not provided we simply skip the APEX app export.
-    p_include_app_ddl          IN BOOLEAN DEFAULT TRUE, -- Include the SQL export file for the APEX application.
     p_app_public_reports       IN BOOLEAN DEFAULT TRUE, -- Include public reports in your application export.
     p_app_private_reports      IN BOOLEAN DEFAULT FALSE, -- Include private reports in your application export.
     p_app_report_subscriptions IN BOOLEAN DEFAULT FALSE, -- Include IRt or IG subscription settings in your application export.
@@ -40,11 +39,42 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
     p_app_subscriptions        IN BOOLEAN DEFAULT TRUE, -- Include component subscriptions.
     p_app_original_ids         IN BOOLEAN DEFAULT FALSE, -- Include original workspace id, application id and component ids.
     p_app_packaged_app_mapping IN BOOLEAN DEFAULT FALSE, -- Include mapping between the application and packaged application if it exists.                        
-    p_include_object_ddl       IN BOOLEAN DEFAULT TRUE, -- Include DDL of current user/schema objects and their grants.
+    p_include_object_ddl       IN BOOLEAN DEFAULT TRUE, -- Include DDL of current user/schema and its objects.
     p_object_prefix            IN VARCHAR2 DEFAULT NULL, -- Filter the schema objects with the provided object prefix.                        
     p_include_data             IN BOOLEAN DEFAULT FALSE, -- Include CSV data of each table.
     p_data_max_rows            IN NUMBER DEFAULT 1000, -- Maximal number of rows per table.                        
-    p_debug                    BOOLEAN DEFAULT FALSE -- Generate debug_log.md in the root of the zip file.
+    p_debug                    IN BOOLEAN DEFAULT FALSE -- Generate plex_backapp_log.md in the root of the zip file.
+  ) RETURN BLOB;
+
+  /*
+  An overloaded function for a pure SQL context. You have to provide
+  at least one boolean paramater as a string representation (1 and 0 
+  provided as numbers will work too), so that the DB can decide which
+  version of the function to use - otherwise you will get this error:
+  ORA-06553: PLS-307: too many declarations of 'BACKAPP' match this call
+    
+  SELECT plex.backapp (p_app_id => 100, p_debug => 1) FROM dual;
+  
+  In the background we check only the lowercased first character: 
+  - 0(zero), n(o), f(alse) will be parsed as FALSE
+  - 1(one), y(es), t(rue) will be parsed as TRUE
+  - If we can't find a match the default for the parameter is used
+  */
+  FUNCTION backapp
+  (
+    p_app_id                   IN NUMBER DEFAULT NULL,
+    p_app_public_reports       IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_private_reports      IN VARCHAR2 DEFAULT 'FALSE',
+    p_app_report_subscriptions IN VARCHAR2 DEFAULT 'FALSE',
+    p_app_translations         IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_subscriptions        IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_original_ids         IN VARCHAR2 DEFAULT 'FALSE',
+    p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'FALSE',
+    p_include_object_ddl       IN VARCHAR2 DEFAULT 'TRUE',
+    p_object_prefix            IN VARCHAR2 DEFAULT NULL,
+    p_include_data             IN VARCHAR2 DEFAULT 'FALSE',
+    p_data_max_rows            IN NUMBER DEFAULT 1000,
+    p_debug                    IN VARCHAR2 DEFAULT 'FALSE'
   ) RETURN BLOB;
 
   /* 

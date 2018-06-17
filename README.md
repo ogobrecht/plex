@@ -33,8 +33,6 @@ END;
 FUNCTION backapp
 (
   p_app_id                   IN NUMBER DEFAULT NULL,   -- If not provided we simply skip the APEX app export.
-
-  p_include_app_ddl          IN BOOLEAN DEFAULT TRUE,  -- Include the SQL export file for the APEX application.
   p_app_public_reports       IN BOOLEAN DEFAULT TRUE,  -- Include public reports in your application export.
   p_app_private_reports      IN BOOLEAN DEFAULT FALSE, -- Include private reports in your application export.
   p_app_report_subscriptions IN BOOLEAN DEFAULT FALSE, -- Include IRt or IG subscription settings in your application export.
@@ -43,13 +41,13 @@ FUNCTION backapp
   p_app_original_ids         IN BOOLEAN DEFAULT FALSE, -- Include original workspace id, application id and component ids.
   p_app_packaged_app_mapping IN BOOLEAN DEFAULT FALSE, -- Include mapping between the application and packaged application if it exists.
 
-  p_include_object_ddl       IN BOOLEAN DEFAULT TRUE,  -- Include DDL of current user/schema objects and their grants.
+  p_include_object_ddl       IN BOOLEAN DEFAULT TRUE,  -- Include DDL of current user/schema and its objects.
   p_object_prefix            IN VARCHAR2 DEFAULT NULL, -- Filter the schema objects with the provided object prefix.
 
   p_include_data             IN BOOLEAN DEFAULT FALSE, -- Include CSV data of each table.
   p_data_max_rows            IN NUMBER DEFAULT 1000,   -- Maximal number of rows per table.
 
-  p_debug                    BOOLEAN DEFAULT FALSE     -- Generate debug_log.md in the root of the zip file.
+  p_debug                    IN BOOLEAN DEFAULT FALSE  -- Generate plex_backapp_log.md in the root of the zip file.
 ) RETURN BLOB;
 ```
 
