@@ -1,20 +1,33 @@
 CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
   /* 
-  PL/SQL export utilities: 
+  
+  PL/SQL Export Utilities: 
+  
    - Depends on APEX 5 because of the used APEX_ZIP package
    - License: MIT
    - URL: https://github.com/ogobrecht/plex 
    
-  One word regarding the parameters in this package: To be usable in the SQL 
-  and PL/SQL context all boolean parameters are coded as varchars. We check 
-  only the lowercased first character: 
-  - 0(zero), N(O), F(ALSE) will be parsed as FALSE
-  - 1(one), Y(ES), T(RUE) will be parsed as TRUE
-  - If we can't find a match the default for the parameter is used   
+  One word regarding the parameters in this package: To be usable in the SQL
+  and PL/SQL context all boolean parameters are coded as varchars. We check
+  only the uppercased first character:
+  
+  - 1 (one), Y [ES], T [RUE] will be parsed as TRUE
+  - 0 (zero), N [O], F [ALSE] will be parsed as FALSE
+  - If we can't find a match the default for the parameter is used
+  - This means the following keywords are also correct ;-)
+    - `yes please`
+    - `no thanks`
+    - `yeah`
+    - `nope`
+    - `Yippie Yippie Yeah Yippie Yeah`
+    - `time goes by...` - that is true, right?
+    - All that fun only because Oracle does not support boolean values in pure
+      SQL context...
+      
   */
 
   c_plex         CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL export utils';
-  c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.3.0';
+  c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.4.0';
 
   c_tab  CONSTANT VARCHAR2(2) := chr(9);
   c_lf   CONSTANT VARCHAR2(2) := chr(10);

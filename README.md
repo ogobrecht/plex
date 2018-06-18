@@ -1,9 +1,9 @@
-# PLEX - PL/SQL export utilities
+# PLEX - PL/SQL Export Utilities
 
 One word regarding the parameters in this package: To be usable in the SQL and PL/SQL context all boolean parameters are coded as varchars. We check only the uppercased first character:
 
-- 0 (zero), N [O], F [ALSE] will be parsed as FALSE
 - 1 (one), Y [ES], T [RUE] will be parsed as TRUE
+- 0 (zero), N [O], F [ALSE] will be parsed as FALSE
 - If we can't find a match the default for the parameter is used
 - This means the following keywords are also correct ;-)
   - `yes please`
@@ -11,7 +11,7 @@ One word regarding the parameters in this package: To be usable in the SQL and P
   - `yeah`
   - `nope`
   - `Yippie Yippie Yeah Yippie Yeah`
-  - `time goes by...`
+  - `time goes by...` - that is true, right?
   - All that fun only because Oracle does not support boolean values in pure SQL context...
 
 
@@ -101,9 +101,9 @@ END;
 ```sql
 FUNCTION queries_to_csv
 (
-  p_delimiter       IN VARCHAR2 DEFAULT ',',  -- The column delimiter - you could use plex.tab if you like
+  p_delimiter       IN VARCHAR2 DEFAULT ',',  -- The column delimiter - there is also plex.tab as a helper function.
   p_quote_mark      IN VARCHAR2 DEFAULT '"',  -- Used when the data contains the delimiter character.
-  p_line_terminator IN VARCHAR2 DEFAULT lf,   -- Default is line feed (plex.lf) - there are also plex.crlf and plex.cr.
+  p_line_terminator IN VARCHAR2 DEFAULT lf,   -- Default is line feed (plex.lf) - there are also plex.crlf and plex.cr as helpers.
   p_header_prefix   IN VARCHAR2 DEFAULT NULL, -- Prefix the header line with this text.
   p_debug           IN VARCHAR2 DEFAULT 'N'   -- Generate plex_queries_to_csv_log.md in the root of the zip file.
 ) RETURN BLOB;
