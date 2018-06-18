@@ -3,13 +3,25 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
   PL/SQL export utilities: 
    - Depends on APEX 5 because of the used APEX_ZIP package
    - License: MIT
-   - URL: https://github.com/ogobrecht/plex  
+   - URL: https://github.com/ogobrecht/plex 
+   
+  One word regarding the parameters in this package: To be usable in the SQL 
+  and PL/SQL context all boolean parameters are coded as varchars. We check 
+  only the lowercased first character: 
+  - 0(zero), N(O), F(ALSE) will be parsed as FALSE
+  - 1(one), Y(ES), T(RUE) will be parsed as TRUE
+  - If we can't find a match the default for the parameter is used   
   */
 
   c_plex         CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL export utils';
   c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.3.0';
 
-  c_length_application_info PLS_INTEGER := 64;
+  c_tab  CONSTANT VARCHAR2(2) := chr(9);
+  c_lf   CONSTANT VARCHAR2(2) := chr(10);
+  c_cr   CONSTANT VARCHAR2(2) := chr(13);
+  c_crlf CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+
+  c_length_application_info CONSTANT PLS_INTEGER := 64;
   SUBTYPE application_info_text IS VARCHAR2(64);
 
   TYPE t_debug_view_row IS RECORD(
@@ -22,59 +34,36 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
     action             application_info_text);
   TYPE t_debug_view_tab IS TABLE OF t_debug_view_row;
 
+  /*
+  Helper for common delimiter and line terminators.
+  */
+  FUNCTION tab RETURN VARCHAR2;
+  FUNCTION lf RETURN VARCHAR2;
+  FUNCTION cr RETURN VARCHAR2;
+  FUNCTION crlf RETURN VARCHAR2;
+
   /* 
-  Get a zip file for an APEX application including:
+  Get a zip file for an APEX app or schema including:
   - The app export SQL file - full and splitted ready to use for version control
-  - All objects DDL, object grants DDL
+  - All objects DDL including the grants to/from other users
   - Optional the data in csv files - useful for small applications in cloud environments for a logical backup
-  - Everything in a (hopefully) nice directory structure 
+  - Everything in a (hopefully) nice directory structure
   */
   FUNCTION backapp
   (
     p_app_id                   IN NUMBER DEFAULT NULL, -- If not provided we simply skip the APEX app export.
-    p_app_public_reports       IN BOOLEAN DEFAULT TRUE, -- Include public reports in your application export.
-    p_app_private_reports      IN BOOLEAN DEFAULT FALSE, -- Include private reports in your application export.
-    p_app_report_subscriptions IN BOOLEAN DEFAULT FALSE, -- Include IRt or IG subscription settings in your application export.
-    p_app_translations         IN BOOLEAN DEFAULT TRUE, -- Include translations in your application export.
-    p_app_subscriptions        IN BOOLEAN DEFAULT TRUE, -- Include component subscriptions.
-    p_app_original_ids         IN BOOLEAN DEFAULT FALSE, -- Include original workspace id, application id and component ids.
-    p_app_packaged_app_mapping IN BOOLEAN DEFAULT FALSE, -- Include mapping between the application and packaged application if it exists.                        
-    p_include_object_ddl       IN BOOLEAN DEFAULT TRUE, -- Include DDL of current user/schema and its objects.
+    p_app_public_reports       IN VARCHAR2 DEFAULT 'Y', -- Include public reports in your application export.
+    p_app_private_reports      IN VARCHAR2 DEFAULT 'N', -- Include private reports in your application export.
+    p_app_report_subscriptions IN VARCHAR2 DEFAULT 'N', -- Include IRt or IG subscription settings in your application export.
+    p_app_translations         IN VARCHAR2 DEFAULT 'Y', -- Include translations in your application export.
+    p_app_subscriptions        IN VARCHAR2 DEFAULT 'Y', -- Include component subscriptions.
+    p_app_original_ids         IN VARCHAR2 DEFAULT 'N', -- Include original workspace id, application id and component ids.
+    p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'N', -- Include mapping between the application and packaged application if it exists.                        
+    p_include_object_ddl       IN VARCHAR2 DEFAULT 'Y', -- Include DDL of current user/schema and its objects.
     p_object_prefix            IN VARCHAR2 DEFAULT NULL, -- Filter the schema objects with the provided object prefix.                        
-    p_include_data             IN BOOLEAN DEFAULT FALSE, -- Include CSV data of each table.
+    p_include_data             IN VARCHAR2 DEFAULT 'N', -- Include CSV data of each table.
     p_data_max_rows            IN NUMBER DEFAULT 1000, -- Maximal number of rows per table.                        
-    p_debug                    IN BOOLEAN DEFAULT FALSE -- Generate plex_backapp_log.md in the root of the zip file.
-  ) RETURN BLOB;
-
-  /*
-  An overloaded function for a pure SQL context. You have to provide
-  at least one boolean paramater as a string representation (1 and 0 
-  provided as numbers will work too), so that the DB can decide which
-  version of the function to use - otherwise you will get this error:
-  ORA-06553: PLS-307: too many declarations of 'BACKAPP' match this call
-    
-  SELECT plex.backapp (p_app_id => 100, p_debug => 1) FROM dual;
-  
-  In the background we check only the lowercased first character: 
-  - 0(zero), n(o), f(alse) will be parsed as FALSE
-  - 1(one), y(es), t(rue) will be parsed as TRUE
-  - If we can't find a match the default for the parameter is used
-  */
-  FUNCTION backapp
-  (
-    p_app_id                   IN NUMBER DEFAULT NULL,
-    p_app_public_reports       IN VARCHAR2 DEFAULT 'TRUE',
-    p_app_private_reports      IN VARCHAR2 DEFAULT 'FALSE',
-    p_app_report_subscriptions IN VARCHAR2 DEFAULT 'FALSE',
-    p_app_translations         IN VARCHAR2 DEFAULT 'TRUE',
-    p_app_subscriptions        IN VARCHAR2 DEFAULT 'TRUE',
-    p_app_original_ids         IN VARCHAR2 DEFAULT 'FALSE',
-    p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'FALSE',
-    p_include_object_ddl       IN VARCHAR2 DEFAULT 'TRUE',
-    p_object_prefix            IN VARCHAR2 DEFAULT NULL,
-    p_include_data             IN VARCHAR2 DEFAULT 'FALSE',
-    p_data_max_rows            IN NUMBER DEFAULT 1000,
-    p_debug                    IN VARCHAR2 DEFAULT 'FALSE'
+    p_debug                    IN VARCHAR2 DEFAULT 'N' -- Generate plex_backapp_log.md in the root of the zip file.
   ) RETURN BLOB;
 
   /* 
@@ -92,11 +81,11 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
   */
   FUNCTION queries_to_csv
   (
-    p_delimiter       IN VARCHAR2 DEFAULT ',',
-    p_quote_mark      IN VARCHAR2 DEFAULT '"',
-    p_line_terminator IN VARCHAR2 DEFAULT chr(10),
-    p_header_prefix   IN VARCHAR2 DEFAULT NULL,
-    p_debug           BOOLEAN DEFAULT FALSE -- Generate debug_log.md in the root of the zip file.
+    p_delimiter       IN VARCHAR2 DEFAULT ',', -- The column delimiter - there is also plex.tab as a helper function.
+    p_quote_mark      IN VARCHAR2 DEFAULT '"', -- Used when the data contains the delimiter character.
+    p_line_terminator IN VARCHAR2 DEFAULT lf, -- Default is line feed (plex.lf) - there are also plex.crlf and plex.cr as helpers.
+    p_header_prefix   IN VARCHAR2 DEFAULT NULL, -- Prefix the header line with this text.
+    p_debug           IN VARCHAR2 DEFAULT 'N' -- Generate plex_queries_to_csv_log.md in the root of the zip file.
   ) RETURN BLOB;
 
   /* 

@@ -30,16 +30,31 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   -- CODE
 
-  FUNCTION util_bool_to_yn(p_bool IN BOOLEAN) RETURN VARCHAR2 IS
+  FUNCTION tab RETURN VARCHAR2 IS
   BEGIN
-    RETURN CASE WHEN p_bool THEN 'Y' ELSE 'N' END;
-  END util_bool_to_yn;
+    RETURN c_tab;
+  END;
+
+  FUNCTION lf RETURN VARCHAR2 IS
+  BEGIN
+    RETURN c_lf;
+  END;
+
+  FUNCTION cr RETURN VARCHAR2 IS
+  BEGIN
+    RETURN c_cr;
+  END;
+
+  FUNCTION crlf RETURN VARCHAR2 IS
+  BEGIN
+    RETURN c_crlf;
+  END;
 
   --
 
   FUNCTION util_bool_to_string(p_bool IN BOOLEAN) RETURN VARCHAR2 IS
   BEGIN
-    RETURN CASE WHEN p_bool THEN 'TRUE' ELSE 'FALSE' END;
+    RETURN CASE WHEN p_bool THEN 'Y' ELSE 'N' END;
   END util_bool_to_string;
 
   --
@@ -52,11 +67,11 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     l_bool_string VARCHAR2(1 CHAR);
     l_return      BOOLEAN;
   BEGIN
-    l_bool_string := lower(substr(p_bool_string, 1, 1));
+    l_bool_string := upper(substr(p_bool_string, 1, 1));
     l_return := CASE
-                  WHEN l_bool_string IN ('1', 'y', 't') THEN
+                  WHEN l_bool_string IN ('1', 'Y', 'T') THEN
                    TRUE
-                  WHEN l_bool_string IN ('0', 'n', 'f') THEN
+                  WHEN l_bool_string IN ('0', 'N', 'F') THEN
                    FALSE
                   ELSE
                    p_default
@@ -325,11 +340,12 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       util_g_clob_append( --step
                          '| ' || lpad(to_char(i), 4) || ' | ' ||
                          --elapsed
-                          lpad(to_char(util_ilog_get_runtime(g_debug.start_time, g_debug.data(i).stop_time), '990D000'),
+                          lpad(TRIM(to_char(util_ilog_get_runtime(g_debug.start_time, g_debug.data(i).stop_time),
+                                            '99990D000')),
                                9) || ' | ' ||
                          --execution
-                          lpad(to_char(util_ilog_get_runtime(g_debug.data(i).start_time, g_debug.data(i).stop_time),
-                                       '990D000000'),
+                          lpad(TRIM(to_char(util_ilog_get_runtime(g_debug.data(i).start_time, g_debug.data(i).stop_time),
+                                            '9990D000000')),
                                11) || ' | ' ||
                          --action
                           rpad(g_debug.data(i).action, 64) || ' |' || chr(10));
@@ -354,7 +370,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_data_max_rows            IN NUMBER DEFAULT 1000,
     p_debug                    IN BOOLEAN DEFAULT FALSE
   ) RETURN BLOB IS
-    l_zip_file     BLOB;
+    l_zip          BLOB;
     l_current_user user_objects.object_name%TYPE;
     l_app_owner    user_objects.object_name%TYPE;
     l_the_point    VARCHAR2(30) := '. < this is the point ;-)';
@@ -372,10 +388,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         CLOSE cur_owner;
       END IF;
       IF p_app_id IS NOT NULL AND l_app_owner IS NULL THEN
-        raise_application_error(-20001,
+        raise_application_error(-20101,
                                 'Could not find owner for application - are you sure you provided the right app_id?');
       ELSIF p_app_id IS NOT NULL AND l_app_owner != l_current_user THEN
-        raise_application_error(-20002, 'You are not the owner of the app - please login as the owner.');
+        raise_application_error(-20102, 'You are not the owner of the app - please login as the owner.');
       END IF;
       util_ilog_stop;
     END check_owner;
@@ -415,11 +431,11 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       -- https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
       -- unfortunately not available: wwv_flow_gen_api2.export which is used in application builder (app:4000, page:4900)
       l_app_file := wwv_flow_utilities.export_application_to_clob(p_application_id            => p_app_id,
-                                                                  p_export_ir_public_reports  => util_bool_to_yn(p_app_public_reports),
-                                                                  p_export_ir_private_reports => util_bool_to_yn(p_app_private_reports),
-                                                                  p_export_ir_notifications   => util_bool_to_yn(p_app_report_subscriptions),
-                                                                  p_export_translations       => util_bool_to_yn(p_app_translations),
-                                                                  p_export_pkg_app_mapping    => util_bool_to_yn(p_app_packaged_app_mapping),
+                                                                  p_export_ir_public_reports  => util_bool_to_string(p_app_public_reports),
+                                                                  p_export_ir_private_reports => util_bool_to_string(p_app_private_reports),
+                                                                  p_export_ir_notifications   => util_bool_to_string(p_app_report_subscriptions),
+                                                                  p_export_translations       => util_bool_to_string(p_app_translations),
+                                                                  p_export_pkg_app_mapping    => util_bool_to_string(p_app_packaged_app_mapping),
                                                                   p_with_original_ids         => p_app_original_ids,
                                                                   p_exclude_subscriptions     => CASE
                                                                                                    WHEN p_app_subscriptions THEN
@@ -432,7 +448,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       util_ilog_start('app:save_single_file');
       util_g_clob_createtemporary;
       util_g_clob_append(l_app_file);
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'App/UI/f' || p_app_id || '.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -446,7 +462,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         util_ilog_append_action_text(':' || l_file_path);
         util_g_clob_createtemporary;
         util_g_clob_append(substr(str1 => l_app_file, pos => l_content_start_pos, len => l_content_length) || chr(10));
-        apex_zip.add_file(p_zipped_blob => l_zip_file,
+        apex_zip.add_file(p_zipped_blob => l_zip,
                           p_file_name   => 'App/UI/f' || p_app_id || '/' || l_file_path,
                           p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
@@ -460,7 +476,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       FOR i IN 1 .. l_app_install_file.count LOOP
         util_g_clob_append('@' || l_app_install_file(i) || chr(10));
       END LOOP;
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'App/UI/f' || p_app_id || '/install.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -475,7 +491,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       util_ilog_start('ddl:USER:' || l_current_user);
       util_g_clob_createtemporary;
       util_g_clob_append(dbms_metadata.get_ddl('USER', l_current_user));
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'App/DDL/User/' || l_current_user || '.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -487,7 +503,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                 SELECT DISTINCT username FROM user_role_privs) LOOP
         util_g_clob_append(dbms_metadata.get_granted_ddl('ROLE_GRANT', l_current_user));
       END LOOP;
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'App/DDL/User/' || l_current_user || '_roles.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -499,7 +515,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                 SELECT DISTINCT username FROM user_sys_privs) LOOP
         util_g_clob_append(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', l_current_user));
       END LOOP;
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'App/DDL/User/' || l_current_user || '_system_privileges.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -511,7 +527,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                 SELECT DISTINCT grantee FROM user_tab_privs WHERE grantee = l_current_user) LOOP
         util_g_clob_append(dbms_metadata.get_granted_ddl('OBJECT_GRANT', l_current_user));
       END LOOP;
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'App/DDL/User/' || l_current_user || '_object_privileges.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -560,7 +576,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                             1,
                                             regexp_instr(l_ddl_file, 'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY') - 1),
                                      ' ' || chr(10)));
-            apex_zip.add_file(p_zipped_blob => l_zip_file,
+            apex_zip.add_file(p_zipped_blob => l_zip,
                               p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.pks',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
@@ -568,7 +584,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
             util_g_clob_createtemporary;
             util_g_clob_append(substr(l_ddl_file,
                                       regexp_instr(l_ddl_file, 'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY')));
-            apex_zip.add_file(p_zipped_blob => l_zip_file,
+            apex_zip.add_file(p_zipped_blob => l_zip,
                               p_file_name   => 'App/DDL/PackageBodies/' || i.object_name || '.pkb',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
@@ -587,7 +603,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                                     1,
                                                     'im'),
                                      ' ' || chr(10)));
-            apex_zip.add_file(p_zipped_blob => l_zip_file,
+            apex_zip.add_file(p_zipped_blob => l_zip,
                               p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.sql',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
@@ -596,7 +612,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
             util_g_clob_append(dbms_metadata.get_ddl(object_type => i.object_type,
                                                      NAME        => i.object_name,
                                                      SCHEMA      => l_current_user));
-            apex_zip.add_file(p_zipped_blob => l_zip_file,
+            apex_zip.add_file(p_zipped_blob => l_zip,
                               p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.sql',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
@@ -615,7 +631,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         util_ilog_start('ddl:GRANT:' || i.privilege || ':' || i.object_name);
         util_g_clob_createtemporary;
         util_g_clob_append(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', i.object_name, i.grantor));
-        apex_zip.add_file(p_zipped_blob => l_zip_file,
+        apex_zip.add_file(p_zipped_blob => l_zip,
                           p_file_name   => 'App/DDL/Grants/' || i.privilege || '_on_' || i.object_name || '.sql',
                           p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
@@ -633,7 +649,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         util_ilog_start('data:' || i.table_name);
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(p_query => 'select * from ' || i.table_name, p_max_rows => p_data_max_rows);
-        apex_zip.add_file(p_zipped_blob => l_zip_file,
+        apex_zip.add_file(p_zipped_blob => l_zip,
                           p_file_name   => 'App/Data/' || i.table_name || '.csv',
                           p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
@@ -643,10 +659,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     --
     PROCEDURE process_docs_folder IS
     BEGIN
-      util_ilog_start('folders:Docs');
+      util_ilog_start('folder:Docs');
       util_g_clob_createtemporary;
       util_g_clob_append(l_the_point);
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'Docs/_save_your_docs_here',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -655,10 +671,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     --
     PROCEDURE process_scripts_folder IS
     BEGIN
-      util_ilog_start('folders:Scripts');
+      util_ilog_start('folder:Scripts');
       util_g_clob_createtemporary;
       util_g_clob_append(l_the_point);
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'Scripts/_save_your_scripts_here',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -667,10 +683,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     --
     PROCEDURE process_tests_folder IS
     BEGIN
-      util_ilog_start('folders:Tests');
+      util_ilog_start('folder:Tests');
       util_g_clob_createtemporary;
       util_g_clob_append(l_the_point);
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
+      apex_zip.add_file(p_zipped_blob => l_zip,
                         p_file_name   => 'Tests/_save_your_tests_here',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
@@ -684,17 +700,17 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       util_g_clob_append('# Your global README file
       
 It is a good practice to have a README file in the root of your project with
-a high level overview of your application and links to detailed informations
-in the Docs folder when needed.
+a high level overview of your application. Put the more detailed docs in the 
+Docs folder.
 
-You can start with a copy of this file. Name it README.md an try to use 
+You can start with a copy of this file. Name it README.md and try to use 
 Markdown when writing your content - this has many benefits and you don''t
 waist time by formatting your docs. If you are unsure have a look at some 
 projects at [Github][1] or any other code hosting platform.
 
 [1]: https://github.com
 ');
-      apex_zip.add_file(p_zipped_blob => l_zip_file, p_file_name => 'README.dist.md', p_content => util_g_clob_to_blob);
+      apex_zip.add_file(p_zipped_blob => l_zip, p_file_name => 'README.dist.md', p_content => util_g_clob_to_blob);
       util_g_clob_freetemporary;
       util_ilog_stop;
     END process_readme_dist;
@@ -703,53 +719,49 @@ projects at [Github][1] or any other code hosting platform.
     BEGIN
       IF p_debug THEN
         util_g_clob_createtemporary;
-        util_g_clob_append('# PLEX BackApp Log
+        util_g_clob_append('# PLEX - BackApp Log
 
         
 ## Parameters
 
 ```sql
-DECLARE
-  l_zip BLOB;
-BEGIN
-  l_zip := plex.backapp(
-    p_app_id                   => ' || to_char(p_app_id) || ',
-    p_app_public_reports       => ' || util_bool_to_string(p_app_public_reports) || ',
-    p_app_private_reports      => ' || util_bool_to_string(p_app_private_reports) || ',
-    p_app_report_subscriptions => ' || util_bool_to_string(p_app_report_subscriptions) || ',
-    p_app_translations         => ' || util_bool_to_string(p_app_translations) || ',
-    p_app_subscriptions        => ' || util_bool_to_string(p_app_subscriptions) || ',
-    p_app_original_ids         => ' || util_bool_to_string(p_app_original_ids) || ',
-    p_app_packaged_app_mapping => ' || util_bool_to_string(p_app_packaged_app_mapping) || ',
-    p_include_object_ddl       => ' || util_bool_to_string(p_include_object_ddl) || ',
-    p_object_prefix            => ' || CASE WHEN p_object_prefix IS NOT NULL THEN
+SELECT plex.backapp(
+  p_app_id                   => ' || to_char(p_app_id) || ',
+  p_app_public_reports       => ''' || util_bool_to_string(p_app_public_reports) || ''',
+  p_app_private_reports      => ''' || util_bool_to_string(p_app_private_reports) || ''',
+  p_app_report_subscriptions => ''' || util_bool_to_string(p_app_report_subscriptions) || ''',
+  p_app_translations         => ''' || util_bool_to_string(p_app_translations) || ''',
+  p_app_subscriptions        => ''' || util_bool_to_string(p_app_subscriptions) || ''',
+  p_app_original_ids         => ''' || util_bool_to_string(p_app_original_ids) || ''',
+  p_app_packaged_app_mapping => ''' || util_bool_to_string(p_app_packaged_app_mapping) || ''',
+  p_include_object_ddl       => ''' || util_bool_to_string(p_include_object_ddl) || ''',
+  p_object_prefix            => ' || CASE WHEN p_object_prefix IS NOT NULL THEN
                            '''' || p_object_prefix || '''' ELSE 'NULL'
                            END || ',
-    p_include_data             => ' || util_bool_to_string(p_include_data) || ',
-    p_data_max_rows            => ' || to_char(p_data_max_rows) || ',
-    p_debug                    => ' || util_bool_to_string(p_debug) || ');
-    
-    --> do something with your zip file 
-END;
-/
+  p_include_data             => ''' || util_bool_to_string(p_include_data) || ''',
+  p_data_max_rows            => ' || to_char(p_data_max_rows) || ',
+  p_debug                    => ''' || util_bool_to_string(p_debug) || '''
+)
+  FROM dual;
 ```
 
 ## Log Entries
 
 Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || ' and took ' ||
-                           round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3) || ' seconds to finish.                         
+                           TRIM(to_char(round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3),
+                                        '999G990D000')) || ' seconds to finish.                         
 ');
         util_ilog_get_md_tab;
-        apex_zip.add_file(p_zipped_blob => l_zip_file,
+        apex_zip.add_file(p_zipped_blob => l_zip,
                           p_file_name   => 'plex_backapp_log.md',
                           p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
       END IF;
-    END;
+    END create_debug_log;
     --
   BEGIN
     util_ilog_init('plex.backapp' || CASE WHEN p_app_id IS NOT NULL THEN '(' || to_char(p_app_id) || ')' END, p_debug);
-    dbms_lob.createtemporary(l_zip_file, TRUE);
+    dbms_lob.createtemporary(l_zip, TRUE);
     check_owner;
     --
     IF p_app_id IS NOT NULL THEN
@@ -775,8 +787,8 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
     --
     util_ilog_exit;
     create_debug_log;
-    apex_zip.finish(l_zip_file);
-    RETURN l_zip_file;
+    apex_zip.finish(l_zip);
+    RETURN l_zip;
   END backapp;
 
   --
@@ -784,18 +796,18 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
   FUNCTION backapp
   (
     p_app_id                   IN NUMBER DEFAULT NULL,
-    p_app_public_reports       IN VARCHAR2 DEFAULT 'TRUE',
-    p_app_private_reports      IN VARCHAR2 DEFAULT 'FALSE',
-    p_app_report_subscriptions IN VARCHAR2 DEFAULT 'FALSE',
-    p_app_translations         IN VARCHAR2 DEFAULT 'TRUE',
-    p_app_subscriptions        IN VARCHAR2 DEFAULT 'TRUE',
-    p_app_original_ids         IN VARCHAR2 DEFAULT 'FALSE',
-    p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'FALSE',
-    p_include_object_ddl       IN VARCHAR2 DEFAULT 'TRUE',
+    p_app_public_reports       IN VARCHAR2 DEFAULT 'Y',
+    p_app_private_reports      IN VARCHAR2 DEFAULT 'N',
+    p_app_report_subscriptions IN VARCHAR2 DEFAULT 'N',
+    p_app_translations         IN VARCHAR2 DEFAULT 'Y',
+    p_app_subscriptions        IN VARCHAR2 DEFAULT 'Y',
+    p_app_original_ids         IN VARCHAR2 DEFAULT 'N',
+    p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'N',
+    p_include_object_ddl       IN VARCHAR2 DEFAULT 'Y',
     p_object_prefix            IN VARCHAR2 DEFAULT NULL,
-    p_include_data             IN VARCHAR2 DEFAULT 'FALSE',
+    p_include_data             IN VARCHAR2 DEFAULT 'N',
     p_data_max_rows            IN NUMBER DEFAULT 1000,
-    p_debug                    IN VARCHAR2 DEFAULT 'FALSE'
+    p_debug                    IN VARCHAR2 DEFAULT 'N'
   ) RETURN BLOB IS
   BEGIN
     RETURN backapp(p_app_id                   => p_app_id,
@@ -839,38 +851,97 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
     p_header_prefix   IN VARCHAR2 DEFAULT NULL,
     p_debug           BOOLEAN DEFAULT FALSE
   ) RETURN BLOB IS
-    l_zip_file BLOB;
+    l_zip BLOB;
+    --
+    PROCEDURE create_debug_log IS
+    BEGIN
+      IF p_debug THEN
+        util_g_clob_createtemporary;
+        util_g_clob_append('# PLEX - Queries to CSV Log
+
+        
+## Parameters
+
+```sql
+SELECT plex.queries_to_csv(
+  p_delimiter       => ''' || p_delimiter || ''',
+  p_quote_mark      => ''' || p_quote_mark || ''',
+  p_line_terminator => ' || CASE p_line_terminator WHEN c_cr THEN 'chr(13)' WHEN c_lf THEN
+                           'chr(10)' WHEN c_crlf THEN 'chr(10) || chr(13)' ELSE p_line_terminator
+                           END || ',
+  p_header_prefix   => ' || CASE WHEN p_header_prefix IS NOT NULL THEN
+                           '''' || p_header_prefix || '''' ELSE 'NULL'
+                           END || ',
+  p_debug           => ''' || util_bool_to_string(p_debug) || '''
+)
+  FROM dual;
+```
+
+## Log Entries
+
+Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || ' and took ' ||
+                           TRIM(to_char(round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3),
+                                        '999G990D000')) || ' seconds to finish.                         
+');
+        util_ilog_get_md_tab;
+        apex_zip.add_file(p_zipped_blob => l_zip,
+                          p_file_name   => 'plex_queries_to_csv_log.md',
+                          p_content     => util_g_clob_to_blob);
+        util_g_clob_freetemporary;
+      END IF;
+    END create_debug_log;
+    --
   BEGIN
-    util_ilog_init('plex.queries_to_csv', p_debug);
-    util_ilog_start('init_temp_clob_and_file_variable');
-    dbms_lob.createtemporary(l_zip_file, TRUE);
-    util_ilog_stop;
-    FOR i IN g_queries.first .. g_queries.last LOOP
-      util_ilog_start('prcess_query_to_csv:' || to_char(i));
-      util_g_clob_createtemporary;
-      util_g_clob_query_to_csv(p_query           => g_queries(i).query,
-                               p_max_rows        => g_queries(i).max_rows,
-                               p_delimiter       => p_delimiter,
-                               p_quote_mark      => p_quote_mark,
-                               p_line_terminator => p_line_terminator,
-                               p_header_prefix   => p_header_prefix);
-      apex_zip.add_file(p_zipped_blob => l_zip_file,
-                        p_file_name   => regexp_replace(srcstr     => g_queries(i).file_name,
-                                                        pattern    => '\.csv$',
-                                                        replacestr => NULL,
-                                                        position   => 1,
-                                                        occurrence => 0,
-                                                        modifier   => 'i') || '.csv',
-                        p_content     => util_g_clob_to_blob);
-      util_g_clob_freetemporary;
-      util_ilog_stop;
-    END LOOP;
-    util_ilog_start('cleanup_and_finish_apex_zip_file');
-    g_queries.delete;
-    apex_zip.finish(l_zip_file);
-    util_ilog_stop;
-    util_ilog_exit;
-    RETURN l_zip_file;
+    IF g_queries.count = 0 THEN
+      raise_application_error(-20201,
+                              'You need first to add queries by using plex.add_query. Calling plex.queries_to_csv clears the global queries array for subsequent processing.');
+    ELSE
+      util_ilog_init('plex.queries_to_csv', p_debug);
+      dbms_lob.createtemporary(l_zip, TRUE);
+      FOR i IN g_queries.first .. g_queries.last LOOP
+        util_ilog_start('process_query_to_csv:' || to_char(i) || ':' || g_queries(i).file_name);
+        util_g_clob_createtemporary;
+        util_g_clob_query_to_csv(p_query           => g_queries(i).query,
+                                 p_max_rows        => g_queries(i).max_rows,
+                                 p_delimiter       => p_delimiter,
+                                 p_quote_mark      => p_quote_mark,
+                                 p_line_terminator => p_line_terminator,
+                                 p_header_prefix   => p_header_prefix);
+        apex_zip.add_file(p_zipped_blob => l_zip,
+                          p_file_name   => regexp_replace(srcstr     => g_queries(i).file_name,
+                                                          pattern    => '\.csv$',
+                                                          replacestr => NULL,
+                                                          position   => 1,
+                                                          occurrence => 0,
+                                                          modifier   => 'i') || '.csv',
+                          p_content     => util_g_clob_to_blob);
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      END LOOP;
+      g_queries.delete;
+      util_ilog_exit;
+      create_debug_log;
+      apex_zip.finish(l_zip);
+      RETURN l_zip;
+    END IF;
+  END queries_to_csv;
+
+  --
+
+  FUNCTION queries_to_csv
+  (
+    p_delimiter       IN VARCHAR2 DEFAULT ',',
+    p_quote_mark      IN VARCHAR2 DEFAULT '"',
+    p_line_terminator IN VARCHAR2 DEFAULT lf,
+    p_header_prefix   IN VARCHAR2 DEFAULT NULL,
+    p_debug           IN VARCHAR2 DEFAULT 'N' -- Generate plex_queries_to_csv_log.md in the root of the zip file.
+  ) RETURN BLOB IS
+  BEGIN
+    RETURN queries_to_csv(p_delimiter       => p_delimiter,
+                          p_quote_mark      => p_quote_mark,
+                          p_line_terminator => p_line_terminator,
+                          p_header_prefix   => p_header_prefix,
+                          p_debug           => util_string_to_bool(p_debug, FALSE));
   END queries_to_csv;
 
   --
