@@ -11,15 +11,20 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   TYPE t_debug_step_row IS RECORD(
     action     application_info_text,
     start_time TIMESTAMP(6),
-    stop_time  TIMESTAMP(6));
+    stop_time  TIMESTAMP(6),
+    elapsed    NUMBER,
+    execution  NUMBER);
   TYPE t_debug_step_tab IS TABLE OF t_debug_step_row INDEX BY BINARY_INTEGER;
 
   TYPE t_debug_row IS RECORD(
-    module     application_info_text,
-    enabled    BOOLEAN,
-    start_time TIMESTAMP(6),
-    stop_time  TIMESTAMP(6),
-    data       t_debug_step_tab);
+    module          application_info_text,
+    enabled         BOOLEAN,
+    start_time      TIMESTAMP(6),
+    stop_time       TIMESTAMP(6),
+    run_time        NUMBER,
+    measured_time   NUMBER,
+    unmeasured_time NUMBER,
+    data            t_debug_step_tab);
 
   -- GLOBAL VARIABLES
 
@@ -85,7 +90,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   (
     p_pretty               IN BOOLEAN DEFAULT TRUE,
     p_constraints          IN BOOLEAN DEFAULT TRUE,
-    p_ref_constraints      IN BOOLEAN DEFAULT TRUE,
+    p_ref_constraints      IN BOOLEAN DEFAULT FALSE,
     p_partitioning         IN BOOLEAN DEFAULT TRUE,
     p_tablespace           IN BOOLEAN DEFAULT FALSE,
     p_storage              IN BOOLEAN DEFAULT FALSE,
@@ -257,6 +262,19 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   --
 
+  FUNCTION util_ilog_get_runtime
+  (
+    p_start TIMESTAMP,
+    p_stop  TIMESTAMP
+  ) RETURN NUMBER IS
+  BEGIN
+    RETURN SYSDATE +((p_stop - p_start) * 86400) - SYSDATE;
+    --sysdate + (interval_difference * 86400) - sysdate
+    --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
+  END util_ilog_get_runtime;
+
+  --
+
   PROCEDURE util_ilog_init
   (
     p_module VARCHAR2,
@@ -266,8 +284,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     g_debug        := NULL;
     g_debug.module := substr(p_module, 1, c_length_application_info);
     IF p_debug THEN
-      g_debug.enabled    := TRUE;
-      g_debug.start_time := systimestamp;
+      g_debug.enabled       := TRUE;
+      g_debug.start_time    := systimestamp;
+      g_debug.measured_time := 0;
     END IF;
   END util_ilog_init;
 
@@ -276,8 +295,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   PROCEDURE util_ilog_exit IS
   BEGIN
     IF g_debug.enabled THEN
-      g_debug.stop_time := systimestamp;
-      g_debug.enabled   := FALSE;
+      g_debug.stop_time       := systimestamp;
+      g_debug.run_time        := util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time);
+      g_debug.unmeasured_time := g_debug.run_time - g_debug.measured_time;
+      g_debug.enabled         := FALSE;
     END IF;
   END util_ilog_exit;
 
@@ -308,25 +329,18 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   --
 
   PROCEDURE util_ilog_stop IS
+    l_index PLS_INTEGER;
   BEGIN
+    l_index := g_debug.data.count;
     dbms_application_info.set_module(module_name => NULL, action_name => NULL);
     IF g_debug.enabled THEN
-      g_debug.data(g_debug.data.count).stop_time := systimestamp;
+      g_debug.data(l_index).stop_time := systimestamp;
+      g_debug.data(l_index).elapsed := util_ilog_get_runtime(g_debug.start_time, g_debug.data(l_index).stop_time);
+      g_debug.data(l_index).execution := util_ilog_get_runtime(g_debug.data(l_index).start_time,
+                                                               g_debug.data(l_index).stop_time);
+      g_debug.measured_time := g_debug.measured_time + g_debug.data(l_index).execution;
     END IF;
   END util_ilog_stop;
-
-  --
-
-  FUNCTION util_ilog_get_runtime
-  (
-    p_start TIMESTAMP,
-    p_stop  TIMESTAMP
-  ) RETURN NUMBER IS
-  BEGIN
-    RETURN SYSDATE +((p_stop - p_start) * 86400) - SYSDATE;
-    --sysdate + (interval_difference * 86400) - sysdate
-    --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
-  END util_ilog_get_runtime;
 
   --
 
@@ -340,13 +354,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       util_g_clob_append( --step
                          '| ' || lpad(to_char(i), 4) || ' | ' ||
                          --elapsed
-                          lpad(TRIM(to_char(util_ilog_get_runtime(g_debug.start_time, g_debug.data(i).stop_time),
-                                            '99990D000')),
-                               9) || ' | ' ||
+                          lpad(TRIM(to_char(g_debug.data(i).elapsed, '99990D000')), 9) || ' | ' ||
                          --execution
-                          lpad(TRIM(to_char(util_ilog_get_runtime(g_debug.data(i).start_time, g_debug.data(i).stop_time),
-                                            '9990D000000')),
-                               11) || ' | ' ||
+                          lpad(TRIM(to_char(g_debug.data(i).execution, '9990D000000')), 11) || ' | ' ||
                          --action
                           rpad(g_debug.data(i).action, 64) || ' |' || chr(10));
     END LOOP;
@@ -370,21 +380,22 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_data_max_rows            IN NUMBER DEFAULT 1000,
     p_debug                    IN BOOLEAN DEFAULT FALSE
   ) RETURN BLOB IS
-    l_zip          BLOB;
-    l_current_user user_objects.object_name%TYPE;
-    l_app_owner    user_objects.object_name%TYPE;
-    l_the_point    VARCHAR2(30) := '. < this is the point ;-)';
+    l_zip           BLOB;
+    l_current_user  user_objects.object_name%TYPE;
+    l_app_workspace user_objects.object_name%TYPE;
+    l_app_owner     user_objects.object_name%TYPE;
+    l_app_alias     user_objects.object_name%TYPE;
     --    
     PROCEDURE check_owner IS
       CURSOR cur_owner IS
-        SELECT owner FROM apex_applications t WHERE t.application_id = p_app_id;
+        SELECT workspace, owner, alias FROM apex_applications t WHERE t.application_id = p_app_id;
     BEGIN
       util_ilog_start('check_owner');
       l_current_user := nvl(apex_application.g_flow_owner, USER);
       IF p_app_id IS NOT NULL THEN
         OPEN cur_owner;
         FETCH cur_owner
-          INTO l_app_owner;
+          INTO l_app_workspace, l_app_owner, l_app_alias;
         CLOSE cur_owner;
       END IF;
       IF p_app_id IS NOT NULL AND l_app_owner IS NULL THEN
@@ -490,9 +501,19 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       -- user itself
       util_ilog_start('ddl:USER:' || l_current_user);
       util_g_clob_createtemporary;
-      util_g_clob_append(dbms_metadata.get_ddl('USER', l_current_user));
+      util_g_clob_append('BEGIN
+  FOR i IN (SELECT ''' || l_current_user || ''' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
+    EXECUTE IMMEDIATE q''[
+--------------------------------------------------------------------------------    
+' || dbms_metadata.get_ddl('USER', l_current_user) || '
+--------------------------------------------------------------------------------    
+    ]'';
+  END LOOP;
+END;
+/
+');
       apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'App/DDL/User/' || l_current_user || '.sql',
+                        p_file_name   => 'App/DDL/_User/' || l_current_user || '.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
       util_ilog_stop;
@@ -504,7 +525,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         util_g_clob_append(dbms_metadata.get_granted_ddl('ROLE_GRANT', l_current_user));
       END LOOP;
       apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'App/DDL/User/' || l_current_user || '_roles.sql',
+                        p_file_name   => 'App/DDL/_User/' || l_current_user || '_roles.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
       util_ilog_stop;
@@ -516,7 +537,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         util_g_clob_append(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', l_current_user));
       END LOOP;
       apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'App/DDL/User/' || l_current_user || '_system_privileges.sql',
+                        p_file_name   => 'App/DDL/_User/' || l_current_user || '_system_privileges.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
       util_ilog_stop;
@@ -528,7 +549,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         util_g_clob_append(dbms_metadata.get_granted_ddl('OBJECT_GRANT', l_current_user));
       END LOOP;
       apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'App/DDL/User/' || l_current_user || '_object_privileges.sql',
+                        p_file_name   => 'App/DDL/_User/' || l_current_user || '_object_privileges.sql',
                         p_content     => util_g_clob_to_blob);
       util_g_clob_freetemporary;
       util_ilog_stop;
@@ -536,38 +557,48 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     --
     PROCEDURE process_object_ddl IS
       l_ddl_file CLOB;
+      CURSOR l_cur IS
+        SELECT CASE --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
+                 WHEN object_type IN ('JOB', 'PROGRAM', 'SCHEDULE') THEN
+                  'PROCOBJ'
+                 ELSE
+                  object_type
+               END AS object_type,
+               object_name,
+               REPLACE(initcap(CASE
+                                 WHEN object_type LIKE '%S' THEN
+                                  object_type || 'ES'
+                                 WHEN object_type LIKE '%EX' THEN
+                                  regexp_replace(object_type, 'EX$', 'ICES', 1, 0, 'i')
+                                 WHEN object_type LIKE '%Y' THEN
+                                  regexp_replace(object_type, 'Y$', 'IES', 1, 0, 'i')
+                                 ELSE
+                                  object_type || 'S'
+                               END),
+                       ' ',
+                       NULL) AS dir_name
+          FROM user_objects
+         WHERE object_type NOT IN ('TABLE PARTITION', 'PACKAGE BODY', 'TYPE BODY', 'LOB')
+           AND object_name NOT LIKE 'SYS_PLSQL%'
+           AND object_name NOT LIKE 'ISEQ$$%'
+           AND object_name LIKE nvl(p_object_prefix, '%') || '%'
+         ORDER BY object_type, object_name;
+      l_rec l_cur%ROWTYPE;
     BEGIN
+      util_setup_dbms_metadata;
       dbms_lob.createtemporary(l_ddl_file, TRUE);
-      FOR i IN (SELECT CASE --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
-                         WHEN object_type IN ('JOB', 'PROGRAM', 'SCHEDULE') THEN
-                          'PROCOBJ'
-                         ELSE
-                          object_type
-                       END AS object_type,
-                       object_name,
-                       REPLACE(initcap(CASE
-                                         WHEN object_type LIKE '%S' THEN
-                                          object_type || 'ES'
-                                         WHEN object_type LIKE '%EX' THEN
-                                          regexp_replace(object_type, 'EX$', 'ICES', 1, 0, 'i')
-                                         WHEN object_type LIKE '%Y' THEN
-                                          regexp_replace(object_type, 'Y$', 'IES', 1, 0, 'i')
-                                         ELSE
-                                          object_type || 'S'
-                                       END),
-                               ' ',
-                               NULL) AS dir_name
-                  FROM user_objects
-                 WHERE object_type NOT IN ('TABLE PARTITION', 'PACKAGE BODY', 'TYPE BODY', 'LOB')
-                   AND object_name NOT LIKE 'SYS_PLSQL%'
-                   AND object_name NOT LIKE 'ISEQ$$%'
-                   AND object_name LIKE nvl(p_object_prefix, '%') || '%'
-                 ORDER BY object_type, object_name) LOOP
-        util_ilog_start('ddl:' || i.object_type || ':' || i.object_name);
-        CASE i.object_type
-          WHEN 'PACKAGE' THEN
-            l_ddl_file := dbms_metadata.get_ddl(object_type => i.object_type,
-                                                NAME        => i.object_name,
+      util_ilog_start('ddl:objects:open_cursor');
+      OPEN l_cur;
+      util_ilog_stop;
+      LOOP
+        FETCH l_cur
+          INTO l_rec;
+        EXIT WHEN l_cur%NOTFOUND;
+        util_ilog_start('ddl:' || l_rec.object_type || ':' || l_rec.object_name);
+        CASE
+          WHEN l_rec.object_type = 'PACKAGE' THEN
+            l_ddl_file := dbms_metadata.get_ddl(object_type => l_rec.object_type,
+                                                NAME        => l_rec.object_name,
                                                 SCHEMA      => l_current_user);
           
             -- spec   
@@ -577,7 +608,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                             regexp_instr(l_ddl_file, 'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY') - 1),
                                      ' ' || chr(10)));
             apex_zip.add_file(p_zipped_blob => l_zip,
-                              p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.pks',
+                              p_file_name   => 'App/DDL/' || l_rec.dir_name || '/' || l_rec.object_name || '.pks',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
             -- body          
@@ -585,13 +616,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
             util_g_clob_append(substr(l_ddl_file,
                                       regexp_instr(l_ddl_file, 'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY')));
             apex_zip.add_file(p_zipped_blob => l_zip,
-                              p_file_name   => 'App/DDL/PackageBodies/' || i.object_name || '.pkb',
+                              p_file_name   => 'App/DDL/PackageBodies/' || l_rec.object_name || '.pkb',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
-          WHEN 'VIEW' THEN
+          WHEN l_rec.object_type = 'VIEW' THEN
             util_g_clob_createtemporary;
-            util_g_clob_append(ltrim(regexp_replace(regexp_replace(dbms_metadata.get_ddl(object_type => i.object_type,
-                                                                                         NAME        => i.object_name,
+            util_g_clob_append(ltrim(regexp_replace(regexp_replace(dbms_metadata.get_ddl(object_type => l_rec.object_type,
+                                                                                         NAME        => l_rec.object_name,
                                                                                          SCHEMA      => l_current_user),
                                                                    '\(.*\) ', -- remove additional column list from the compiler
                                                                    NULL,
@@ -604,100 +635,251 @@ CREATE OR REPLACE PACKAGE BODY plex IS
                                                     'im'),
                                      ' ' || chr(10)));
             apex_zip.add_file(p_zipped_blob => l_zip,
-                              p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.sql',
+                              p_file_name   => 'App/DDL/' || l_rec.dir_name || '/' || l_rec.object_name || '.sql',
+                              p_content     => util_g_clob_to_blob);
+            util_g_clob_freetemporary;
+          WHEN l_rec.object_type IN ('TABLE', 'INDEX', 'SEQUENCE') THEN
+            util_g_clob_createtemporary;
+            util_setup_dbms_metadata(p_sqlterminator => FALSE);
+            util_g_clob_append('BEGIN
+  FOR i IN (SELECT ''' || l_rec.object_name || ''' AS object_name FROM dual 
+            MINUS 
+            SELECT object_name FROM user_objects) LOOP
+    EXECUTE IMMEDIATE q''[
+--------------------------------------------------------------------------------    
+' || dbms_metadata.get_ddl(object_type => l_rec.object_type,
+                                                         NAME        => l_rec.object_name,
+                                                         SCHEMA      => l_current_user) || '
+--------------------------------------------------------------------------------    
+    ]'';
+  END LOOP;
+END;
+/
+
+-- Put your ALTER statements below in the same style as before to ensure that 
+-- the script is restartable.
+');
+            util_setup_dbms_metadata(p_sqlterminator => TRUE);
+            apex_zip.add_file(p_zipped_blob => l_zip,
+                              p_file_name   => 'App/DDL/' || l_rec.dir_name || '/' || l_rec.object_name || '.sql',
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
           ELSE
             util_g_clob_createtemporary;
-            util_g_clob_append(dbms_metadata.get_ddl(object_type => i.object_type,
-                                                     NAME        => i.object_name,
+            util_g_clob_append(dbms_metadata.get_ddl(object_type => l_rec.object_type,
+                                                     NAME        => l_rec.object_name,
                                                      SCHEMA      => l_current_user));
             apex_zip.add_file(p_zipped_blob => l_zip,
-                              p_file_name   => 'App/DDL/' || i.dir_name || '/' || i.object_name || '.sql',
+                              p_file_name   => 'App/DDL/' || l_rec.dir_name || '/' || l_rec.object_name ||
+                                               CASE l_rec.object_type
+                                                 WHEN 'FUNCTION' THEN
+                                                  '.fnc'
+                                                 WHEN 'PROCEDURE' THEN
+                                                  '.prc'
+                                                 WHEN 'TRIGGER' THEN
+                                                  '.trg'
+                                                 ELSE
+                                                  '.sql'
+                                               END,
                               p_content     => util_g_clob_to_blob);
             util_g_clob_freetemporary;
         END CASE;
         util_ilog_stop;
       END LOOP;
+      CLOSE l_cur;
       dbms_lob.freetemporary(l_ddl_file);
     END process_object_ddl;
     --  
     PROCEDURE process_object_grants IS
+      CURSOR l_cur IS
+        SELECT DISTINCT p.grantor, p.privilege, p.table_name AS object_name
+          FROM user_tab_privs p
+          JOIN user_objects o ON p.table_name = o.object_name
+         ORDER BY privilege, object_name;
+      l_rec l_cur%ROWTYPE;
     BEGIN
-      FOR i IN (SELECT DISTINCT p.grantor, p.privilege, p.table_name AS object_name
-                  FROM user_tab_privs p
-                  JOIN user_objects o ON p.table_name = o.object_name
-                 ORDER BY privilege, object_name) LOOP
-        util_ilog_start('ddl:GRANT:' || i.privilege || ':' || i.object_name);
+      util_ilog_start('ddl:grants:open_cursor');
+      OPEN l_cur;
+      util_ilog_stop;
+      LOOP
+        FETCH l_cur
+          INTO l_rec;
+        EXIT WHEN l_cur%NOTFOUND;
+        util_ilog_start('ddl:GRANT:' || l_rec.privilege || ':' || l_rec.object_name);
         util_g_clob_createtemporary;
-        util_g_clob_append(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', i.object_name, i.grantor));
+        util_g_clob_append(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', l_rec.object_name, l_rec.grantor));
         apex_zip.add_file(p_zipped_blob => l_zip,
-                          p_file_name   => 'App/DDL/Grants/' || i.privilege || '_on_' || i.object_name || '.sql',
+                          p_file_name   => 'App/DDL/Grants/' || l_rec.privilege || '_on_' || l_rec.object_name || '.sql',
                           p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
         util_ilog_stop;
       END LOOP;
+      CLOSE l_cur;
     END process_object_grants;
     --
-    PROCEDURE process_data IS
+    PROCEDURE process_ref_constraints IS
+      CURSOR l_cur IS
+        SELECT table_name, constraint_name
+          FROM user_constraints
+         WHERE constraint_type = 'R'
+         ORDER BY table_name, constraint_name;
+      l_rec l_cur%ROWTYPE;
     BEGIN
-      FOR i IN (SELECT table_name, tablespace_name
-                  FROM user_tables t
-                 WHERE EXTERNAL = 'NO'
-                   AND table_name LIKE nvl(p_object_prefix, '%') || '%'
-                 ORDER BY table_name) LOOP
-        util_ilog_start('data:' || i.table_name);
+      util_ilog_start('ddl:ref_constraints:open_cursor');
+      OPEN l_cur;
+      util_ilog_stop;
+      LOOP
+        FETCH l_cur
+          INTO l_rec;
+        EXIT WHEN l_cur%NOTFOUND;
+        util_ilog_start('ddl:REF_CONSTRAINT:' || l_rec.constraint_name);
         util_g_clob_createtemporary;
-        util_g_clob_query_to_csv(p_query => 'select * from ' || i.table_name, p_max_rows => p_data_max_rows);
+        util_setup_dbms_metadata(p_sqlterminator => FALSE);
+        util_g_clob_append('BEGIN
+  FOR i IN (SELECT ''' || l_rec.constraint_name || ''' AS constraint_name FROM dual
+            MINUS 
+            SELECT constraint_name FROM user_constraints) LOOP
+    EXECUTE IMMEDIATE q''[
+--------------------------------------------------------------------------------    
+' || dbms_metadata.get_ddl('REF_CONSTRAINT', l_rec.constraint_name) || '
+--------------------------------------------------------------------------------    
+    ]'';
+  END LOOP;
+END;
+/
+');
+        util_setup_dbms_metadata(p_sqlterminator => TRUE);
         apex_zip.add_file(p_zipped_blob => l_zip,
-                          p_file_name   => 'App/Data/' || i.table_name || '.csv',
+                          p_file_name   => 'App/DDL/TabRefConstraints/' || l_rec.constraint_name || '.sql',
                           p_content     => util_g_clob_to_blob);
         util_g_clob_freetemporary;
         util_ilog_stop;
       END LOOP;
+      CLOSE l_cur;
+    END process_ref_constraints;
+    --
+    PROCEDURE process_data IS
+      CURSOR l_cur IS
+        SELECT table_name, tablespace_name
+          FROM user_tables t
+         WHERE EXTERNAL = 'NO'
+           AND table_name LIKE nvl(p_object_prefix, '%') || '%'
+         ORDER BY table_name;
+      l_rec l_cur%ROWTYPE;
+    BEGIN
+      util_ilog_start('data:open_cursor');
+      OPEN l_cur;
+      util_ilog_stop;
+      LOOP
+        FETCH l_cur
+          INTO l_rec;
+        EXIT WHEN l_cur%NOTFOUND;
+        util_ilog_start('data:' || l_rec.table_name);
+        util_g_clob_createtemporary;
+        util_g_clob_query_to_csv(p_query => 'select * from ' || l_rec.table_name, p_max_rows => p_data_max_rows);
+        apex_zip.add_file(p_zipped_blob => l_zip,
+                          p_file_name   => 'App/Data/' || l_rec.table_name || '.csv',
+                          p_content     => util_g_clob_to_blob);
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      END LOOP;
+      CLOSE l_cur;
     END process_data;
     --
-    PROCEDURE process_docs_folder IS
-    BEGIN
-      util_ilog_start('folder:Docs');
-      util_g_clob_createtemporary;
-      util_g_clob_append(l_the_point);
-      apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'Docs/_save_your_docs_here',
-                        p_content     => util_g_clob_to_blob);
-      util_g_clob_freetemporary;
-      util_ilog_stop;
-    END process_docs_folder;
-    --
-    PROCEDURE process_scripts_folder IS
-    BEGIN
-      util_ilog_start('folder:Scripts');
-      util_g_clob_createtemporary;
-      util_g_clob_append(l_the_point);
-      apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'Scripts/_save_your_scripts_here',
-                        p_content     => util_g_clob_to_blob);
-      util_g_clob_freetemporary;
-      util_ilog_stop;
-    END process_scripts_folder;
-    --
-    PROCEDURE process_tests_folder IS
-    BEGIN
-      util_ilog_start('folder:Tests');
-      util_g_clob_createtemporary;
-      util_g_clob_append(l_the_point);
-      apex_zip.add_file(p_zipped_blob => l_zip,
-                        p_file_name   => 'Tests/_save_your_tests_here',
-                        p_content     => util_g_clob_to_blob);
-      util_g_clob_freetemporary;
-      util_ilog_stop;
-    END process_tests_folder;
-    --
-    PROCEDURE process_readme_dist IS
-    BEGIN
-      util_ilog_start('README.dist.md');
-      util_g_clob_createtemporary;
-      util_g_clob_append('# Your global README file
+    PROCEDURE create_supporting_files IS
+      l_the_point VARCHAR2(30) := '. < this is the point ;-)';
+      --
+      PROCEDURE create_file
+      (
+        p_path    VARCHAR2,
+        p_content VARCHAR2
+      ) IS
+      BEGIN
+        util_ilog_start('file:' || p_path);
+        util_g_clob_createtemporary;
+        util_g_clob_append(p_content);
+        apex_zip.add_file(p_zipped_blob => l_zip, p_file_name => p_path, p_content => util_g_clob_to_blob);
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      END create_file;
+      --
+      PROCEDURE create_ui_install_files IS
+      BEGIN
+        create_file(p_path    => 'Scripts/deploy-UI-to-INT.dist.bat',
+                    p_content => 'echo off
+rem If you want to use this script file you have to do some alignments:
+rem 
+rem 1. Copy this file to "deploy-UI-to-INT.bat" and "deploy-UI-to-PROD.bat" and replace all occurences of "#SOME_TEXT#" with your specific configuration
+rem 2. Check also the called script file "App\UI\f' || to_char(p_app_id) ||
+                                  '\install-script-frontend.sql"
+rem 3. Have fun :-)
+
+setlocal
+set areyousure = N
+
+:PROMPT
+set /p areyousure=Deploy UI of ' || l_app_alias ||
+                                  ' to #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION# (Y/N)?
+if /i %areyousure% neq y goto END
+
+set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
+set /p password_db_user=Please enter password for ' || l_app_owner || ' on #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION#:
+cd ..\App\UI\f' || to_char(p_app_id) || '
+echo exit | sqlplus -S ' || l_app_owner || '/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @install-script-frontend.sql
+cd ..\..\..\Scripts
+
+:END
+pause
+
+');
+        create_file(p_path    => 'App/UI/f' || to_char(p_app_id) || '/install-script-frontend.sql',
+                    p_content => 'set termout off define on verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
+column hn new_val host_name
+column db new_val db_name
+column dt new_val date_time
+select sys_context(''userenv'', ''host'') hn,
+       sys_context(''userenv'', ''db_name'') db, 
+       to_char(sysdate, ''yyyymmdd-hh24miss'') dt
+  from dual;
+spool install-UI-&host_name.-&db_name.-&date_time..log
+set termout on define off
+
+prompt
+prompt 
+prompt 
+prompt Start ' || l_app_alias ||
+                                  ' frontend installation
+prompt ==================================================
+
+prompt Setup environment
+BEGIN
+   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( ''' ||
+                                  l_app_owner || ''' ) );
+   apex_application_install.set_application_alias( ''' || l_app_alias ||
+                                  ''' );
+   apex_application_install.set_application_id( ' || to_char(p_app_id) || ' );
+   apex_application_install.set_schema( ''' || l_app_owner || ''' );
+   apex_application_install.generate_offset;
+END;
+/
+
+prompt Call APEX install script
+@install.sql
+
+prompt ==================================================
+prompt ' || l_app_alias || ' frontend installation DONE :-)
+prompt
+prompt 
+prompt
+');
+      END create_ui_install_files;
+      --
+      PROCEDURE create_readme_dist IS
+      BEGIN
+        create_file(p_path    => 'README.dist.md',
+                    p_content => '# Your global README file
       
 It is a good practice to have a README file in the root of your project with
 a high level overview of your application. Put the more detailed docs in the 
@@ -709,11 +891,19 @@ waist time by formatting your docs. If you are unsure have a look at some
 projects at [Github][1] or any other code hosting platform.
 
 [1]: https://github.com
+
+Have also a look at the provided deploy scripts - these could be a starting
+point for you to do some basic scripting. If you have already some sort of
+CI/CD up and running then ignore simply the files.
 ');
-      apex_zip.add_file(p_zipped_blob => l_zip, p_file_name => 'README.dist.md', p_content => util_g_clob_to_blob);
-      util_g_clob_freetemporary;
-      util_ilog_stop;
-    END process_readme_dist;
+      END create_readme_dist;
+    BEGIN
+      create_file('Docs/_save_your_docs_here', l_the_point);
+      create_file('Scripts/_save_your_scripts_here', l_the_point);
+      create_file('Tests/_save_your_tests_here', l_the_point);
+      create_ui_install_files;
+      create_readme_dist;
+    END create_supporting_files;
     --
     PROCEDURE create_debug_log IS
     BEGIN
@@ -721,6 +911,8 @@ projects at [Github][1] or any other code hosting platform.
         util_g_clob_createtemporary;
         util_g_clob_append('# PLEX - BackApp Log
 
+Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || ' and took ' ||
+                           TRIM(to_char(g_debug.run_time, '999G990D000')) || ' seconds to finish.
         
 ## Parameters
 
@@ -747,9 +939,8 @@ SELECT plex.backapp(
 
 ## Log Entries
 
-Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || ' and took ' ||
-                           TRIM(to_char(round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3),
-                                        '999G990D000')) || ' seconds to finish.                         
+Unmeasured execution time because of missing log calls or log overhead was ' ||
+                           TRIM(to_char(g_debug.unmeasured_time, '999G990D000000')) || ' seconds.                                                   
 ');
         util_ilog_get_md_tab;
         apex_zip.add_file(p_zipped_blob => l_zip,
@@ -771,19 +962,16 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
     process_user_ddl;
     --
     IF p_include_object_ddl THEN
-      util_setup_dbms_metadata;
       process_object_ddl;
       process_object_grants;
+      process_ref_constraints;
     END IF;
     --
     IF p_include_data THEN
       process_data;
     END IF;
     --
-    process_docs_folder;
-    process_scripts_folder;
-    process_tests_folder;
-    process_readme_dist;
+    create_supporting_files;
     --
     util_ilog_exit;
     create_debug_log;
@@ -859,6 +1047,8 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
         util_g_clob_createtemporary;
         util_g_clob_append('# PLEX - Queries to CSV Log
 
+Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || ' and took ' ||
+                           TRIM(to_char(round(g_debug.run_time, 3), '999G990D000')) || ' seconds to finish.
         
 ## Parameters
 
@@ -878,10 +1068,9 @@ SELECT plex.queries_to_csv(
 ```
 
 ## Log Entries
-
-Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || ' and took ' ||
-                           TRIM(to_char(round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3),
-                                        '999G990D000')) || ' seconds to finish.                         
+                           
+Unmeasured execution time because of missing log calls or log overhead was ' ||
+                           TRIM(to_char(g_debug.unmeasured_time, '999G990D000000')) || ' seconds.                                                    
 ');
         util_ilog_get_md_tab;
         apex_zip.add_file(p_zipped_blob => l_zip,
@@ -951,11 +1140,11 @@ Export started at ' || to_char(g_debug.start_time, 'yyyy-mm-dd hh24:mi:ss') || '
     v_return t_debug_view_row;
   BEGIN
     v_return.overall_start_time := g_debug.start_time;
-    v_return.overall_run_time   := round(util_ilog_get_runtime(g_debug.start_time, g_debug.stop_time), 3);
+    v_return.overall_run_time   := round(g_debug.run_time, 3);
     FOR i IN 1 .. g_debug.data.count LOOP
       v_return.step      := i;
-      v_return.elapsed   := round(util_ilog_get_runtime(g_debug.start_time, g_debug.data(i).stop_time), 3);
-      v_return.execution := round(util_ilog_get_runtime(g_debug.data(i).start_time, g_debug.data(i).stop_time), 6);
+      v_return.elapsed   := round(g_debug.data(i).elapsed, 3);
+      v_return.execution := round(g_debug.data(i).execution, 6);
       v_return.module    := g_debug.module;
       v_return.action    := g_debug.data(i).action;
       PIPE ROW(v_return);

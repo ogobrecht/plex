@@ -27,7 +27,7 @@ CREATE OR REPLACE PACKAGE plex AUTHID CURRENT_USER IS
   */
 
   c_plex         CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL export utils';
-  c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.4.0';
+  c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.5.0';
 
   c_tab  CONSTANT VARCHAR2(2) := chr(9);
   c_lf   CONSTANT VARCHAR2(2) := chr(10);
