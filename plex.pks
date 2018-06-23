@@ -1,4 +1,6 @@
 CREATE     OR REPLACE PACKAGE plex AUTHID current_user IS
+-- FIXME: use https://github.com/OraOpenSource/plsql-md-doc
+
   /* 
   
   PL/SQL Export Utilities: 
@@ -26,15 +28,19 @@ CREATE     OR REPLACE PACKAGE plex AUTHID current_user IS
       
   */
   c_plex CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL export utils';
-  c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.6.0';
+  c_plex_version CONSTANT VARCHAR2(10 CHAR) := '0.7.0';
   c_tab CONSTANT VARCHAR2(2) := chr(9);
   c_lf CONSTANT VARCHAR2(2) := chr(10);
   c_cr CONSTANT VARCHAR2(2) := chr(13);
-  c_crlf CONSTANT VARCHAR2(2) := chr(13)
-                                    || chr(10);
+  c_crlf CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+  
+  --
   c_length_application_info CONSTANT PLS_INTEGER := 64;
   SUBTYPE application_info_text IS VARCHAR2(64);
-  TYPE t_debug_view_row IS RECORD ( overall_start_time DATE,
+  
+  --
+  TYPE t_debug_view_row IS RECORD ( --
+   overall_start_time DATE,
   overall_run_time NUMBER,
   step INTEGER,
   elapsed NUMBER,
@@ -89,9 +95,9 @@ CREATE     OR REPLACE PACKAGE plex AUTHID current_user IS
   */
 
   PROCEDURE add_query (
-    p_query       VARCHAR2,
-    p_file_name   VARCHAR2,
-    p_max_rows    NUMBER DEFAULT 100000
+    p_query         VARCHAR2,
+    p_file_name     VARCHAR2,
+    p_max_rows      NUMBER DEFAULT 100000
   );
 
   /* 

@@ -1,20 +1,20 @@
-CREATE     OR REPLACE PACKAGE BODY plex IS
+CREATE     OR REPLACE PACKAGE BODY plex IS 
 
   -- TYPES
 
-  TYPE t_queries_rec IS RECORD ( query                  VARCHAR2(32767 CHAR),
-  file_name              VARCHAR2(256 CHAR),
-  max_rows               NUMBER DEFAULT 100000 );
-  TYPE t_queries_tab IS
-    TABLE OF t_queries_rec INDEX BY PLS_INTEGER;
-  TYPE t_ilog_step_row IS RECORD ( action                 application_info_text,
+  TYPE t_ilog_step_row IS RECORD ( --
+
+   action                 application_info_text,
   start_time             TIMESTAMP(6),
   stop_time              TIMESTAMP(6),
   elapsed                NUMBER,
   execution              NUMBER );
   TYPE t_debug_step_tab IS
     TABLE OF t_ilog_step_row INDEX BY BINARY_INTEGER;
-  TYPE t_ilog_row IS RECORD ( module                 application_info_text,
+    
+    --
+  TYPE t_ilog_row IS RECORD ( --
+   module                 application_info_text,
   enabled                BOOLEAN,
   start_time             TIMESTAMP(6),
   stop_time              TIMESTAMP(6),
@@ -22,9 +22,14 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   measured_time          NUMBER,
   unmeasured_time        NUMBER,
   data                   t_debug_step_tab );
+  
+  --
   TYPE t_vc_tab IS
     TABLE OF VARCHAR2(4000) INDEX BY BINARY_INTEGER;
-  TYPE t_ddl_files_rec IS RECORD ( sequences_             t_vc_tab,
+    
+    --
+  TYPE t_ddl_files_rec IS RECORD ( --
+   sequences_             t_vc_tab,
   tables_                t_vc_tab,
   ref_constraints_       t_vc_tab,
   indices_               t_vc_tab,
@@ -38,13 +43,21 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   package_bodies_        t_vc_tab,
   grants_                t_vc_tab,
   other_objects_         t_vc_tab );
-
+  
+    --
+  TYPE rec_queries IS RECORD (--
+   query                  VARCHAR2(32767 CHAR),
+  file_name              VARCHAR2(256 CHAR),
+  max_rows               NUMBER DEFAULT 100000 );
+  TYPE tab_queries IS
+    TABLE OF rec_queries INDEX BY PLS_INTEGER;
+  
   -- GLOBAL VARIABLES
   g_clob                 CLOB;
   g_clob_varchar_cache   VARCHAR2(32767char);
-  g_queries              t_queries_tab;
   g_ilog                 t_ilog_row;
   g_ddl_files            t_ddl_files_rec;
+  g_queries              tab_queries;
 
   -- CODE
 
@@ -71,7 +84,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   BEGIN
     RETURN c_crlf;
   END;
-
+    
   --
 
   FUNCTION util_bool_to_string (
@@ -85,8 +98,6 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
         ELSE 'N'
       END;
   END util_bool_to_string;
-
-  --
 
   FUNCTION util_string_to_bool (
     p_bool_string   IN VARCHAR2,
@@ -117,8 +128,6 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
 
     RETURN l_return;
   END util_string_to_bool;
-  
-  --
 
   FUNCTION util_multi_replace (
     p_source_string   VARCHAR2,
@@ -507,8 +516,6 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       g_clob_varchar_cache   := p_content;
   END util_g_clob_append;
 
-  --
-
   PROCEDURE util_g_clob_append (
     p_content IN CLOB
   )
@@ -569,6 +576,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
     p_line_terminator   VARCHAR2 DEFAULT lf,
     p_header_prefix     VARCHAR2 DEFAULT NULL
   ) IS
+  
     -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
 
     l_cursor       PLS_INTEGER;
@@ -590,13 +598,11 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
             ),
             p_delimiter
           ) = 0 THEN l_buffer
-          ELSE p_quote_mark
-               || replace(
+          ELSE p_quote_mark || replace(
             l_buffer,
             p_quote_mark,
             p_quote_mark || p_quote_mark
-          )
-               || p_quote_mark
+          ) || p_quote_mark
         END
       );
     END local_g_clob_append;
@@ -754,8 +760,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
     THEN
       l_index                       := g_ilog.data.count;
       g_ilog.data(l_index).action   := substr(
-        g_ilog.data(l_index).action
-        || p_text,
+        g_ilog.data(l_index).action || p_text,
         1,
         plex.c_length_application_info
       );
@@ -968,11 +973,9 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
           END
       );
       
-      -- fix wrong direction of "prompt --application/set_environment" :-(
+      -- fix wrong place of "prompt --application/set_environment" in the exported file :-(
 
-      l_app_file   := 'prompt --application/set_environment'
-                    || lf
-                    || replace(
+      l_app_file   := 'prompt --application/set_environment' || lf || replace(
         l_app_file,
         'prompt --application/set_environment',
         NULL
@@ -984,9 +987,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       util_g_clob_append(l_app_file);
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/UI/f'
-                       || p_app_id
-                       || '.sql',
+        p_file_name     => 'App/UI/f' || p_app_id || '.sql',
         p_content       => util_g_clob_to_blob
       );
 
@@ -1001,8 +1002,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
           str1   => l_app_file,
           pos    => l_file_path_start_pos,
           len    => l_file_path_length
-        )
-                       || '.sql';
+        ) || '.sql';
 
         util_ilog_append_action_text(':' || l_file_path);
         util_g_clob_createtemporary;
@@ -1010,15 +1010,11 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
           str1   => l_app_file,
           pos    => l_content_start_pos,
           len    => l_content_length
-        )
-                             || lf);
+        ) || lf);
 
         apex_zip.add_file(
           p_zipped_blob   => l_zip,
-          p_file_name     => 'App/UI/f'
-                         || p_app_id
-                         || '/'
-                         || l_file_path,
+          p_file_name     => 'App/UI/f' || p_app_id || '/' || l_file_path,
           p_content       => util_g_clob_to_blob
         );
 
@@ -1033,16 +1029,12 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       util_ilog_start('app:create_app_install_file');
       util_g_clob_createtemporary;
       FOR i IN 1..l_app_install_file.count LOOP
-        util_g_clob_append('@'
-                             || l_app_install_file(i)
-                             || lf);
+        util_g_clob_append('@' || l_app_install_file(i) || lf);
       END LOOP;
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/UI/f'
-                       || p_app_id
-                       || '/install.sql',
+        p_file_name     => 'App/UI/f' || p_app_id || '/install.sql',
         p_content       => util_g_clob_to_blob
       );
 
@@ -1051,6 +1043,126 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       dbms_lob.freetemporary(l_app_file);
     END process_apex_app;
 
+    PROCEDURE create_frontend_install_files IS
+      l_file_path   VARCHAR2(1000);
+    BEGIN
+    
+    -- file one
+      l_file_path   := 'App/UI/f' || TO_CHAR(p_app_id) || '/install-script-frontend.dist.sql';
+      util_ilog_start('app:create_install_files:' || l_file_path);
+      util_g_clob_createtemporary;
+      util_g_clob_append(util_multi_replace(
+        q'^set termout off define on verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
+column hn new_val host_name
+column db new_val db_name
+column dt new_val date_time
+select sys_context('userenv', 'host') hn,
+       sys_context('userenv', 'db_name') db, 
+       to_char(sysdate, 'yyyymmdd-hh24miss') dt
+  from dual;
+spool install-UI-&host_name.-&db_name.-&date_time..log
+set termout on define off
+
+prompt
+prompt 
+prompt 
+prompt Start #APP_ALIAS# frontend installation
+prompt ==================================================
+
+prompt Setup environment
+BEGIN
+   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( '#APP_WORKSPACE#' ) );
+   apex_application_install.set_application_alias( '#APP_ALIAS#' );
+   apex_application_install.set_application_id( #APP_ID# );
+   apex_application_install.set_schema( '#APP_OWNER#' );
+   apex_application_install.generate_offset;
+END;
+/
+
+prompt Call APEX install script
+@install.sql
+
+prompt ==================================================
+prompt #APP_ALIAS# frontend installation DONE :-)
+prompt
+prompt 
+prompt
+^'
+,
+        '#APP_ALIAS#',
+        l_app_alias,
+        '#APP_WORKSPACE#',
+        l_app_workspace,
+        '#APP_ID#',
+        TO_CHAR(p_app_id),
+        '#APP_OWNER#',
+        l_app_owner
+      ) );
+
+      apex_zip.add_file(
+        p_zipped_blob   => l_zip,
+        p_file_name     => l_file_path,
+        p_content       => util_g_clob_to_blob
+      );
+
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+      
+      -- file two
+      l_file_path   := 'Scripts/deploy-UI-to-INT.dist.bat';
+      util_ilog_start('app:create_install_files:' || l_file_path);
+      util_g_clob_createtemporary;
+      util_g_clob_append(util_multi_replace(
+        q'^echo off
+rem If you want to use this script file you have to do some alignments:
+rem 
+rem - Copy this file to "deploy-UI-to-INT.bat" and "deploy-UI-to-PROD.bat" 
+rem   without the `.dist` portion, modify it to your needs and replace all occurences 
+rem   of "#SOME_TEXT#" with your specific configuration
+rem - Do the same with the called script file "App\UI\f#APP_ID#\install-script-frontend.dist.sql"
+rem - We do the directory changing here on the OS level, because SQL*plus can't change 
+rem   the directory when running scripts
+rem - Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
+rem - Have fun :-)
+
+setlocal
+set areyousure = N
+
+:PROMPT
+set /p areyousure=Deploy UI of #APP_ALIAS# to #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION# (Y/N)?
+if /i %areyousure% neq y goto END
+
+set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
+set /p password_db_user=Please enter password for #APP_OWNER# on #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION#:
+cd ..\App\UI\f#APP_ID#
+echo exit | sqlplus -S #APP_OWNER#/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @install-script-frontend.sql
+cd ..\..\..\Scripts
+
+:END
+pause
+
+^'
+,
+        '#APP_ID#',
+        TO_CHAR(p_app_id),
+        '#APP_ALIAS#',
+        l_app_alias,
+        '#APP_OWNER#',
+        l_app_owner
+      ) );
+
+      apex_zip.add_file(
+        p_zipped_blob   => l_zip,
+        p_file_name     => l_file_path,
+        p_content       => util_g_clob_to_blob
+      );
+
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END create_frontend_install_files;
+
     PROCEDURE process_user_ddl
       IS
     BEGIN
@@ -1058,7 +1170,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       util_ilog_start('ddl:USER:' || l_current_user);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        q'{BEGIN 
+        q'^BEGIN 
   FOR i IN (SELECT '#CURRENT_USER#' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
     EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
@@ -1068,7 +1180,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   END LOOP;
 END;
 /
-}'
+^'
 ,
         '#CURRENT_USER#',
         l_current_user,
@@ -1081,18 +1193,14 @@ END;
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/'
-                       || l_current_user
-                       || '.sql',
+        p_file_name     => 'App/DDL/_User/' || l_current_user || '.sql',
         p_content       => util_g_clob_to_blob
       );
 
       util_g_clob_freetemporary;
       util_ilog_stop;
       -- roles
-      util_ilog_start('ddl:USER:'
-                        || l_current_user
-                        || ':roles');
+      util_ilog_start('ddl:USER:' || l_current_user || ':roles');
       util_g_clob_createtemporary;
       FOR i IN (
      -- ensure we get no dbms_metadata error when no role privs exists
@@ -1107,18 +1215,14 @@ END;
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/'
-                       || l_current_user
-                       || '_roles.sql',
+        p_file_name     => 'App/DDL/_User/' || l_current_user || '_roles.sql',
         p_content       => util_g_clob_to_blob
       );
 
       util_g_clob_freetemporary;
       util_ilog_stop;
       -- system privileges
-      util_ilog_start('ddl:USER:'
-                        || l_current_user
-                        || ':system_privileges');
+      util_ilog_start('ddl:USER:' || l_current_user || ':system_privileges');
       util_g_clob_createtemporary;
       FOR i IN (
      -- ensure we get no dbms_metadata error when no sys privs exists
@@ -1133,18 +1237,14 @@ END;
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/'
-                       || l_current_user
-                       || '_system_privileges.sql',
+        p_file_name     => 'App/DDL/_User/' || l_current_user || '_system_privileges.sql',
         p_content       => util_g_clob_to_blob
       );
 
       util_g_clob_freetemporary;
       util_ilog_stop;
       -- object privileges
-      util_ilog_start('ddl:USER:'
-                        || l_current_user
-                        || ':object_privileges');
+      util_ilog_start('ddl:USER:' || l_current_user || ':object_privileges');
       util_g_clob_createtemporary;
       FOR i IN (
      -- ensure we get no dbms_metadata error when no object grants exists
@@ -1160,9 +1260,7 @@ END;
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/'
-                       || l_current_user
-                       || '_object_privileges.sql',
+        p_file_name     => 'App/DDL/_User/' || l_current_user || '_object_privileges.sql',
         p_content       => util_g_clob_to_blob
       );
 
@@ -1174,8 +1272,11 @@ END;
 
       l_ddl_file         CLOB;
       l_file_path_body   VARCHAR2(1000 CHAR);
+      l_pattern          VARCHAR2(100);
+      l_position         PLS_INTEGER;
       CURSOR l_cur IS SELECT
-        CASE --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
+        CASE
+     --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
           WHEN object_type IN (
             'JOB',
             'PROGRAM',
@@ -1185,8 +1286,7 @@ END;
         END
       AS object_type,
         object_name,
-        'App/DDL/'
-        || replace(
+        'App/DDL/' || replace(
         initcap(
           CASE
             WHEN object_type LIKE '%S' THEN object_type || 'ES'
@@ -1211,10 +1311,7 @@ END;
         ),
         ' ',
         NULL
-      )
-        || '/'
-        || object_name
-        ||
+      ) || '/' || object_name ||
         CASE object_type
           WHEN 'PACKAGE'     THEN '.pks'
           WHEN 'FUNCTION'    THEN '.fnc'
@@ -1236,8 +1333,7 @@ END;
          AND object_name LIKE nvl(
         p_object_prefix,
         '%'
-      )
-                              || '%'
+      ) || '%'
        ORDER BY object_type,
                 object_name;
 
@@ -1254,27 +1350,7 @@ END;
       LOOP
         FETCH l_cur   INTO l_rec;
         EXIT WHEN l_cur%notfound;
-        util_ilog_start('ddl:'
-                          || l_rec.object_type
-                          || ':'
-                          || l_rec.object_name);
-        IF
-          l_rec.object_type IN (
-            'PACKAGE',
-            'TYPE'
-          )
-        THEN
-          l_file_path_body   := util_multi_replace(
-            l_rec.file_path,
-            '/Packages/',
-            '/PackageBodies/',
-            '.pks',
-            '.pkb',
-            '/Types/',
-            '/TypeBodies/'
-          );
-        END IF;
-
+        util_ilog_start('ddl:' || l_rec.object_type || ':' || l_rec.object_name);
         CASE
           l_rec.object_type
           WHEN 'SEQUENCE' THEN
@@ -1286,8 +1362,7 @@ END;
           WHEN 'VIEW' THEN
             g_ddl_files.views_(g_ddl_files.views_.count + 1) := l_rec.file_path;
           WHEN 'TYPE' THEN
-            g_ddl_files.types_(g_ddl_files.types_.count + 1)             := l_rec.file_path;
-            g_ddl_files.type_bodies_(g_ddl_files.type_bodies_.count + 1) := l_file_path_body;
+            g_ddl_files.types_(g_ddl_files.types_.count + 1) := l_rec.file_path;
           WHEN 'TRIGGER' THEN
             g_ddl_files.triggers_(g_ddl_files.triggers_.count + 1) := l_rec.file_path;
           WHEN 'FUNCTION' THEN
@@ -1295,32 +1370,38 @@ END;
           WHEN 'PROCEDURE' THEN
             g_ddl_files.procedures_(g_ddl_files.procedures_.count + 1) := l_rec.file_path;
           WHEN 'PACKAGE' THEN
-            g_ddl_files.packages_(g_ddl_files.packages_.count + 1)             := l_rec.file_path;
-            g_ddl_files.package_bodies_(g_ddl_files.package_bodies_.count + 1) := l_file_path_body;
+            g_ddl_files.packages_(g_ddl_files.packages_.count + 1) := l_rec.file_path;
           ELSE
             g_ddl_files.other_objects_(g_ddl_files.other_objects_.count + 1) := l_rec.file_path;
         END CASE;
 
         CASE
-          WHEN l_rec.object_type = 'PACKAGE' THEN
+          WHEN l_rec.object_type IN (
+            'PACKAGE',
+            'TYPE'
+          ) THEN
             l_ddl_file   := dbms_metadata.get_ddl(
               object_type   => l_rec.object_type,
               name          => l_rec.object_name,
               schema        => l_current_user
             );
-          
-            -- spec
 
+            l_pattern    := 'CREATE OR REPLACE( EDITIONABLE)? (PACKAGE|TYPE) BODY';
+            l_position   := regexp_instr(
+              l_ddl_file,
+              l_pattern
+            );
+            -- SPEC
             util_g_clob_createtemporary;
             util_g_clob_append(ltrim(
-              substr(
-                l_ddl_file,
-                1,
-                regexp_instr(
+              CASE
+                WHEN l_position = 0 THEN l_ddl_file
+                ELSE substr(
                   l_ddl_file,
-                  'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY'
-                ) - 1
-              ),
+                  1,
+                  l_position - 1
+                )
+              END,
               ' ' || lf
             ) );
 
@@ -1332,22 +1413,42 @@ END;
 
             util_g_clob_freetemporary;
             
-            -- body 
-            util_g_clob_createtemporary;
-            util_g_clob_append(substr(
-              l_ddl_file,
-              regexp_instr(
-                l_ddl_file,
-                'CREATE OR REPLACE( EDITIONABLE)? PACKAGE BODY'
-              )
-            ) );
-            apex_zip.add_file(
-              p_zipped_blob   => l_zip,
-              p_file_name     => l_file_path_body,
-              p_content       => util_g_clob_to_blob
-            );
+            -- BODY - only when existing
+            IF
+              l_position > 0
+            THEN
+              l_file_path_body   := util_multi_replace(
+                p_source_string   => l_rec.file_path,
+                p_1_find          => '/Packages/',
+                p_1_replace       => '/PackageBodies/',
+                p_2_find          => '.pks',
+                p_2_replace       => '.pkb',
+                p_3_find          => '/Types/',
+                p_3_replace       => '/TypeBodies/'
+              );
 
-            util_g_clob_freetemporary;
+              CASE
+                l_rec.object_type
+                WHEN 'TYPE' THEN
+                  g_ddl_files.type_bodies_(g_ddl_files.type_bodies_.count + 1) := l_file_path_body;
+                WHEN 'PACKAGE' THEN
+                  g_ddl_files.package_bodies_(g_ddl_files.package_bodies_.count + 1) := l_file_path_body;
+              END CASE;
+
+              util_g_clob_createtemporary;
+              util_g_clob_append(substr(
+                l_ddl_file,
+                l_position
+              ) );
+              apex_zip.add_file(
+                p_zipped_blob   => l_zip,
+                p_file_name     => l_file_path_body,
+                p_content       => util_g_clob_to_blob
+              );
+
+              util_g_clob_freetemporary;
+            END IF;
+
           WHEN l_rec.object_type = 'VIEW' THEN
             util_g_clob_createtemporary;
             util_g_clob_append(ltrim(
@@ -1389,7 +1490,7 @@ END;
             util_g_clob_createtemporary;
             util_setup_dbms_metadata(p_sqlterminator   => false);
             util_g_clob_append(util_multi_replace(
-              q'{BEGIN
+              q'^BEGIN
   FOR i IN (SELECT '#OBJECT_NAME#' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
@@ -1404,7 +1505,7 @@ END;
 
 -- Put your ALTER statements below in the same style as before to ensure that
 -- the script is restartable. 
-}'
+^'
 ,
               '#OBJECT_NAME#',
               l_rec.object_name,
@@ -1453,11 +1554,7 @@ END;
       CURSOR l_cur IS SELECT DISTINCT p.grantor,
                                       p.privilege,
                                       p.table_name AS object_name,
-                                      'App/DDL/Grants/'
-                                      || p.privilege
-                                      || '_on_'
-                                      || p.table_name
-                                      || '.sql' AS file_path
+                                      'App/DDL/Grants/' || p.privilege || '_on_' || p.table_name || '.sql' AS file_path
                         FROM user_tab_privs p
         JOIN user_objects o ON p.table_name = o.object_name
        ORDER BY privilege,
@@ -1471,10 +1568,7 @@ END;
       LOOP
         FETCH l_cur   INTO l_rec;
         EXIT WHEN l_cur%notfound;
-        util_ilog_start('ddl:GRANT:'
-                          || l_rec.privilege
-                          || ':'
-                          || l_rec.object_name);
+        util_ilog_start('ddl:GRANT:' || l_rec.privilege || ':' || l_rec.object_name);
         util_g_clob_createtemporary;
         util_g_clob_append(dbms_metadata.get_dependent_ddl(
           'OBJECT_GRANT',
@@ -1499,9 +1593,7 @@ END;
 
       CURSOR l_cur IS SELECT table_name,
                              constraint_name,
-                             'App/DDL/TabRefConstraints/'
-                             || constraint_name
-                             || '.sql' AS file_path
+                             'App/DDL/TabRefConstraints/' || constraint_name || '.sql' AS file_path
                         FROM user_constraints
                        WHERE constraint_type = 'R'
        ORDER BY table_name,
@@ -1519,7 +1611,7 @@ END;
         util_g_clob_createtemporary;
         util_setup_dbms_metadata(p_sqlterminator   => false);
         util_g_clob_append(util_multi_replace(
-          q'{BEGIN
+          q'^BEGIN
   FOR i IN (SELECT '#CONSTRAINT_NAME#' AS constraint_name FROM dual
             MINUS
             SELECT constraint_name FROM user_constraints) LOOP
@@ -1531,7 +1623,7 @@ END;
   END LOOP;
 END;
 / 
-}'
+^'
 ,
           '#CONSTRAINT_NAME#',
           l_rec.constraint_name,
@@ -1557,25 +1649,29 @@ END;
       CLOSE l_cur;
     END process_ref_constraints;
 
-    PROCEDURE create_backend_install_file IS
+    PROCEDURE create_backend_install_files IS
+
+      l_file_path   VARCHAR2(1000);
 
       FUNCTION get_script_line (
         p_file_path VARCHAR2
       ) RETURN VARCHAR2
         IS
       BEGIN
-        RETURN '@'
-               || replace(
+        RETURN 'prompt --' || p_file_path || lf || '@' || replace(
           p_file_path,
           'App/DDL/',
           NULL
-        )
-               || lf;
+        ) || lf || lf;
       END get_script_line;
 
     BEGIN
-      util_ilog_start('ddl:create_backend_install_file');
+    
+    -- file one
+      l_file_path   := 'App/DDL/install.sql';
+      util_ilog_start('ddl:create_install_files:' || l_file_path);
       util_g_clob_createtemporary;
+      util_g_clob_append('set define off verify off feedback off' || lf || 'whenever sqlerror exit sql.sqlcode rollback' || lf || lf);
       FOR i IN 1..g_ddl_files.sequences_.count LOOP
         util_g_clob_append(get_script_line(g_ddl_files.sequences_(i) ) );
       END LOOP;
@@ -1634,13 +1730,111 @@ END;
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/install.sql',
+        p_file_name     => l_file_path,
+        p_content       => util_g_clob_to_blob
+      );
+
+      util_g_clob_freetemporary;
+      util_ilog_stop;    
+       
+    -- file two
+      l_file_path   := 'App/DDL/install-script-backend.dist.sql';
+      util_ilog_start('ddl:create_install_files:' || l_file_path);
+      util_g_clob_createtemporary;
+      util_g_clob_append(util_multi_replace(
+        q'^set termout off define on verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
+column hn new_val host_name
+column db new_val db_name
+column dt new_val date_time
+select sys_context('userenv', 'host') hn,
+       sys_context('userenv', 'db_name') db, 
+       to_char(sysdate, 'yyyymmdd-hh24miss') dt
+  from dual;
+spool install-BACKEND-&host_name.-&db_name.-&date_time..log
+set termout on define off
+
+prompt
+prompt 
+prompt 
+prompt Start #APP_ALIAS# backend installation
+prompt ==================================================
+
+prompt Call DDL install script
+@install.sql
+
+prompt ==================================================
+prompt #APP_ALIAS# backend installation DONE :-)
+prompt
+prompt 
+prompt
+^'
+,
+        '#APP_ALIAS#',
+        l_app_alias
+      ) );
+      apex_zip.add_file(
+        p_zipped_blob   => l_zip,
+        p_file_name     => l_file_path,
         p_content       => util_g_clob_to_blob
       );
 
       util_g_clob_freetemporary;
       util_ilog_stop;
-    END create_backend_install_file;
+      
+            -- file three
+      l_file_path   := 'Scripts/deploy-BACKEND-to-INT.dist.bat';
+      util_ilog_start('app:create_install_files:' || l_file_path);
+      util_g_clob_createtemporary;
+      util_g_clob_append(util_multi_replace(
+        q'^echo off
+rem If you want to use this script file you have to do some alignments:
+rem 
+rem - Copy this file to "deploy-BACKEND-to-INT.bat" and "deploy-BACKEND-to-PROD.bat" 
+rem   without the `.dist` portion, modify it to your needs and replace all occurences 
+rem   of "#SOME_TEXT#" with your specific configuration
+rem - Do the same with the called script file "App\DDL\install-script-backend.dist.sql"
+rem - We do the directory changing here on the OS level, because SQL*plus can't change 
+rem   the directory when running scripts
+rem - Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
+rem - Have fun :-)
+
+setlocal
+set areyousure = N
+
+:PROMPT
+set /p areyousure=Deploy BACKEND of #APP_ALIAS# to #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION# (Y/N)?
+if /i %areyousure% neq y goto END
+
+set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
+set /p password_db_user=Please enter password for #APP_OWNER# on #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION#:
+cd ..\App\DDL
+echo exit | sqlplus -S #APP_OWNER#/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @install-script-backend.sql
+cd ..\..\Scripts
+
+:END
+pause
+
+^'
+,
+        '#APP_ID#',
+        TO_CHAR(p_app_id),
+        '#APP_ALIAS#',
+        l_app_alias,
+        '#APP_OWNER#',
+        l_app_owner
+      ) );
+
+      apex_zip.add_file(
+        p_zipped_blob   => l_zip,
+        p_file_name     => l_file_path,
+        p_content       => util_g_clob_to_blob
+      );
+
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+    END create_backend_install_files;
 
     PROCEDURE process_data IS
 
@@ -1651,8 +1845,7 @@ END;
          AND table_name LIKE nvl(
         p_object_prefix,
         '%'
-      )
-                             || '%'
+      ) || '%'
        ORDER BY table_name;
 
       l_rec   l_cur%rowtype;
@@ -1673,18 +1866,13 @@ END;
         util_ilog_start('data:' || l_rec.table_name);
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(
-          p_query      => 'SELECT * FROM '
-                     || l_rec.table_name
-                     || ' AS OF SCN '
-                     || l_data_scn,
+          p_query      => 'SELECT * FROM ' || l_rec.table_name || ' AS OF SCN ' || l_data_scn,
           p_max_rows   => p_data_max_rows
         );
 
         apex_zip.add_file(
           p_zipped_blob   => l_zip,
-          p_file_name     => 'App/Data/'
-                         || l_rec.table_name
-                         || '.csv',
+          p_file_name     => 'App/Data/' || l_rec.table_name || '.csv',
           p_content       => util_g_clob_to_blob
         );
 
@@ -1718,113 +1906,14 @@ END;
         util_g_clob_freetemporary;
         util_ilog_stop;
       END create_file;
-      --
-
-      PROCEDURE create_ui_install_files
-        IS
-      BEGIN
-        create_file(
-          p_path      => 'Scripts/deploy-UI-to-INT.dist.bat',
-          p_content   => util_multi_replace(
-            q'{echo off
-rem If you want to use this script file you have to do some alignments:
-rem 
-rem 1. Copy this file to "deploy-UI-to-INT.bat" and "deploy-UI-to-PROD.bat" and replace 
-       all occurences of "#SOME_TEXT#" with your specific configuration
-rem 2. Check also the called script file "App\UI\f#APP_ID#\install-script-frontend.sql"
-rem 3. Have fun :-)
-
-setlocal
-set areyousure = N
-
-:PROMPT
-set /p areyousure=Deploy UI of #APP_ALIAS# to #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION# (Y/N)?
-if /i %areyousure% neq y goto END
-
-set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
-set /p password_db_user=Please enter password for #APP_OWNER# on #YOUR_COMMON_INT_OR_PROD_SYSTEM_DESCRIPTION#:
-cd ..\App\UI\f#APP_ID#
-echo exit | sqlplus -S #APP_OWNER#/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @install-script-frontend.sql
-cd ..\..\..\Scripts
-
-:END
-pause
-
-}'
-,
-            '#APP_ID#',
-            TO_CHAR(p_app_id),
-            '#APP_ALIAS#',
-            l_app_alias,
-            '#APP_OWNER#',
-            l_app_owner
-          )
-        );
-
-        create_file(
-          p_path      => 'App/UI/f'
-                    || TO_CHAR(p_app_id)
-                    || '/install-script-frontend.sql',
-          p_content   => util_multi_replace(
-            q'{set termout off define on verify off feedback off
-whenever sqlerror exit sql.sqlcode rollback
-
-column hn new_val host_name
-column db new_val db_name
-column dt new_val date_time
-select sys_context('userenv', 'host') hn,
-       sys_context('userenv', 'db_name') db, 
-       to_char(sysdate, 'yyyymmdd-hh24miss') dt
-  from dual;
-spool install-UI-&host_name.-&db_name.-&date_time..log
-set termout on define off
-
-prompt
-prompt 
-prompt 
-prompt Start #APP_ALIAS# frontend installation
-prompt ==================================================
-
-prompt Setup environment
-BEGIN
-   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( '#APP_WORKSPACE#' ) );
-   apex_application_install.set_application_alias( '#APP_ALIAS#' );
-   apex_application_install.set_application_id( #APP_ID# );
-   apex_application_install.set_schema( '#APP_OWNER#' );
-   apex_application_install.generate_offset;
-END;
-/
-
-prompt Call APEX install script
-@install.sql
-
-prompt ==================================================
-prompt #APP_ALIAS# frontend installation DONE :-)
-prompt
-prompt 
-prompt
-}'
-,
-            '#APP_ALIAS#',
-            l_app_alias,
-            '#APP_WORKSPACE#',
-            l_app_workspace,
-            '#APP_ID#',
-            TO_CHAR(p_app_id),
-            '#APP_OWNER#',
-            l_app_owner
-          )
-        );
-
-      END create_ui_install_files;
-      --
 
       PROCEDURE create_readme_dist
         IS
       BEGIN
         create_file(
           p_path      => 'README.dist.md',
-          p_content   => '# Your global README file
+          p_content   => util_multi_replace(
+            '# Your global README file
       
 It is a good practice to have a README file in the root of your project with
 a high level overview of your application. Put the more detailed docs in the 
@@ -1833,14 +1922,31 @@ Docs folder.
 You can start with a copy of this file. Name it README.md and try to use 
 Markdown when writing your content - this has many benefits and you don''t
 waist time by formatting your docs. If you are unsure have a look at some 
-projects at [Github][1] or any other code hosting platform.
-
-[1]: https://github.com
+projects at [Github](https://github.com) or any other code hosting platform.
 
 Have also a look at the provided deploy scripts - these could be a starting
 point for you to do some basic scripting. If you have already some sort of
-CI/CD up and running then ignore simply the files.
+CI/CD up and running then ignore simply the files. Depending on your options
+when calling `plex.backapp` these files are generated for you:
+
+- App/DDL/install-script-backend.dist.sql
+- App/UI/f#APP_ID#/install-script-frontend.dist.sql
+- Scripts/deploy-BACKEND-to-INT.dist.bat
+- Scripts/deploy-UI-to-INT.dist.bat
+
+If you want to use these files please make a copy of it without the `.dist`
+portion and modify it to your needs. Doing it this way your changes are 
+overwrite save.
+
+Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
 '
+,
+            '#APP_ID#',
+              CASE
+                WHEN p_app_id IS NOT NULL THEN TO_CHAR(p_app_id)
+                ELSE 'YourAppID'
+              END
+          )
         );
       END create_readme_dist;
 
@@ -1857,7 +1963,6 @@ CI/CD up and running then ignore simply the files.
         'Tests/_save_your_tests_here',
         l_the_point
       );
-      create_ui_install_files;
       create_readme_dist;
     END create_supporting_files;
 
@@ -1869,7 +1974,7 @@ CI/CD up and running then ignore simply the files.
       THEN
         util_g_clob_createtemporary;
         util_g_clob_append(util_multi_replace(
-          q'{# PLEX - BackApp - Runtime Log
+          q'^# PLEX - BackApp - Runtime Log
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
 #DATA_EXTRACTION#                           
@@ -1899,7 +2004,7 @@ SELECT plex.backapp(
 ## Log Entries
 
 Unmeasured execution time because of missing log calls or log overhead was #UNMEASURED_TIME# seconds.
-}'
+^'
 ,
           '#START_TIME#',
           TO_CHAR(
@@ -1913,16 +2018,10 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
           ) ),
           '#DATA_EXTRACTION#',
             CASE
-              WHEN p_include_data THEN lf
-                                       || 'Data extraction started at '
-                                       || TO_CHAR(
+              WHEN p_include_data THEN lf || 'Data extraction started at ' || TO_CHAR(
                 l_data_timestamp,
                 'yyyy-mm-dd hh24:mi:ss.ff6'
-              )
-                                       || ' with SCN '
-                                       || TO_CHAR(l_data_scn)
-                                       || '.'
-                                       || lf
+              ) || ' with SCN ' || TO_CHAR(l_data_scn) || '.' || lf
               ELSE NULL
             END,
           '#P_APP_ID#',
@@ -1946,9 +2045,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
           '#P_OBJECT_PREFIX#',
             CASE
               WHEN p_object_prefix IS NULL THEN 'NULL'
-              ELSE ''''
-                   || p_object_prefix
-                   || ''''
+              ELSE '''' || p_object_prefix || ''''
             END,
           '#P_INCLUDE_DATA#',
           util_bool_to_string(p_include_data),
@@ -1976,11 +2073,8 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
 
   BEGIN
     util_ilog_init(
-      'plex.backapp'
-      || CASE
-        WHEN p_app_id IS NOT NULL THEN '('
-                                       || TO_CHAR(p_app_id)
-                                       || ')'
+      'plex.backapp' || CASE
+        WHEN p_app_id IS NOT NULL THEN '(' || TO_CHAR(p_app_id) || ')'
       END,
       p_include_runtime_log
     );
@@ -1996,6 +2090,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
       p_app_id IS NOT NULL
     THEN
       process_apex_app;
+      create_frontend_install_files;
     END IF;
     --
     process_user_ddl;
@@ -2006,7 +2101,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
       process_object_ddl;
       process_object_grants;
       process_ref_constraints;
-      create_backend_install_file;
+      create_backend_install_files;
     END IF;
     --
     IF
@@ -2094,12 +2189,12 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
     p_file_name   VARCHAR2,
     p_max_rows    NUMBER DEFAULT 100000
   ) IS
-    v_row   t_queries_rec;
+    l_index   PLS_INTEGER;
   BEGIN
-    v_row.query                    := p_query;
-    v_row.file_name                := p_file_name;
-    v_row.max_rows                 := p_max_rows;
-    g_queries(g_queries.count + 1) := v_row;
+    l_index                        := g_queries.count + 1;
+    g_queries(l_index).query       := p_query;
+    g_queries(l_index).file_name   := p_file_name;
+    g_queries(l_index).max_rows    := p_max_rows;
   END add_query;
 
   FUNCTION queries_to_csv (
@@ -2121,7 +2216,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
       THEN
         util_g_clob_createtemporary;
         util_g_clob_append(util_multi_replace(
-          q'{# PLEX - Queries to CSV - Runtime Log
+          q'^# PLEX - Queries to CSV - Runtime Log
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
 
@@ -2143,7 +2238,7 @@ SELECT plex.queries_to_csv(
 ## Log Entries
                            
 Unmeasured execution time because of missing log calls or log overhead was #UNMEASURED_TIME# seconds.
-}'
+^'
 ,
           '#START_TIME#',
           TO_CHAR(
@@ -2169,9 +2264,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
           '#P_HEADER_PREFIX#',
             CASE
               WHEN p_header_prefix IS NULL THEN 'NULL'
-              ELSE ''''
-                   || p_header_prefix
-                   || ''''
+              ELSE '''' || p_header_prefix || ''''
             END,
           '#P_INCLUDE_RUNTIME_LOG#',
           util_bool_to_string(p_include_runtime_log),
@@ -2212,10 +2305,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
         true
       );
       FOR i IN g_queries.first..g_queries.last LOOP
-        util_ilog_start('process_query_to_csv:'
-                          || TO_CHAR(i)
-                          || ':'
-                          || g_queries(i).file_name);
+        util_ilog_start('process_query_to_csv:' || TO_CHAR(i) || ':' || g_queries(i).file_name);
 
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(
@@ -2236,8 +2326,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
             position     => 1,
             occurrence   => 0,
             modifier     => 'i'
-          )
-                         || '.csv',
+          ) || '.csv',
           p_content       => util_g_clob_to_blob
         );
 

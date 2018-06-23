@@ -17,7 +17,7 @@
 <useTab>false</useTab>
 <idCase>lower</idCase>
 <extraLinesAfterSignificantStatements>X2</extraLinesAfterSignificantStatements>
-<breaksConcat>Before</breaksConcat>
+<breaksConcat>None</breaksConcat>
 <breakAfterIf>false</breakAfterIf>
 <breakAfterElse>false</breakAfterElse>
 <spaceAroundBrackets>NoSpace</spaceAroundBrackets>
@@ -30,6 +30,6 @@
 <breakAfterCase>false</breakAfterCase>
 <breakAfterThen>false</breakAfterThen>
 <breaksAfterSelect>false</breaksAfterSelect>
-<spaceAfterCommas>false</spaceAfterCommas>
+<spaceAfterCommas>true</spaceAfterCommas>
 <kwCase>UPPER</kwCase>
 </options>
