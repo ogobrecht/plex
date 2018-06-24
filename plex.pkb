@@ -1,19 +1,19 @@
 CREATE     OR REPLACE PACKAGE BODY plex IS 
 
-  -- TYPES
+  --
 
-  TYPE t_ilog_step_row IS RECORD ( --
+  TYPE rec_ilog_step IS RECORD ( --
 
    action                 application_info_text,
   start_time             TIMESTAMP(6),
   stop_time              TIMESTAMP(6),
   elapsed                NUMBER,
   execution              NUMBER );
-  TYPE t_debug_step_tab IS
-    TABLE OF t_ilog_step_row INDEX BY BINARY_INTEGER;
+  TYPE tab_ilog_step IS
+    TABLE OF rec_ilog_step INDEX BY BINARY_INTEGER;
     
     --
-  TYPE t_ilog_row IS RECORD ( --
+  TYPE rec_ilog IS RECORD ( --
    module                 application_info_text,
   enabled                BOOLEAN,
   start_time             TIMESTAMP(6),
@@ -21,28 +21,28 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   run_time               NUMBER,
   measured_time          NUMBER,
   unmeasured_time        NUMBER,
-  data                   t_debug_step_tab );
+  data                   tab_ilog_step );
   
   --
-  TYPE t_vc_tab IS
-    TABLE OF VARCHAR2(4000) INDEX BY BINARY_INTEGER;
+  TYPE tab_vc1000 IS
+    TABLE OF VARCHAR2(1000) INDEX BY BINARY_INTEGER;
     
     --
-  TYPE t_ddl_files_rec IS RECORD ( --
-   sequences_             t_vc_tab,
-  tables_                t_vc_tab,
-  ref_constraints_       t_vc_tab,
-  indices_               t_vc_tab,
-  views_                 t_vc_tab,
-  types_                 t_vc_tab,
-  type_bodies_           t_vc_tab,
-  triggers_              t_vc_tab,
-  functions_             t_vc_tab,
-  procedures_            t_vc_tab,
-  packages_              t_vc_tab,
-  package_bodies_        t_vc_tab,
-  grants_                t_vc_tab,
-  other_objects_         t_vc_tab );
+  TYPE rec_ddl_files IS RECORD ( --
+   sequences_             tab_vc1000,
+  tables_                tab_vc1000,
+  ref_constraints_       tab_vc1000,
+  indices_               tab_vc1000,
+  views_                 tab_vc1000,
+  types_                 tab_vc1000,
+  type_bodies_           tab_vc1000,
+  triggers_              tab_vc1000,
+  functions_             tab_vc1000,
+  procedures_            tab_vc1000,
+  packages_              tab_vc1000,
+  package_bodies_        tab_vc1000,
+  grants_                tab_vc1000,
+  other_objects_         tab_vc1000 );
   
     --
   TYPE rec_queries IS RECORD (--
@@ -55,8 +55,8 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   -- GLOBAL VARIABLES
   g_clob                 CLOB;
   g_clob_varchar_cache   VARCHAR2(32767char);
-  g_ilog                 t_ilog_row;
-  g_ddl_files            t_ddl_files_rec;
+  g_ilog                 rec_ilog;
+  g_ddl_files            rec_ddl_files;
   g_queries              tab_queries;
 
   -- CODE
@@ -1052,15 +1052,15 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       util_ilog_start('app:create_install_files:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        q'^set termout off define on verify off feedback off
+        'set termout off define on verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 
 column hn new_val host_name
 column db new_val db_name
 column dt new_val date_time
-select sys_context('userenv', 'host') hn,
-       sys_context('userenv', 'db_name') db, 
-       to_char(sysdate, 'yyyymmdd-hh24miss') dt
+select sys_context(''userenv'', ''host'') hn,
+       sys_context(''userenv'', ''db_name'') db, 
+       to_char(sysdate, ''yyyymmdd-hh24miss'') dt
   from dual;
 spool install-UI-&host_name.-&db_name.-&date_time..log
 set termout on define off
@@ -1073,10 +1073,10 @@ prompt ==================================================
 
 prompt Setup environment
 BEGIN
-   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( '#APP_WORKSPACE#' ) );
-   apex_application_install.set_application_alias( '#APP_ALIAS#' );
+   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( ''#APP_WORKSPACE#'' ) );
+   apex_application_install.set_application_alias( ''#APP_ALIAS#'' );
    apex_application_install.set_application_id( #APP_ID# );
-   apex_application_install.set_schema( '#APP_OWNER#' );
+   apex_application_install.set_schema( ''#APP_OWNER#'' );
    apex_application_install.generate_offset;
 END;
 /
@@ -1089,7 +1089,7 @@ prompt #APP_ALIAS# frontend installation DONE :-)
 prompt
 prompt 
 prompt
-^'
+'
 ,
         '#APP_ALIAS#',
         l_app_alias,
@@ -1115,14 +1115,15 @@ prompt
       util_ilog_start('app:create_install_files:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        q'^echo off
+        'echo off
+
 rem If you want to use this script file you have to do some alignments:
 rem 
 rem - Copy this file to "deploy-UI-to-INT.bat" and "deploy-UI-to-PROD.bat" 
 rem   without the `.dist` portion, modify it to your needs and replace all occurences 
 rem   of "#SOME_TEXT#" with your specific configuration
 rem - Do the same with the called script file "App\UI\f#APP_ID#\install-script-frontend.dist.sql"
-rem - We do the directory changing here on the OS level, because SQL*plus can't change 
+rem - We do the directory changing here on the OS level, because SQL*plus can''t change 
 rem   the directory when running scripts
 rem - Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
 rem - Have fun :-)
@@ -1143,7 +1144,136 @@ cd ..\..\..\Scripts
 :END
 pause
 
-^'
+'
+,
+        '#APP_ID#',
+        TO_CHAR(p_app_id),
+        '#APP_ALIAS#',
+        l_app_alias,
+        '#APP_OWNER#',
+        l_app_owner
+      ) );
+
+      apex_zip.add_file(
+        p_zipped_blob   => l_zip,
+        p_file_name     => l_file_path,
+        p_content       => util_g_clob_to_blob
+      );
+
+      util_g_clob_freetemporary;
+      util_ilog_stop;
+      
+      -- file three
+      l_file_path   := 'Scripts/export_UI_from_DEV.dist.bat';
+      util_ilog_start('app:create_export_file:' || l_file_path);
+      util_g_clob_createtemporary;
+      util_g_clob_append(util_multi_replace(
+        '@echo off
+
+rem If you want to use this script file you have to do some alignments:
+rem 
+rem - Copy this file to "export_UI_from_DEV.bat" without the `.dist` portion, modify it to your
+rem   needs and replace all occurences of "#SOME_TEXT#" with your specific configuration
+rem - We do the directory changing here on the OS level, because SQL*plus can''t change 
+rem   the directory when running scripts
+rem - Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
+rem - Have fun :-)
+
+rem Some blog posts regarding APEX export and Oracle instant client setup
+rem http://www.oracle.com/webfolder/technetwork/de/community/apex/tipps/export-script/index.html
+rem https://ruepprich.wordpress.com/2011/07/15/exporting-an-apex-application-via-command-line/
+rem https://tedstruik-oracle.nl/ords/f?p=25384:1083
+rem https://apexplained.wordpress.com/2013/11/25/apexexport-a-walkthrough/
+rem https://apextips.blogspot.com/2017/12/windows-instant-client-setup.html
+
+rem We use here the Oracle instant client and reference the needed Java classes from 
+rem different places then described in the (german) blog article above (first link).
+rem With this setup you are independend from any installation program - you need just to unzip
+rem all the needed stuff - this results in a portable solution.
+
+rem Storing the password in a batch file is a bad idea, especially when using version control...
+set /p password_db_user=Please enter password for #APP_ALIAS# on DEV:
+set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
+
+rem All instant client downloads are placed in one directory:
+rem - Basic Light Package
+rem - SQL*Plus Package
+rem - Tools Package
+rem - JDBC Supplement Package
+rem - Downloads: http://www.oracle.com/technetwork/topics/winx64soft-089540.html
+rem
+rem The Oracle APEX install files are placed in a subdirectory named apex-5.1.4 (or newer):
+rem - We need at least the subdirectory ../apex-5.1.4/utilities which contains relevant Java classes
+rem - Use always the latest available APEX install file (at least the version you have installed)
+rem - Downloads: http://www.oracle.com/technetwork/developer-tools/apex/downloads/index.html
+rem
+rem The resulting directory structure under oracle-instant-client-12.2 looks like this:
+rem .
+rem ??? ...
+rem ??? apex-5.1.4
+rem ?   ??? builder
+rem ?   ??? core
+rem ?   ??? images
+rem ?   ??? utilities
+rem ?   ?   ??? debug
+rem ?   ?   ??? oracle
+rem ?   ?   ?   ??? apex
+rem ?   ?   ?       ??? APEXExport.class          # Relevant Java classes
+rem ?   ?   ?       ??? APEXExportSplitter.class  # DEPRECATED
+rem ?   ?   ??? support
+rem ?   ?   ??? templates
+rem ?   ?   readme.txt                            # Useful informations for the splitter
+rem ?   ?   ...
+rem ?   ...          
+rem ??? network
+rem ??? sdk
+rem ??? vc14
+rem ...
+rem ojdbc8.jar                                    # JDBC driver for the connection
+rem ...
+rem
+rem We set finally the ORACLE_HOME path to our download instant client directory 
+set ORACLE_HOME=C:\og\Apps\oracle-instant-client-12.2
+
+rem For the Java runtime we reusing here the SQL Developer integrated JDK, you can use whatever you like...
+set JAVA_HOME=C:\og\Apps\sqldeveloper\jdk\jre\bin
+
+rem Setup needed Java classes
+set CLASSPATH=%ORACLE_HOME%\ojdbc8.jar;%ORACLE_HOME%\apex-5.1.4\utilities;.
+
+rem Change current directory to store the export file there
+cd ..\App\UI
+
+rem Export the application as one single file
+"%JAVA_HOME%\java.exe" oracle.apex.APEXExport ^
+  -db #YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# ^
+  -user #APP_OWNER# ^
+  -password %password_db_user% ^
+  -applicationid #APP_ID# ^
+  -expPubReports ^
+  -expTranslations
+
+rem Splitting an existing export file into individual files (the subdirectory f#APP_ID# is created by the splitter):
+rem - DEPRECATED since APEX 5.1.4
+rem - Use instead the option -split (see command below)
+"%JAVA_HOME%\java.exe" oracle.apex.APEXExportSplitter f#APP_ID#.sql
+
+rem Export the application directly as individual files:
+rem - Has an error in APEX 5.1.4: The file ./f#APP_ID#/application/create_application.sql is not generated :-(
+rem "%JAVA_HOME%\java.exe" oracle.apex.APEXExport 
+rem   -db #YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# ^
+rem   -user #APP_OWNER# ^
+rem   -password %password_db_user% ^
+rem   -applicationid #APP_ID# ^
+rem   -expPubReports ^
+rem   -expTranslations ^
+rem   -split
+
+rem Change current directory back to Scripts
+cd ..\..\Scripts
+
+pause
+'
 ,
         '#APP_ID#',
         TO_CHAR(p_app_id),
@@ -1170,17 +1300,17 @@ pause
       util_ilog_start('ddl:USER:' || l_current_user);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        q'^BEGIN 
-  FOR i IN (SELECT '#CURRENT_USER#' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
-    EXECUTE IMMEDIATE q'[
+        'BEGIN 
+  FOR i IN (SELECT ''#CURRENT_USER#'' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
+    EXECUTE IMMEDIATE q''[
 --------------------------------------------------------------------------------
 #DDL#
 --------------------------------------------------------------------------------
-    ]';
+    ]'';
   END LOOP;
 END;
 /
-^'
+'
 ,
         '#CURRENT_USER#',
         l_current_user,
@@ -1329,6 +1459,8 @@ END;
         'LOB'
       )
          AND object_name NOT LIKE 'SYS_PLSQL%'
+         AND object_name NOT LIKE 'SYS_IL%$$'
+         AND object_name NOT LIKE 'SYS_C%'
          AND object_name NOT LIKE 'ISEQ$$%'
          AND object_name LIKE nvl(
         p_object_prefix,
@@ -1490,22 +1622,22 @@ END;
             util_g_clob_createtemporary;
             util_setup_dbms_metadata(p_sqlterminator   => false);
             util_g_clob_append(util_multi_replace(
-              q'^BEGIN
-  FOR i IN (SELECT '#OBJECT_NAME#' AS object_name FROM dual 
+              'BEGIN
+  FOR i IN (SELECT ''#OBJECT_NAME#'' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
-    EXECUTE IMMEDIATE q'[
+    EXECUTE IMMEDIATE q''[
 --------------------------------------------------------------------------------
 #DDL#
 --------------------------------------------------------------------------------
-    ]';
+    ]'';
   END LOOP;
 END;
 /
 
 -- Put your ALTER statements below in the same style as before to ensure that
 -- the script is restartable. 
-^'
+'
 ,
               '#OBJECT_NAME#',
               l_rec.object_name,
@@ -1611,19 +1743,19 @@ END;
         util_g_clob_createtemporary;
         util_setup_dbms_metadata(p_sqlterminator   => false);
         util_g_clob_append(util_multi_replace(
-          q'^BEGIN
-  FOR i IN (SELECT '#CONSTRAINT_NAME#' AS constraint_name FROM dual
+          'BEGIN
+  FOR i IN (SELECT ''#CONSTRAINT_NAME#'' AS constraint_name FROM dual
             MINUS
             SELECT constraint_name FROM user_constraints) LOOP
-    EXECUTE IMMEDIATE q'[
+    EXECUTE IMMEDIATE q''[
 --------------------------------------------------------------------------------
 #DDL#
 --------------------------------------------------------------------------------
-    ]';
+    ]'';
   END LOOP;
 END;
 / 
-^'
+'
 ,
           '#CONSTRAINT_NAME#',
           l_rec.constraint_name,
@@ -1742,15 +1874,15 @@ END;
       util_ilog_start('ddl:create_install_files:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        q'^set termout off define on verify off feedback off
+        'set termout off define on verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 
 column hn new_val host_name
 column db new_val db_name
 column dt new_val date_time
-select sys_context('userenv', 'host') hn,
-       sys_context('userenv', 'db_name') db, 
-       to_char(sysdate, 'yyyymmdd-hh24miss') dt
+select sys_context(''userenv'', ''host'') hn,
+       sys_context(''userenv'', ''db_name'') db, 
+       to_char(sysdate, ''yyyymmdd-hh24miss'') dt
   from dual;
 spool install-BACKEND-&host_name.-&db_name.-&date_time..log
 set termout on define off
@@ -1769,7 +1901,7 @@ prompt #APP_ALIAS# backend installation DONE :-)
 prompt
 prompt 
 prompt
-^'
+'
 ,
         '#APP_ALIAS#',
         l_app_alias
@@ -1788,14 +1920,14 @@ prompt
       util_ilog_start('app:create_install_files:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        q'^echo off
+        'echo off
 rem If you want to use this script file you have to do some alignments:
 rem 
 rem - Copy this file to "deploy-BACKEND-to-INT.bat" and "deploy-BACKEND-to-PROD.bat" 
 rem   without the `.dist` portion, modify it to your needs and replace all occurences 
 rem   of "#SOME_TEXT#" with your specific configuration
 rem - Do the same with the called script file "App\DDL\install-script-backend.dist.sql"
-rem - We do the directory changing here on the OS level, because SQL*plus can't change 
+rem - We do the directory changing here on the OS level, because SQL*plus can''t change 
 rem   the directory when running scripts
 rem - Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
 rem - Have fun :-)
@@ -1816,7 +1948,7 @@ cd ..\..\Scripts
 :END
 pause
 
-^'
+'
 ,
         '#APP_ID#',
         TO_CHAR(p_app_id),
@@ -1938,14 +2070,16 @@ If you want to use these files please make a copy of it without the `.dist`
 portion and modify it to your needs. Doing it this way your changes are 
 overwrite save.
 
-Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
+Feedback is welcome under #PLEX_URL#/issues/new
 '
 ,
             '#APP_ID#',
               CASE
                 WHEN p_app_id IS NOT NULL THEN TO_CHAR(p_app_id)
                 ELSE 'YourAppID'
-              END
+              END,
+            '#PLEX_URL#',
+            c_plex_url
           )
         );
       END create_readme_dist;
@@ -1974,28 +2108,31 @@ Feedback is welcome under https://github.com/ogobrecht/plex/issues/new
       THEN
         util_g_clob_createtemporary;
         util_g_clob_append(util_multi_replace(
-          q'^# PLEX - BackApp - Runtime Log
+          '# PLEX - BackApp - Runtime Log
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
-#DATA_EXTRACTION#                           
-                                   
+#DATA_EXTRACTION#
+
 ## Parameters
+
+- The used plex version was #PLEX_VERSION#
+- More infos here: [PLEX on GitHub](#PLEX_URL#)
 
 ```sql
 SELECT plex.backapp(
   p_app_id                   => #P_APP_ID#,
-  p_app_public_reports       => '#P_APP_PUBLIC_REPORTS#',
-  p_app_private_reports      => '#P_APP_PRIVATE_REPORTS#',
-  p_app_report_subscriptions => '#P_APP_REPORT_SUBSCRIPTIONS#',
-  p_app_translations         => '#P_APP_TRANSLATIONS#',
-  p_app_subscriptions        => '#P_APP_SUBSCRIPTIONS#',
-  p_app_original_ids         => '#P_APP_ORIGINAL_IDS#',
-  p_app_packaged_app_mapping => '#P_APP_PACKAGED_APP_MAPPING#',
-  p_include_object_ddl       => '#P_INCLUDE_OBJECT_DDL#',
+  p_app_public_reports       => ''#P_APP_PUBLIC_REPORTS#'',
+  p_app_private_reports      => ''#P_APP_PRIVATE_REPORTS#'',
+  p_app_report_subscriptions => ''#P_APP_REPORT_SUBSCRIPTIONS#'',
+  p_app_translations         => ''#P_APP_TRANSLATIONS#'',
+  p_app_subscriptions        => ''#P_APP_SUBSCRIPTIONS#'',
+  p_app_original_ids         => ''#P_APP_ORIGINAL_IDS#'',
+  p_app_packaged_app_mapping => ''#P_APP_PACKAGED_APP_MAPPING#'',
+  p_include_object_ddl       => ''#P_INCLUDE_OBJECT_DDL#'',
   p_object_prefix            => #P_OBJECT_PREFIX#,
-  p_include_data             => '#P_INCLUDE_DATA#',
+  p_include_data             => ''#P_INCLUDE_DATA#'',
   p_data_max_rows            => #P_DATA_MAX_ROWS#,
-  p_include_runtime_log      => '#P_INCLUDE_RUNTIME_LOG#'
+  p_include_runtime_log      => ''#P_INCLUDE_RUNTIME_LOG#''
 )
   FROM dual;
 ```
@@ -2004,7 +2141,7 @@ SELECT plex.backapp(
 ## Log Entries
 
 Unmeasured execution time because of missing log calls or log overhead was #UNMEASURED_TIME# seconds.
-^'
+'
 ,
           '#START_TIME#',
           TO_CHAR(
@@ -2024,6 +2161,10 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
               ) || ' with SCN ' || TO_CHAR(l_data_scn) || '.' || lf
               ELSE NULL
             END,
+          '#PLEX_VERSION#',
+          c_plex_version,
+          '#PLEX_URL#',
+          c_plex_url,
           '#P_APP_ID#',
           TO_CHAR(p_app_id),
           '#P_APP_PUBLIC_REPORTS#',
@@ -2216,29 +2357,32 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
       THEN
         util_g_clob_createtemporary;
         util_g_clob_append(util_multi_replace(
-          q'^# PLEX - Queries to CSV - Runtime Log
+          '# PLEX - Queries to CSV - Runtime Log
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
 
 
 ## Parameters
 
+- The used plex version was #PLEX_VERSION#
+- More infos here: [PLEX on GitHub](#PLEX_URL#)
+
 ```sql
 SELECT plex.queries_to_csv(
-  p_delimiter           => '#P_DELIMITER#',
-  p_quote_mark          => '#P_QUOTE_MARK#',
+  p_delimiter           => ''#P_DELIMITER#'',
+  p_quote_mark          => ''#P_QUOTE_MARK#'',
   p_line_terminator     => #P_LINE_TERMINATOR#,
   p_header_prefix       => #P_HEADER_PREFIX#,
-  p_include_runtime_log => '#P_INCLUDE_RUNTIME_LOG#'
+  p_include_runtime_log => ''#P_INCLUDE_RUNTIME_LOG#''
 )
   FROM dual;
 ```
 
 
 ## Log Entries
-                           
+
 Unmeasured execution time because of missing log calls or log overhead was #UNMEASURED_TIME# seconds.
-^'
+'
 ,
           '#START_TIME#',
           TO_CHAR(
@@ -2250,6 +2394,10 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
             g_ilog.run_time,
             '999G990D000'
           ) ),
+          '#PLEX_VERSION#',
+          c_plex_version,
+          '#PLEX_URL#',
+          c_plex_url,
           '#P_DELIMITER#',
           p_delimiter,
           '#P_QUOTE_MARK#',
@@ -2363,10 +2511,10 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
     );
   END queries_to_csv;
 
-  FUNCTION view_runtime_log RETURN t_debug_view_tab
+  FUNCTION view_runtime_log RETURN tab_runtime_log
     PIPELINED
   IS
-    v_return   t_debug_view_row;
+    v_return   rec_runtime_log;
   BEGIN
     v_return.overall_start_time   := g_ilog.start_time;
     v_return.overall_run_time     := round(
