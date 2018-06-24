@@ -3,6 +3,8 @@
 - [BackApp](#backapp)
 - [Queries_to_CSV](#queries_to_csv)
 
+Some hints:
+
 - All main functions (see list above) returning a zip file with the resulting files as a blob
 - All main functions using dbms_application_info to set the current module and action for the session
 - We use the APEX_ZIP package - therefore we need to have at a minimum APEX 5.0 installed
