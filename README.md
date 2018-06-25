@@ -1,7 +1,10 @@
-# PLEX - PL/SQL Export Utilities
+PLEX - PL/SQL Export Utilities
+==============================
 
-- [BackApp](#backapp)
-- [Queries_to_CSV](#queries_to_csv)
+- [BackApp](#backapp) - main method
+- [Add_Query](#add_query) - helper method
+- [Queries_to_CSV](#queries_to_csv) - main method
+- [View_runtime_log](#view_runtime_log) - helper method
 
 Some hints:
 
@@ -21,10 +24,11 @@ Some hints:
     - `time goes by...` - that is true, right?  
   - All that fun because Oracle does not support boolean values in pure SQL context...
 
-[Feedback](https://github.com/ogobrecht/plex/issues/new) is welcome!
+[Feedback is welcome](https://github.com/ogobrecht/plex/issues/new)
 
 
-## BackApp<a name="backapp"></a>
+BackApp
+-------
 
 Get a zip file for an APEX application (or the current user/schema only) including:
 
@@ -33,20 +37,17 @@ Get a zip file for an APEX application (or the current user/schema only) includi
 - Optional the data in csv files - useful for small applications in cloud environments for a logical backup
 - Everything in a (hopefully) nice directory structure
 
-
-### Example
+EXAMPLE
 
 ```sql
 SELECT plex.backapp(p_app_id => 100) FROM dual;
 ```
 
-
-### Signature
+SIGNATURE
 
 ```sql
-FUNCTION backapp
-(
-  p_app_id                   IN NUMBER DEFAULT NULL,   -- If not provided we simply skip the APEX app export.
+FUNCTION backapp (
+  p_app_id                   IN NUMBER   DEFAULT NULL, -- If not provided we simply skip the APEX app export.
   p_app_public_reports       IN VARCHAR2 DEFAULT 'Y',  -- Include public reports in your application export.
   p_app_private_reports      IN VARCHAR2 DEFAULT 'N',  -- Include private reports in your application export.
   p_app_report_subscriptions IN VARCHAR2 DEFAULT 'N',  -- Include IRt or IG subscription settings in your application export.
@@ -54,21 +55,54 @@ FUNCTION backapp
   p_app_subscriptions        IN VARCHAR2 DEFAULT 'Y',  -- Include component subscriptions.
   p_app_original_ids         IN VARCHAR2 DEFAULT 'N',  -- Include original workspace id, application id and component ids.
   p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'N',  -- Include mapping between the application and packaged application if it exists.
+
   p_include_object_ddl       IN VARCHAR2 DEFAULT 'Y',  -- Include DDL of current user/schema and its objects.
   p_object_prefix            IN VARCHAR2 DEFAULT NULL, -- Filter the schema objects with the provided object prefix.
+
   p_include_data             IN VARCHAR2 DEFAULT 'N',  -- Include CSV data of each table.
-  p_data_max_rows            IN NUMBER DEFAULT 1000,   -- Maximal number of rows per table.
-  p_include_runtime_log      IN VARCHAR2 DEFAULT 'N'   -- Generate plex_backapp_log.md in the root of the zip file.
+  p_data_as_of_minutes_ago   IN NUMBER   DEFAULT 0,    -- Read consistent data with the resulting timestamp(SCN).
+  p_data_max_rows            IN NUMBER   DEFAULT 1000, -- Maximal number of rows per table.
+  p_data_table_regex_filter  IN VARCHAR2 DEFAULT NULL, -- Filter user_tables with the given regular expression.
+
+  p_include_runtime_log      IN VARCHAR2 DEFAULT 'Y'   -- Generate plex_backapp_log.md in the root of the zip file.
 ) RETURN BLOB;
 ```
 
 
-## Queries_to_CSV<a name="queries_to_csv"></a>
+Add_Query
+---------
+
+Add a query to be processed by the method queries_to_csv. You can add as many queries as you like.
+
+EXAMPLE
+
+```sql
+BEGIN
+  plex.add_query(
+    p_query       => 'select * from user_tables',
+    p_file_name   => 'user_tables'
+  );
+END;
+/
+```
+
+SIGNATURE
+
+```sql
+PROCEDURE add_query (
+  p_query     IN VARCHAR2,               -- The query itself
+  p_file_name IN VARCHAR2,               -- File name like 'Path/to/your/file-name-without-extension'.
+  p_max_rows  IN NUMBER   DEFAULT 100000 -- The maximum number of rows to be included in your file.
+);
+```
+
+
+Queries_to_CSV
+--------------
 
 Export one or more queries as CSV data within a zip file.
 
-
-### Example
+EXAMPLE
 
 ```sql
 DECLARE
@@ -95,28 +129,33 @@ END;
 /
 ```
 
-
-### Signature
+SIGNATURE
 
 ```sql
-FUNCTION queries_to_csv
-(
+FUNCTION queries_to_csv (
   p_delimiter           IN VARCHAR2 DEFAULT ',',  -- The column delimiter - there is also plex.tab as a helper function.
   p_quote_mark          IN VARCHAR2 DEFAULT '"',  -- Used when the data contains the delimiter character.
   p_line_terminator     IN VARCHAR2 DEFAULT lf,   -- Default is line feed (plex.lf) - there are also plex.crlf and plex.cr as helpers.
   p_header_prefix       IN VARCHAR2 DEFAULT NULL, -- Prefix the header line with this text.
-  p_include_runtime_log IN VARCHAR2 DEFAULT 'N'   -- Generate plex_queries_to_csv_log.md in the root of the zip file.
+  p_include_runtime_log IN VARCHAR2 DEFAULT 'Y'   -- Generate plex_queries_to_csv_log.md in the root of the zip file.
 ) RETURN BLOB;
 ```
 
 
-## View Runtime Log
+View Runtime Log
+----------------
 
-View the log from the last plex run. The internal array for the runtime log
-is cleared after each call of backapp or queries_to_csv.
+View the log from the last plex run. The internal array for the runtime log is cleared after each call of BackApp or Queries_to_CSV.
 
-### Example
+EXAMPLE
 
 ```sql
 SELECT * FROM TABLE(plex.view_runtime_log);
+```
+
+SIGNATURE
+
+```sql
+FUNCTION view_runtime_log RETURN tab_runtime_log
+  PIPELINED;
 ```

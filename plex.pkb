@@ -851,11 +851,13 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
     p_include_data               IN BOOLEAN DEFAULT false,
     p_data_as_of_minutes_ago     IN NUMBER DEFAULT 0,
     p_data_max_rows              IN NUMBER DEFAULT 1000,
+    p_data_table_regex_filter    IN VARCHAR2 DEFAULT NULL,
     p_include_runtime_log        IN BOOLEAN DEFAULT true
   ) RETURN BLOB IS
 
     l_data_timestamp   TIMESTAMP;
     l_data_scn         PLS_INTEGER;
+    l_file_path        VARCHAR2(1000);
     l_zip              BLOB;
     l_current_user     user_objects.object_name%TYPE;
     l_app_workspace    user_objects.object_name%TYPE;
@@ -915,7 +917,6 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       l_file_path_start_pos   PLS_INTEGER;
       l_file_path_stop_pos    PLS_INTEGER;
       l_file_path_length      PLS_INTEGER;
-      l_file_path             VARCHAR2(255 CHAR);
       TYPE t_install_file IS
         TABLE OF VARCHAR2(255) INDEX BY BINARY_INTEGER;
       l_app_install_file      t_install_file;
@@ -958,7 +959,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       );
       -- https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
       -- unfortunately not available: wwv_flow_gen_api2.export which is used in application builder (app:4000, page:4900)
-      l_app_file   := wwv_flow_utilities.export_application_to_clob(
+      l_app_file    := wwv_flow_utilities.export_application_to_clob(
         p_application_id              => p_app_id,
         p_export_ir_public_reports    => util_bool_to_string(p_app_public_reports),
         p_export_ir_private_reports   => util_bool_to_string(p_app_private_reports),
@@ -975,7 +976,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       
       -- fix wrong place of "prompt --application/set_environment" in the exported file :-(
 
-      l_app_file   := 'prompt --application/set_environment' || lf || replace(
+      l_app_file    := 'prompt --application/set_environment' || lf || replace(
         l_app_file,
         'prompt --application/set_environment',
         NULL
@@ -1026,7 +1027,8 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       
       -- create app install file
 
-      util_ilog_start('app:create_app_install_file');
+      l_file_path   := 'App/UI/f' || p_app_id || '/install.sql';
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       FOR i IN 1..l_app_install_file.count LOOP
         util_g_clob_append('@' || l_app_install_file(i) || lf);
@@ -1034,7 +1036,7 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
 
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/UI/f' || p_app_id || '/install.sql',
+        p_file_name     => l_file_path,
         p_content       => util_g_clob_to_blob
       );
 
@@ -1043,16 +1045,17 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
       dbms_lob.freetemporary(l_app_file);
     END process_apex_app;
 
-    PROCEDURE create_frontend_install_files IS
-      l_file_path   VARCHAR2(1000);
+    PROCEDURE create_frontend_install_files
+      IS
     BEGIN
     
     -- file one
       l_file_path   := 'App/UI/f' || TO_CHAR(p_app_id) || '/install-script-frontend.dist.sql';
-      util_ilog_start('app:create_install_files:' || l_file_path);
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        'set termout off define on verify off feedback off
+        '
+set termout off define on verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 
 column hn new_val host_name
@@ -1112,10 +1115,11 @@ prompt
       
       -- file two
       l_file_path   := 'Scripts/deploy-UI-to-INT.dist.bat';
-      util_ilog_start('app:create_install_files:' || l_file_path);
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        'echo off
+        '
+@echo off
 
 rem If you want to use this script file you have to do some alignments:
 rem 
@@ -1143,7 +1147,6 @@ cd ..\..\..\Scripts
 
 :END
 pause
-
 '
 ,
         '#APP_ID#',
@@ -1165,10 +1168,11 @@ pause
       
       -- file three
       l_file_path   := 'Scripts/export_UI_from_DEV.dist.bat';
-      util_ilog_start('app:create_export_file:' || l_file_path);
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        '@echo off
+        '
+@echo off
 
 rem If you want to use this script file you have to do some alignments:
 rem 
@@ -1208,29 +1212,28 @@ rem - Use always the latest available APEX install file (at least the version yo
 rem - Downloads: http://www.oracle.com/technetwork/developer-tools/apex/downloads/index.html
 rem
 rem The resulting directory structure under oracle-instant-client-12.2 looks like this:
-rem .
-rem ??? ...
-rem ??? apex-5.1.4
-rem ?   ??? builder
-rem ?   ??? core
-rem ?   ??? images
-rem ?   ??? utilities
-rem ?   ?   ??? debug
-rem ?   ?   ??? oracle
-rem ?   ?   ?   ??? apex
-rem ?   ?   ?       ??? APEXExport.class          # Relevant Java classes
-rem ?   ?   ?       ??? APEXExportSplitter.class  # DEPRECATED
-rem ?   ?   ??? support
-rem ?   ?   ??? templates
-rem ?   ?   readme.txt                            # Useful informations for the splitter
-rem ?   ?   ...
-rem ?   ...          
-rem ??? network
-rem ??? sdk
-rem ??? vc14
-rem ...
-rem ojdbc8.jar                                    # JDBC driver for the connection
-rem ...
+rem
+rem - apex-5.1.4
+rem   - builder
+rem   - core
+rem   - images
+rem   - utilities
+rem     - debug
+rem     - oracle
+rem       - apex
+rem         - APEXExport.class          # Relevant Java classes
+rem         - APEXExportSplitter.class  # DEPRECATED
+rem     - support
+rem     - templates
+rem     - ...
+rem     - readme.txt                    # Useful informations for the splitter
+rem     - ...
+rem - network
+rem - sdk
+rem - vc14
+rem - ...
+rem - ojdbc8.jar                        # JDBC driver for the connection
+rem - ...
 rem
 rem We set finally the ORACLE_HOME path to our download instant client directory 
 set ORACLE_HOME=C:\og\Apps\oracle-instant-client-12.2
@@ -1300,7 +1303,8 @@ pause
       util_ilog_start('ddl:USER:' || l_current_user);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        'BEGIN 
+        '
+BEGIN 
   FOR i IN (SELECT ''#CURRENT_USER#'' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
     EXECUTE IMMEDIATE q''[
 --------------------------------------------------------------------------------
@@ -1622,7 +1626,8 @@ END;
             util_g_clob_createtemporary;
             util_setup_dbms_metadata(p_sqlterminator   => false);
             util_g_clob_append(util_multi_replace(
-              'BEGIN
+              '
+BEGIN
   FOR i IN (SELECT ''#OBJECT_NAME#'' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
@@ -1636,7 +1641,7 @@ END;
 /
 
 -- Put your ALTER statements below in the same style as before to ensure that
--- the script is restartable. 
+-- the script is restartable.
 '
 ,
               '#OBJECT_NAME#',
@@ -1743,7 +1748,8 @@ END;
         util_g_clob_createtemporary;
         util_setup_dbms_metadata(p_sqlterminator   => false);
         util_g_clob_append(util_multi_replace(
-          'BEGIN
+          '
+BEGIN
   FOR i IN (SELECT ''#CONSTRAINT_NAME#'' AS constraint_name FROM dual
             MINUS
             SELECT constraint_name FROM user_constraints) LOOP
@@ -1754,7 +1760,7 @@ END;
     ]'';
   END LOOP;
 END;
-/ 
+/
 '
 ,
           '#CONSTRAINT_NAME#',
@@ -1783,8 +1789,6 @@ END;
 
     PROCEDURE create_backend_install_files IS
 
-      l_file_path   VARCHAR2(1000);
-
       FUNCTION get_script_line (
         p_file_path VARCHAR2
       ) RETURN VARCHAR2
@@ -1801,7 +1805,7 @@ END;
     
     -- file one
       l_file_path   := 'App/DDL/install.sql';
-      util_ilog_start('ddl:create_install_files:' || l_file_path);
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append('set define off verify off feedback off' || lf || 'whenever sqlerror exit sql.sqlcode rollback' || lf || lf);
       FOR i IN 1..g_ddl_files.sequences_.count LOOP
@@ -1871,10 +1875,11 @@ END;
        
     -- file two
       l_file_path   := 'App/DDL/install-script-backend.dist.sql';
-      util_ilog_start('ddl:create_install_files:' || l_file_path);
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        'set termout off define on verify off feedback off
+        '
+set termout off define on verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 
 column hn new_val host_name
@@ -1915,12 +1920,14 @@ prompt
       util_g_clob_freetemporary;
       util_ilog_stop;
       
-            -- file three
+      -- file three
       l_file_path   := 'Scripts/deploy-BACKEND-to-INT.dist.bat';
-      util_ilog_start('app:create_install_files:' || l_file_path);
+      util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
-        'echo off
+        '
+@echo off
+
 rem If you want to use this script file you have to do some alignments:
 rem 
 rem - Copy this file to "deploy-BACKEND-to-INT.bat" and "deploy-BACKEND-to-PROD.bat" 
@@ -1947,7 +1954,6 @@ cd ..\..\Scripts
 
 :END
 pause
-
 '
 ,
         '#APP_ID#',
@@ -1971,13 +1977,32 @@ pause
     PROCEDURE process_data IS
 
       CURSOR l_cur IS SELECT table_name,
-                             tablespace_name
+                             (
+        SELECT
+          LISTAGG(column_name,
+                    ', ') WITHIN  GROUP(
+             ORDER BY position
+          )
+          FROM user_cons_columns
+         WHERE constraint_name = (
+          SELECT constraint_name
+            FROM user_constraints c
+           WHERE constraint_type = 'P'
+             AND c.table_name = t.table_name
+        )
+      ) AS pk_columns
                         FROM user_tables t
                        WHERE external = 'NO'
          AND table_name LIKE nvl(
         p_object_prefix,
         '%'
       ) || '%'
+         AND REGEXP_LIKE ( table_name,
+                           nvl(
+        p_data_table_regex_filter,
+        '.*'
+      ),
+                           'i' )
        ORDER BY table_name;
 
       l_rec   l_cur%rowtype;
@@ -1998,7 +2023,10 @@ pause
         util_ilog_start('data:' || l_rec.table_name);
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(
-          p_query      => 'SELECT * FROM ' || l_rec.table_name || ' AS OF SCN ' || l_data_scn,
+          p_query      => 'SELECT * FROM ' || l_rec.table_name || ' AS OF SCN ' || l_data_scn || CASE
+            WHEN l_rec.pk_columns IS NOT NULL THEN ' ORDER BY ' || l_rec.pk_columns
+            ELSE NULL
+          END,
           p_max_rows   => p_data_max_rows
         );
 
@@ -2018,7 +2046,6 @@ pause
     PROCEDURE create_supporting_files IS
 
       l_the_point   VARCHAR2(30) := '. < this is the point ;-)';
-      --
 
       PROCEDURE create_file (
         p_path VARCHAR2,
@@ -2045,7 +2072,9 @@ pause
         create_file(
           p_path      => 'README.dist.md',
           p_content   => util_multi_replace(
-            '# Your global README file
+            '
+Your Global README File
+=======================
       
 It is a good practice to have a README file in the root of your project with
 a high level overview of your application. Put the more detailed docs in the 
@@ -2065,12 +2094,13 @@ when calling `plex.backapp` these files are generated for you:
 - App/UI/f#APP_ID#/install-script-frontend.dist.sql
 - Scripts/deploy-BACKEND-to-INT.dist.bat
 - Scripts/deploy-UI-to-INT.dist.bat
+- Scripts/export_UI_from_DEV.dist.bat
 
 If you want to use these files please make a copy of it without the `.dist`
 portion and modify it to your needs. Doing it this way your changes are 
 overwrite save.
 
-Feedback is welcome under #PLEX_URL#/issues/new
+[Feedback is welcome](#PLEX_URL#/issues/new)
 '
 ,
             '#APP_ID#',
@@ -2108,12 +2138,15 @@ Feedback is welcome under #PLEX_URL#/issues/new
       THEN
         util_g_clob_createtemporary;
         util_g_clob_append(util_multi_replace(
-          '# PLEX - BackApp - Runtime Log
+          '
+PLEX - BackApp - Runtime Log
+============================
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
 #DATA_EXTRACTION#
 
-## Parameters
+Parameters
+----------
 
 - The used plex version was #PLEX_VERSION#
 - More infos here: [PLEX on GitHub](#PLEX_URL#)
@@ -2138,7 +2171,8 @@ SELECT plex.backapp(
 ```
 
 
-## Log Entries
+Log Entries
+-----------
 
 Unmeasured execution time because of missing log calls or log overhead was #UNMEASURED_TIME# seconds.
 '
@@ -2273,6 +2307,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
     p_include_data               IN VARCHAR2 DEFAULT 'N',
     p_data_as_of_minutes_ago     IN NUMBER DEFAULT 0,
     p_data_max_rows              IN NUMBER DEFAULT 1000,
+    p_data_table_regex_filter    IN VARCHAR2 DEFAULT NULL,
     p_include_runtime_log        IN VARCHAR2 DEFAULT 'Y'
   ) RETURN BLOB
     IS
@@ -2357,12 +2392,15 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
       THEN
         util_g_clob_createtemporary;
         util_g_clob_append(util_multi_replace(
-          '# PLEX - Queries to CSV - Runtime Log
+          '
+PLEX - Queries to CSV - Runtime Log
+===================================
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
 
 
-## Parameters
+Parameters
+----------
 
 - The used plex version was #PLEX_VERSION#
 - More infos here: [PLEX on GitHub](#PLEX_URL#)
@@ -2379,7 +2417,8 @@ SELECT plex.queries_to_csv(
 ```
 
 
-## Log Entries
+Log Entries
+-----------
 
 Unmeasured execution time because of missing log calls or log overhead was #UNMEASURED_TIME# seconds.
 '
@@ -2467,14 +2506,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
 
         apex_zip.add_file(
           p_zipped_blob   => l_zip,
-          p_file_name     => regexp_replace(
-            srcstr       => g_queries(i).file_name,
-            pattern      => '\.csv$',
-            replacestr   => NULL,
-            position     => 1,
-            occurrence   => 0,
-            modifier     => 'i'
-          ) || '.csv',
+          p_file_name     => g_queries(i).file_name || '.csv',
           p_content       => util_g_clob_to_blob
         );
 
