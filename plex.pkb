@@ -170,7 +170,17 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
     p_19_find         VARCHAR2 DEFAULT NULL,
     p_19_replace      VARCHAR2 DEFAULT NULL,
     p_20_find         VARCHAR2 DEFAULT NULL,
-    p_20_replace      VARCHAR2 DEFAULT NULL
+    p_20_replace      VARCHAR2 DEFAULT NULL,
+    p_21_find         VARCHAR2 DEFAULT NULL,
+    p_21_replace      VARCHAR2 DEFAULT NULL,
+    p_22_find         VARCHAR2 DEFAULT NULL,
+    p_22_replace      VARCHAR2 DEFAULT NULL,
+    p_23_find         VARCHAR2 DEFAULT NULL,
+    p_23_replace      VARCHAR2 DEFAULT NULL,
+    p_24_find         VARCHAR2 DEFAULT NULL,
+    p_24_replace      VARCHAR2 DEFAULT NULL,
+    p_25_find         VARCHAR2 DEFAULT NULL,
+    p_25_replace      VARCHAR2 DEFAULT NULL
   ) RETURN VARCHAR2 IS
     l_return   VARCHAR2(32767);
   BEGIN
@@ -372,6 +382,56 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
         l_return,
         p_20_find,
         p_20_replace
+      );
+    END IF;
+
+    IF
+      p_21_find IS NOT NULL
+    THEN
+      l_return   := replace(
+        l_return,
+        p_21_find,
+        p_21_replace
+      );
+    END IF;
+
+    IF
+      p_22_find IS NOT NULL
+    THEN
+      l_return   := replace(
+        l_return,
+        p_22_find,
+        p_22_replace
+      );
+    END IF;
+
+    IF
+      p_23_find IS NOT NULL
+    THEN
+      l_return   := replace(
+        l_return,
+        p_23_find,
+        p_23_replace
+      );
+    END IF;
+
+    IF
+      p_24_find IS NOT NULL
+    THEN
+      l_return   := replace(
+        l_return,
+        p_24_find,
+        p_24_replace
+      );
+    END IF;
+
+    IF
+      p_25_find IS NOT NULL
+    THEN
+      l_return   := replace(
+        l_return,
+        p_25_find,
+        p_25_replace
       );
     END IF;
 
@@ -838,25 +898,29 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
   END;
 
   FUNCTION backapp (
-    p_app_id                     IN NUMBER DEFAULT NULL,
-    p_app_public_reports         IN BOOLEAN DEFAULT true,
-    p_app_private_reports        IN BOOLEAN DEFAULT false,
-    p_app_report_subscriptions   IN BOOLEAN DEFAULT false,
-    p_app_translations           IN BOOLEAN DEFAULT true,
-    p_app_subscriptions          IN BOOLEAN DEFAULT true,
-    p_app_original_ids           IN BOOLEAN DEFAULT false,
-    p_app_packaged_app_mapping   IN BOOLEAN DEFAULT false,
-    p_include_object_ddl         IN BOOLEAN DEFAULT true,
-    p_object_prefix              IN VARCHAR2 DEFAULT NULL,
-    p_include_data               IN BOOLEAN DEFAULT false,
-    p_data_as_of_minutes_ago     IN NUMBER DEFAULT 0,
-    p_data_max_rows              IN NUMBER DEFAULT 1000,
-    p_data_table_regex_filter    IN VARCHAR2 DEFAULT NULL,
-    p_include_runtime_log        IN BOOLEAN DEFAULT true
+    p_app_id                    IN NUMBER,
+    p_app_date                  IN BOOLEAN,
+    p_app_public_reports        IN BOOLEAN,
+    p_app_private_reports       IN BOOLEAN,
+    p_app_notifications         IN BOOLEAN,
+    p_app_translations          IN BOOLEAN,
+    p_app_pkg_app_mapping       IN BOOLEAN,
+    p_app_original_ids          IN BOOLEAN,
+    p_app_subscriptions         IN BOOLEAN,
+    p_app_comments              IN BOOLEAN,
+    p_app_supporting_objects    IN VARCHAR2,
+    p_include_object_ddl        IN BOOLEAN,
+    p_object_prefix             IN VARCHAR2,
+    p_include_data              IN BOOLEAN,
+    p_data_as_of_minutes_ago    IN NUMBER,
+    p_data_max_rows             IN NUMBER,
+    p_data_table_regex_filter   IN VARCHAR2,
+    p_include_runtime_log       IN BOOLEAN
   ) RETURN BLOB IS
 
+    l_apex_version     NUMBER;
     l_data_timestamp   TIMESTAMP;
-    l_data_scn         PLS_INTEGER;
+    l_data_scn         NUMBER;
     l_file_path        VARCHAR2(1000);
     l_zip              BLOB;
     l_current_user     user_objects.object_name%TYPE;
@@ -864,6 +928,44 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
     l_app_owner        user_objects.object_name%TYPE;
     l_app_alias        user_objects.object_name%TYPE;
     -- 
+
+    PROCEDURE get_apex_version
+      IS
+    BEGIN
+      WITH t AS (
+        SELECT substr(
+          version_no,
+          1,
+          instr(
+            version_no,
+            '.',
+            1,
+            2
+          ) - 1
+        ) AS major_version,
+               substr(
+          version_no,
+          instr(
+            version_no,
+            '.',
+            1,
+            2
+          ) + 1
+        ) AS minor_version
+          FROM apex_release
+      ) SELECT to_number(
+        major_version || replace(
+          minor_version,
+          '.',
+          NULL
+        ),
+        '999D999999999999',
+        'NLS_NUMERIC_CHARACTERS=''.,'''
+      )
+        INTO l_apex_version
+          FROM t;
+
+    END get_apex_version;
 
     PROCEDURE check_owner IS
       CURSOR cur_owner IS SELECT workspace,
@@ -874,9 +976,9 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
 
     BEGIN
       util_ilog_start('check_owner');
-      l_current_user   := nvl(
-        apex_application.g_flow_owner,
-        user
+      l_current_user   := sys_context(
+        'USERENV',
+        'CURRENT_USER'
       );
       IF
         p_app_id IS NOT NULL
@@ -907,142 +1009,83 @@ CREATE     OR REPLACE PACKAGE BODY plex IS
     END check_owner;
 
     PROCEDURE process_apex_app IS
-
-      l_app_file              CLOB;
-      l_count                 PLS_INTEGER := 0;
-      l_pattern               VARCHAR2(30) := 'prompt --application';
-      l_content_start_pos     PLS_INTEGER := 0;
-      l_content_stop_pos      PLS_INTEGER;
-      l_content_length        PLS_INTEGER;
-      l_file_path_start_pos   PLS_INTEGER;
-      l_file_path_stop_pos    PLS_INTEGER;
-      l_file_path_length      PLS_INTEGER;
-      TYPE t_install_file IS
-        TABLE OF VARCHAR2(255) INDEX BY BINARY_INTEGER;
-      l_app_install_file      t_install_file;
-
-      PROCEDURE get_positions
-        IS
-      BEGIN
-        l_content_start_pos     := instr(
-          l_app_file,
-          l_pattern,
-          l_content_start_pos + 1
-        );
-     --> +1: find the next pattern after the current start pos      
-        l_content_stop_pos      := instr(
-          l_app_file,
-          l_pattern,
-          l_content_start_pos + 1
-        ) - 1;
-     --> +1: find the next next pattern after the current start pos (which is the next, see line before)
-        l_file_path_start_pos   := l_content_start_pos + 9;
-     --> without "prompt --"
-        l_file_path_stop_pos    := instr(
-          l_app_file,
-          lf,
-          l_file_path_start_pos
-        );
-        l_content_length        := CASE
-          WHEN l_content_stop_pos > 0 THEN l_content_stop_pos
-          ELSE length(l_app_file) + 1
-        END - l_content_start_pos;
-
-        l_file_path_length      := l_file_path_stop_pos - l_file_path_start_pos;
-      END get_positions;
-
+      l_files   apex_t_export_files;
     BEGIN
-      util_ilog_start('app:export_application');
-      dbms_lob.createtemporary(
-        l_app_file,
-        true
-      );
-      -- https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
-      -- unfortunately not available: wwv_flow_gen_api2.export which is used in application builder (app:4000, page:4900)
-      l_app_file    := wwv_flow_utilities.export_application_to_clob(
-        p_application_id              => p_app_id,
-        p_export_ir_public_reports    => util_bool_to_string(p_app_public_reports),
-        p_export_ir_private_reports   => util_bool_to_string(p_app_private_reports),
-        p_export_ir_notifications     => util_bool_to_string(p_app_report_subscriptions),
-        p_export_translations         => util_bool_to_string(p_app_translations),
-        p_export_pkg_app_mapping      => util_bool_to_string(p_app_packaged_app_mapping),
-        p_with_original_ids           => p_app_original_ids,
-        p_exclude_subscriptions       =>
+      util_ilog_start('app:export_application:single_file');
+      l_files   := apex_export.get_application(
+        p_application_id            => p_app_id,
+        p_split                     => false,
+        p_with_date                 => p_app_date,
+        p_with_ir_public_reports    => p_app_public_reports,
+        p_with_ir_private_reports   => p_app_private_reports,
+        p_with_ir_notifications     => p_app_notifications,
+        p_with_translations         => p_app_translations,
+        p_with_pkg_app_mapping      => p_app_pkg_app_mapping,
+        p_with_original_ids         => p_app_original_ids,
+        p_with_no_subscriptions     =>
           CASE
             WHEN p_app_subscriptions THEN false
             ELSE true
-          END
+          END,
+        p_with_comments             => p_app_comments,
+        p_with_supporting_objects   => p_app_supporting_objects
       );
-      
-      -- fix wrong place of "prompt --application/set_environment" in the exported file :-(
 
-      l_app_file    := 'prompt --application/set_environment' || lf || replace(
-        l_app_file,
-        'prompt --application/set_environment',
-        NULL
-      );
       util_ilog_stop;
+
       -- save as single file 
       util_ilog_start('app:save_single_file');
       util_g_clob_createtemporary;
-      util_g_clob_append(l_app_file);
+      util_g_clob_append(l_files(1).contents);
       apex_zip.add_file(
         p_zipped_blob   => l_zip,
-        p_file_name     => 'App/UI/f' || p_app_id || '.sql',
+        p_file_name     => 'App/UI/' || l_files(1).name,
         p_content       => util_g_clob_to_blob
       );
 
       util_g_clob_freetemporary;
+      l_files.DELETE;
       util_ilog_stop;
-      -- split into individual files
-      get_positions;
-      WHILE l_content_start_pos > 0 LOOP
-        l_count                       := l_count + 1;
-        util_ilog_start('app:' || TO_CHAR(l_count) );
-        l_file_path                   := substr(
-          str1   => l_app_file,
-          pos    => l_file_path_start_pos,
-          len    => l_file_path_length
-        ) || '.sql';
 
-        util_ilog_append_action_text(':' || l_file_path);
+      -- save as individual files
+      util_ilog_start('app:export_application:individual_files');
+      l_files   := apex_export.get_application(
+        p_application_id            => p_app_id,
+        p_split                     => true,
+        p_with_date                 => p_app_date,
+        p_with_ir_public_reports    => p_app_public_reports,
+        p_with_ir_private_reports   => p_app_private_reports,
+        p_with_ir_notifications     => p_app_notifications,
+        p_with_translations         => p_app_translations,
+        p_with_pkg_app_mapping      => p_app_pkg_app_mapping,
+        p_with_original_ids         => p_app_original_ids,
+        p_with_no_subscriptions     =>
+          CASE
+            WHEN p_app_subscriptions THEN false
+            ELSE true
+          END,
+        p_with_comments             => p_app_comments,
+        p_with_supporting_objects   => p_app_supporting_objects
+      );
+
+      util_ilog_stop;
+      FOR i IN 1..l_files.count LOOP
+        util_ilog_start('app:' || TO_CHAR(i) );
         util_g_clob_createtemporary;
-        util_g_clob_append(substr(
-          str1   => l_app_file,
-          pos    => l_content_start_pos,
-          len    => l_content_length
-        ) || lf);
-
+        util_g_clob_append(l_files(i).contents);
+        l_file_path   := 'App/UI/' || l_files(i).name;
+        util_ilog_append_action_text(':' || l_file_path);
         apex_zip.add_file(
           p_zipped_blob   => l_zip,
-          p_file_name     => 'App/UI/f' || p_app_id || '/' || l_file_path,
+          p_file_name     => l_file_path,
           p_content       => util_g_clob_to_blob
         );
 
         util_g_clob_freetemporary;
-        l_app_install_file(l_count)   := l_file_path;
-        get_positions;
         util_ilog_stop;
       END LOOP;
-      
-      -- create app install file
 
-      l_file_path   := 'App/UI/f' || p_app_id || '/install.sql';
-      util_ilog_start('script:' || l_file_path);
-      util_g_clob_createtemporary;
-      FOR i IN 1..l_app_install_file.count LOOP
-        util_g_clob_append('@' || l_app_install_file(i) || lf);
-      END LOOP;
-
-      apex_zip.add_file(
-        p_zipped_blob   => l_zip,
-        p_file_name     => l_file_path,
-        p_content       => util_g_clob_to_blob
-      );
-
-      util_g_clob_freetemporary;
-      util_ilog_stop;
-      dbms_lob.freetemporary(l_app_file);
+      l_files.DELETE;
     END process_apex_app;
 
     PROCEDURE create_frontend_install_files
@@ -1114,7 +1157,7 @@ prompt
       util_ilog_stop;
       
       -- file two
-      l_file_path   := 'Scripts/deploy-UI-to-INT.dist.bat';
+      l_file_path   := 'Scripts/deploy-UI-to-PROD.dist.bat';
       util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
@@ -1296,14 +1339,15 @@ pause
       util_ilog_stop;
     END create_frontend_install_files;
 
-    PROCEDURE process_user_ddl
-      IS
+    PROCEDURE process_user_ddl IS
+      exception_occured   BOOLEAN := false;
     BEGIN
       -- user itself
-      util_ilog_start('ddl:USER:' || l_current_user);
-      util_g_clob_createtemporary;
-      util_g_clob_append(util_multi_replace(
-        '
+      BEGIN
+        util_ilog_start('ddl:USER:' || l_current_user);
+        util_g_clob_createtemporary;
+        util_g_clob_append(util_multi_replace(
+          '
 BEGIN 
   FOR i IN (SELECT ''#CURRENT_USER#'' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
     EXECUTE IMMEDIATE q''[
@@ -1316,90 +1360,157 @@ END;
 /
 '
 ,
-        '#CURRENT_USER#',
-        l_current_user,
-        '#DDL#',
-        dbms_metadata.get_ddl(
-          'USER',
-          l_current_user
-        )
-      ) );
+          '#CURRENT_USER#',
+          l_current_user,
+          '#DDL#',
+          dbms_metadata.get_ddl(
+            'USER',
+            l_current_user
+          )
+        ) );
 
-      apex_zip.add_file(
-        p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/' || l_current_user || '.sql',
-        p_content       => util_g_clob_to_blob
-      );
+        apex_zip.add_file(
+          p_zipped_blob   => l_zip,
+          p_file_name     => 'App/DDL/_User/' || l_current_user || '.sql',
+          p_content       => util_g_clob_to_blob
+        );
 
-      util_g_clob_freetemporary;
-      util_ilog_stop;
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          exception_occured   := true;
+          util_ilog_append_action_text(' ' || sqlerrm);
+          util_g_clob_freetemporary;
+          util_ilog_stop;
+      END;
+
       -- roles
-      util_ilog_start('ddl:USER:' || l_current_user || ':roles');
-      util_g_clob_createtemporary;
-      FOR i IN (
+
+      BEGIN
+        util_ilog_start('ddl:USER:' || l_current_user || ':roles');
+        util_g_clob_createtemporary;
+        FOR i IN (
      -- ensure we get no dbms_metadata error when no role privs exists
-        SELECT DISTINCT username
-          FROM user_role_privs
-      ) LOOP
-        util_g_clob_append(dbms_metadata.get_granted_ddl(
-          'ROLE_GRANT',
-          l_current_user
-        ) );
-      END LOOP;
+          SELECT DISTINCT username
+            FROM user_role_privs
+        ) LOOP
+          util_g_clob_append(dbms_metadata.get_granted_ddl(
+            'ROLE_GRANT',
+            l_current_user
+          ) );
+        END LOOP;
 
-      apex_zip.add_file(
-        p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/' || l_current_user || '_roles.sql',
-        p_content       => util_g_clob_to_blob
-      );
+        apex_zip.add_file(
+          p_zipped_blob   => l_zip,
+          p_file_name     => 'App/DDL/_User/' || l_current_user || '_roles.sql',
+          p_content       => util_g_clob_to_blob
+        );
 
-      util_g_clob_freetemporary;
-      util_ilog_stop;
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          exception_occured   := true;
+          util_ilog_append_action_text(' ' || sqlerrm);
+          util_g_clob_freetemporary;
+          util_ilog_stop;
+      END;
+
       -- system privileges
-      util_ilog_start('ddl:USER:' || l_current_user || ':system_privileges');
-      util_g_clob_createtemporary;
-      FOR i IN (
+
+      BEGIN
+        util_ilog_start('ddl:USER:' || l_current_user || ':system_privileges');
+        util_g_clob_createtemporary;
+        FOR i IN (
      -- ensure we get no dbms_metadata error when no sys privs exists
-        SELECT DISTINCT username
-          FROM user_sys_privs
-      ) LOOP
-        util_g_clob_append(dbms_metadata.get_granted_ddl(
-          'SYSTEM_GRANT',
-          l_current_user
-        ) );
-      END LOOP;
+          SELECT DISTINCT username
+            FROM user_sys_privs
+        ) LOOP
+          util_g_clob_append(dbms_metadata.get_granted_ddl(
+            'SYSTEM_GRANT',
+            l_current_user
+          ) );
+        END LOOP;
 
-      apex_zip.add_file(
-        p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/' || l_current_user || '_system_privileges.sql',
-        p_content       => util_g_clob_to_blob
-      );
+        apex_zip.add_file(
+          p_zipped_blob   => l_zip,
+          p_file_name     => 'App/DDL/_User/' || l_current_user || '_system_privileges.sql',
+          p_content       => util_g_clob_to_blob
+        );
 
-      util_g_clob_freetemporary;
-      util_ilog_stop;
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          exception_occured   := true;
+          util_ilog_append_action_text(' ' || sqlerrm);
+          util_g_clob_freetemporary;
+          util_ilog_stop;
+      END;
+
       -- object privileges
-      util_ilog_start('ddl:USER:' || l_current_user || ':object_privileges');
-      util_g_clob_createtemporary;
-      FOR i IN (
+
+      BEGIN
+        util_ilog_start('ddl:USER:' || l_current_user || ':object_privileges');
+        util_g_clob_createtemporary;
+        FOR i IN (
      -- ensure we get no dbms_metadata error when no object grants exists
-        SELECT DISTINCT grantee
-          FROM user_tab_privs
-         WHERE grantee = l_current_user
-      ) LOOP
-        util_g_clob_append(dbms_metadata.get_granted_ddl(
-          'OBJECT_GRANT',
-          l_current_user
-        ) );
-      END LOOP;
+          SELECT DISTINCT grantee
+            FROM user_tab_privs
+           WHERE grantee = l_current_user
+        ) LOOP
+          util_g_clob_append(dbms_metadata.get_granted_ddl(
+            'OBJECT_GRANT',
+            l_current_user
+          ) );
+        END LOOP;
 
-      apex_zip.add_file(
-        p_zipped_blob   => l_zip,
-        p_file_name     => 'App/DDL/_User/' || l_current_user || '_object_privileges.sql',
-        p_content       => util_g_clob_to_blob
-      );
+        apex_zip.add_file(
+          p_zipped_blob   => l_zip,
+          p_file_name     => 'App/DDL/_User/' || l_current_user || '_object_privileges.sql',
+          p_content       => util_g_clob_to_blob
+        );
 
-      util_g_clob_freetemporary;
-      util_ilog_stop;
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          exception_occured   := true;
+          util_ilog_append_action_text(' ' || sqlerrm);
+          util_g_clob_freetemporary;
+          util_ilog_stop;
+      END;
+
+      IF
+        exception_occured
+      THEN
+        util_ilog_start('ddl:USER:App/DDL/_User/_ERROR_on_DDL_creation_occured.md');
+        util_g_clob_createtemporary;
+        util_g_clob_append('
+ERRORS on User DDL Creation
+===========================
+
+There were errors during the creation of one or more user DDL files. This 
+could happen without sufficient rights. Normally these files are created:
+
+- USERNAME.sql
+- USERNAME_roles.sql
+- USERNAME_system_privileges.sql
+- USERNAME_object_privileges.sql
+
+'
+);
+        apex_zip.add_file(
+          p_zipped_blob   => l_zip,
+          p_file_name     => 'App/DDL/_User/_ERROR_on_DDL_creation_occured.md',
+          p_content       => util_g_clob_to_blob
+        );
+
+        util_g_clob_freetemporary;
+        util_ilog_stop;
+      END IF;
+
     END process_user_ddl;
 
     PROCEDURE process_object_ddl IS
@@ -1921,7 +2032,7 @@ prompt
       util_ilog_stop;
       
       -- file three
-      l_file_path   := 'Scripts/deploy-BACKEND-to-INT.dist.bat';
+      l_file_path   := 'Scripts/deploy-BACKEND-to-PROD.dist.bat';
       util_ilog_start('script:' || l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append(util_multi_replace(
@@ -1992,7 +2103,13 @@ pause
         )
       ) AS pk_columns
                         FROM user_tables t
-                       WHERE external = 'NO'
+                       WHERE table_name IN (
+        SELECT table_name
+          FROM user_tables
+        MINUS
+        SELECT table_name
+          FROM user_external_tables
+      )
          AND table_name LIKE nvl(
         p_object_prefix,
         '%'
@@ -2092,8 +2209,8 @@ when calling `plex.backapp` these files are generated for you:
 
 - App/DDL/install-script-backend.dist.sql
 - App/UI/f#APP_ID#/install-script-frontend.dist.sql
-- Scripts/deploy-BACKEND-to-INT.dist.bat
-- Scripts/deploy-UI-to-INT.dist.bat
+- Scripts/deploy-BACKEND-to-PROD.dist.bat
+- Scripts/deploy-UI-to-PROD.dist.bat
 - Scripts/export_UI_from_DEV.dist.bat
 
 If you want to use these files please make a copy of it without the `.dist`
@@ -2154,22 +2271,29 @@ Parameters
 ```sql
 SELECT plex.backapp(
   p_app_id                   => #P_APP_ID#,
-  p_app_public_reports       => ''#P_APP_PUBLIC_REPORTS#'',
-  p_app_private_reports      => ''#P_APP_PRIVATE_REPORTS#'',
-  p_app_report_subscriptions => ''#P_APP_REPORT_SUBSCRIPTIONS#'',
-  p_app_translations         => ''#P_APP_TRANSLATIONS#'',
-  p_app_subscriptions        => ''#P_APP_SUBSCRIPTIONS#'',
-  p_app_original_ids         => ''#P_APP_ORIGINAL_IDS#'',
-  p_app_packaged_app_mapping => ''#P_APP_PACKAGED_APP_MAPPING#'',
-  p_include_object_ddl       => ''#P_INCLUDE_OBJECT_DDL#'',
+  p_app_date                 => #P_APP_DATE#,
+  p_app_public_reports       => #P_APP_PUBLIC_REPORTS#,
+  p_app_private_reports      => #P_APP_PRIVATE_REPORTS#,
+  p_app_notifications        => #P_APP_NOTIFICATIONS#,
+  p_app_translations         => #P_APP_TRANSLATIONS#,
+  p_app_pkg_app_mapping      => #P_APP_PKG_APP_MAPPING#,
+  p_app_original_ids         => #P_APP_ORIGINAL_IDS#,
+  p_app_subscriptions        => #P_APP_SUBSCRIPTIONS#,
+  p_app_comments             => #P_APP_COMMENTS#,
+  p_app_supporting_objects   => #P_APP_SUPPORTING_OBJECTS#,
+  --
+  p_include_object_ddl       => #P_INCLUDE_OBJECT_DDL#,
   p_object_prefix            => #P_OBJECT_PREFIX#,
-  p_include_data             => ''#P_INCLUDE_DATA#'',
+  --
+  p_include_data             => #P_INCLUDE_DATA#,
+  p_data_as_of_minutes_ago   => #P_DATA_AS_OF_MINUTES_AGO#,
   p_data_max_rows            => #P_DATA_MAX_ROWS#,
-  p_include_runtime_log      => ''#P_INCLUDE_RUNTIME_LOG#''
+  p_data_table_regex_filter  => #P_DATA_TABLE_REGEX_FILTER#
+  --
+  p_include_runtime_log      => #P_INCLUDE_RUNTIME_LOG#
 )
   FROM dual;
 ```
-
 
 Log Entries
 -----------
@@ -2201,33 +2325,49 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
           c_plex_url,
           '#P_APP_ID#',
           TO_CHAR(p_app_id),
+          '#P_APP_DATE#',
+          '''' || util_bool_to_string(p_app_date) || '''',
           '#P_APP_PUBLIC_REPORTS#',
-          util_bool_to_string(p_app_public_reports),
+          '''' || util_bool_to_string(p_app_public_reports) || '''',
           '#P_APP_PRIVATE_REPORTS#',
-          util_bool_to_string(p_app_private_reports),
-          '#P_APP_REPORT_SUBSCRIPTIONS#',
-          util_bool_to_string(p_app_report_subscriptions),
+          '''' || util_bool_to_string(p_app_private_reports) || '''',
+          '#P_APP_NOTIFICATIONS#',
+          '''' || util_bool_to_string(p_app_notifications) || '''',
           '#P_APP_TRANSLATIONS#',
-          util_bool_to_string(p_app_translations),
-          '#P_APP_SUBSCRIPTIONS#',
-          util_bool_to_string(p_app_subscriptions),
+          '''' || util_bool_to_string(p_app_translations) || '''',
+          '#P_APP_PKG_APP_MAPPING#',
+          '''' || util_bool_to_string(p_app_pkg_app_mapping) || '''',
           '#P_APP_ORIGINAL_IDS#',
-          util_bool_to_string(p_app_original_ids),
-          '#P_APP_PACKAGED_APP_MAPPING#',
-          util_bool_to_string(p_app_packaged_app_mapping),
+          '''' || util_bool_to_string(p_app_original_ids) || '''',
+          '#P_APP_SUBSCRIPTIONS#',
+          '''' || util_bool_to_string(p_app_subscriptions) || '''',
+          '#P_APP_COMMENTS#',
+          '''' || util_bool_to_string(p_app_comments) || '''',
+          '#P_APP_SUPPORTING_OBJECTS#',
+            CASE
+              WHEN p_app_supporting_objects IS NULL THEN 'NULL'
+              ELSE '''' || p_app_supporting_objects || ''''
+            END,
           '#P_INCLUDE_OBJECT_DDL#',
-          util_bool_to_string(p_include_object_ddl),
+          '''' || util_bool_to_string(p_include_object_ddl) || '''',
           '#P_OBJECT_PREFIX#',
             CASE
               WHEN p_object_prefix IS NULL THEN 'NULL'
               ELSE '''' || p_object_prefix || ''''
             END,
           '#P_INCLUDE_DATA#',
-          util_bool_to_string(p_include_data),
+          '''' || util_bool_to_string(p_include_data) || '''',
+          '#P_DATA_AS_OF_MINUTES_AGO#',
+          TO_CHAR(p_data_as_of_minutes_ago),
           '#P_DATA_MAX_ROWS#',
           TO_CHAR(p_data_max_rows),
+          '#P_DATA_TABLE_REGEX_FILTER#',
+            CASE
+              WHEN p_data_table_regex_filter IS NULL THEN 'NULL'
+              ELSE '''' || p_data_table_regex_filter || ''''
+            END,
           '#P_INCLUDE_RUNTIME_LOG#',
-          util_bool_to_string(p_include_runtime_log),
+          '''' || util_bool_to_string(p_include_runtime_log) || '''',
           '#UNMEASURED_TIME#',
           trim(TO_CHAR(
             g_ilog.unmeasured_time,
@@ -2259,6 +2399,7 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
       true
     );
     g_ddl_files   := NULL;
+    get_apex_version;
     check_owner;
     --
     IF
@@ -2294,68 +2435,81 @@ Unmeasured execution time because of missing log calls or log overhead was #UNME
   END backapp;
 
   FUNCTION backapp (
-    p_app_id                     IN NUMBER DEFAULT NULL,
-    p_app_public_reports         IN VARCHAR2 DEFAULT 'Y',
-    p_app_private_reports        IN VARCHAR2 DEFAULT 'N',
-    p_app_report_subscriptions   IN VARCHAR2 DEFAULT 'N',
-    p_app_translations           IN VARCHAR2 DEFAULT 'Y',
-    p_app_subscriptions          IN VARCHAR2 DEFAULT 'Y',
-    p_app_original_ids           IN VARCHAR2 DEFAULT 'N',
-    p_app_packaged_app_mapping   IN VARCHAR2 DEFAULT 'N',
-    p_include_object_ddl         IN VARCHAR2 DEFAULT 'Y',
-    p_object_prefix              IN VARCHAR2 DEFAULT NULL,
-    p_include_data               IN VARCHAR2 DEFAULT 'N',
-    p_data_as_of_minutes_ago     IN NUMBER DEFAULT 0,
-    p_data_max_rows              IN NUMBER DEFAULT 1000,
-    p_data_table_regex_filter    IN VARCHAR2 DEFAULT NULL,
-    p_include_runtime_log        IN VARCHAR2 DEFAULT 'Y'
+    p_app_id                    IN NUMBER DEFAULT NULL,
+    p_app_date                  IN VARCHAR2 DEFAULT 'Y',
+    p_app_public_reports        IN VARCHAR2 DEFAULT 'Y',
+    p_app_private_reports       IN VARCHAR2 DEFAULT 'N',
+    p_app_notifications         IN VARCHAR2 DEFAULT 'N',
+    p_app_translations          IN VARCHAR2 DEFAULT 'Y',
+    p_app_pkg_app_mapping       IN VARCHAR2 DEFAULT 'N',
+    p_app_original_ids          IN VARCHAR2 DEFAULT 'Y',
+    p_app_subscriptions         IN VARCHAR2 DEFAULT 'Y',
+    p_app_comments              IN VARCHAR2 DEFAULT 'Y',
+    p_app_supporting_objects    IN VARCHAR2 DEFAULT NULL,
+    p_include_object_ddl        IN VARCHAR2 DEFAULT 'Y',
+    p_object_prefix             IN VARCHAR2 DEFAULT NULL,
+    p_include_data              IN VARCHAR2 DEFAULT 'N',
+    p_data_as_of_minutes_ago    IN NUMBER DEFAULT 0,
+    p_data_max_rows             IN NUMBER DEFAULT 1000,
+    p_data_table_regex_filter   IN VARCHAR2 DEFAULT NULL,
+    p_include_runtime_log       IN VARCHAR2 DEFAULT 'Y'
   ) RETURN BLOB
     IS
   BEGIN
     RETURN backapp(
-      p_app_id                     => p_app_id,
-      p_app_public_reports         => util_string_to_bool(
+      p_app_id                    => p_app_id,
+      p_app_date                  => util_string_to_bool(
+        p_app_date,
+        true
+      ),
+      p_app_public_reports        => util_string_to_bool(
         p_app_public_reports,
         true
       ),
-      p_app_private_reports        => util_string_to_bool(
+      p_app_private_reports       => util_string_to_bool(
         p_app_private_reports,
         false
       ),
-      p_app_report_subscriptions   => util_string_to_bool(
-        p_app_report_subscriptions,
+      p_app_notifications         => util_string_to_bool(
+        p_app_notifications,
         false
       ),
-      p_app_translations           => util_string_to_bool(
+      p_app_translations          => util_string_to_bool(
         p_app_translations,
         true
       ),
-      p_app_subscriptions          => util_string_to_bool(
+      p_app_pkg_app_mapping       => util_string_to_bool(
+        p_app_pkg_app_mapping,
+        false
+      ),
+      p_app_original_ids          => util_string_to_bool(
+        p_app_original_ids,
+        true
+      ),
+      p_app_subscriptions         => util_string_to_bool(
         p_app_subscriptions,
         true
       ),
-      p_app_original_ids           => util_string_to_bool(
-        p_app_original_ids,
-        false
+      p_app_comments              => util_string_to_bool(
+        p_app_comments,
+        true
       ),
-      p_app_packaged_app_mapping   => util_string_to_bool(
-        p_app_packaged_app_mapping,
-        false
-      ),
-      p_include_object_ddl         => util_string_to_bool(
+      p_app_supporting_objects    => p_app_supporting_objects,
+      p_include_object_ddl        => util_string_to_bool(
         p_include_object_ddl,
         true
       ),
-      p_object_prefix              => p_object_prefix,
-      p_include_data               => util_string_to_bool(
+      p_object_prefix             => p_object_prefix,
+      p_include_data              => util_string_to_bool(
         p_include_data,
         true
       ),
-      p_data_as_of_minutes_ago     => p_data_as_of_minutes_ago,
-      p_data_max_rows              => p_data_max_rows,
-      p_include_runtime_log        => util_string_to_bool(
+      p_data_as_of_minutes_ago    => p_data_as_of_minutes_ago,
+      p_data_max_rows             => p_data_max_rows,
+      p_data_table_regex_filter   => p_data_table_regex_filter,
+      p_include_runtime_log       => util_string_to_bool(
         p_include_runtime_log,
-        false
+        true
       )
     );
   END;
@@ -2398,7 +2552,6 @@ PLEX - Queries to CSV - Runtime Log
 
 Export started at #START_TIME# and took #RUN_TIME# seconds to finish.
 
-
 Parameters
 ----------
 
@@ -2415,7 +2568,6 @@ SELECT plex.queries_to_csv(
 )
   FROM dual;
 ```
-
 
 Log Entries
 -----------

@@ -10,7 +10,7 @@ Some hints:
 
 - All main functions (see list above) returning a zip file with the resulting files as a blob
 - All main functions using dbms_application_info to set the current module and action for the session
-- We use the APEX_ZIP package - therefore we need to have at a minimum APEX 5.0 installed
+- We use the APEX_ZIP and APEX_EXPORT packages - therefore we need to have at a minimum APEX 5.1.4 installed
 - To be usable in the SQL and PL/SQL context all boolean parameters are coded as varchars. We check only the uppercased first character:
   - 1 (one), Y [ES], T [RUE] will be parsed as TRUE
   - 0 (zero), N [O], F [ALSE] will be parsed as FALSE
@@ -24,7 +24,7 @@ Some hints:
     - `time goes by...` - that is true, right?  
   - All that fun because Oracle does not support boolean values in pure SQL context...
 
-[Feedback is welcome](https://github.com/ogobrecht/plex/issues/new)
+[Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 
 
 BackApp
@@ -48,15 +48,18 @@ SIGNATURE
 ```sql
 FUNCTION backapp (
   p_app_id                   IN NUMBER   DEFAULT NULL, -- If not provided we simply skip the APEX app export.
-  p_app_public_reports       IN VARCHAR2 DEFAULT 'Y',  -- Include public reports in your application export.
-  p_app_private_reports      IN VARCHAR2 DEFAULT 'N',  -- Include private reports in your application export.
-  p_app_report_subscriptions IN VARCHAR2 DEFAULT 'N',  -- Include IRt or IG subscription settings in your application export.
-  p_app_translations         IN VARCHAR2 DEFAULT 'Y',  -- Include translations in your application export.
-  p_app_subscriptions        IN VARCHAR2 DEFAULT 'Y',  -- Include component subscriptions.
-  p_app_original_ids         IN VARCHAR2 DEFAULT 'N',  -- Include original workspace id, application id and component ids.
-  p_app_packaged_app_mapping IN VARCHAR2 DEFAULT 'N',  -- Include mapping between the application and packaged application if it exists.
-
-  p_include_object_ddl       IN VARCHAR2 DEFAULT 'Y',  -- Include DDL of current user/schema and its objects.
+  p_app_date                 IN VARCHAR2 DEFAULT 'Y',  -- If 'Y', include export date and time in the result.
+  p_app_public_reports       IN VARCHAR2 DEFAULT 'Y',  -- If 'Y', include public reports that a user saved.
+  p_app_private_reports      IN VARCHAR2 DEFAULT 'N',  -- If 'Y', include private reports that a user saved.
+  p_app_notifications        IN VARCHAR2 DEFAULT 'N',  -- If 'Y', include report notifications.
+  p_app_translations         IN VARCHAR2 DEFAULT 'Y',  -- If 'Y', include application translation mappings and all text from the translation repository.
+  p_app_pkg_app_mapping      IN VARCHAR2 DEFAULT 'N',  -- If 'Y', export installed packaged applications with references to the packaged application definition. If 'N', export them as normal applications.
+  p_app_original_ids         IN VARCHAR2 DEFAULT 'Y',  -- If 'Y', export with the IDs as they were when the application was imported.
+  p_app_subscriptions        IN VARCHAR2 DEFAULT 'Y',  -- If 'Y', components contain subscription references.
+  p_app_comments             IN VARCHAR2 DEFAULT 'Y',  -- If 'Y', include developer comments.
+  p_app_supporting_objects   IN VARCHAR2 DEFAULT null, -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
+  
+  p_include_object_ddl       IN VARCHAR2 DEFAULT 'Y',  -- Include DDL of current user/schema and all its objects.
   p_object_prefix            IN VARCHAR2 DEFAULT NULL, -- Filter the schema objects with the provided object prefix.
 
   p_include_data             IN VARCHAR2 DEFAULT 'N',  -- Include CSV data of each table.
@@ -142,7 +145,7 @@ FUNCTION queries_to_csv (
 ```
 
 
-View Runtime Log
+View_Runtime_Log
 ----------------
 
 View the log from the last plex run. The internal array for the runtime log is cleared after each call of BackApp or Queries_to_CSV.
