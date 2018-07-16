@@ -1,9 +1,10 @@
-<options><breakOnSubqueries>true</breakOnSubqueries>
+<options><adjustCaseOnly>false</adjustCaseOnly>
+<breakOnSubqueries>true</breakOnSubqueries>
 <alignEquality>false</alignEquality>
 <breakAfterElsif>false</breakAfterElsif>
 <singleLineComments>CommentsUnchanged</singleLineComments>
 <breakAnsiiJoin>false</breakAnsiiJoin>
-<maxCharLineSize>128</maxCharLineSize>
+<maxCharLineSize>120</maxCharLineSize>
 <alignAssignments>true</alignAssignments>
 <breaksProcArgs>true</breaksProcArgs>
 <alignRight>true</alignRight>
@@ -11,7 +12,7 @@
 <breaksAroundLogicalConjunctions>Before</breaksAroundLogicalConjunctions>
 <breakAfterWhen>false</breakAfterWhen>
 <alignNamedArgs>true</alignNamedArgs>
-<formatProgramURL>/C:/Users/decaf4/AppData/Roaming/SQL Developer/system18.1.0.095.1630/o.sqldeveloper/format.arbori</formatProgramURL>
+<formatProgramURL>/C:/Users/decaf4/AppData/Roaming/SQL Developer/system18.2.0.183.1748/o.sqldeveloper/format.arbori</formatProgramURL>
 <formatThreshold>1</formatThreshold>
 <spaceAroundOperators>true</spaceAroundOperators>
 <useTab>false</useTab>
