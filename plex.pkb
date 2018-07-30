@@ -438,7 +438,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     l_return   TIMESTAMP;
   BEGIN
     EXECUTE IMMEDIATE replace(
-      'SELECT systimestamp - INTERVAL ''#MINUTES#'' MINUTE FROM dual',
+      q'{SELECT systimestamp - INTERVAL '#MINUTES#' MINUTE FROM dual}',
       '#MINUTES#',
       TO_CHAR(p_as_of_minutes_ago)
     )
@@ -456,7 +456,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_segment_attributes     IN BOOLEAN DEFAULT false,
     p_sqlterminator          IN BOOLEAN DEFAULT true,
     p_constraints_as_alter   IN BOOLEAN DEFAULT false,
-    p_emit_schema            IN BOOLEAN DEFAULT true
+    p_emit_schema            IN BOOLEAN DEFAULT false
   )
     IS
   BEGIN
@@ -954,8 +954,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
     -- allow subprocedure only to init, when not called by a wrapper
     IF
-      ( ( NOT g_ilog.called_by_wrapper AND NOT p_called_by_wrapper ) OR ( g_ilog.called_by_wrapper AND p_called_by_wrapper
-      ) )
+      ( ( NOT g_ilog.called_by_wrapper AND NOT p_called_by_wrapper ) OR ( g_ilog.called_by_wrapper AND p_called_by_wrapper ) )
     THEN
       g_ilog.module            := substr(
         p_module,
@@ -983,8 +982,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     IS
   BEGIN
     IF
-      g_ilog.enabled AND ( ( NOT g_ilog.called_by_wrapper AND NOT p_called_by_wrapper ) OR ( g_ilog.called_by_wrapper AND
-      p_called_by_wrapper ) )
+      g_ilog.enabled AND ( ( NOT g_ilog.called_by_wrapper AND NOT p_called_by_wrapper ) OR ( g_ilog.called_by_wrapper AND p_called_by_wrapper
+      ) )
     THEN
       g_ilog.stop_time           := systimestamp;
       g_ilog.run_time            := util_ilog_get_runtime(
@@ -1203,8 +1202,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
           l_export_files(i).name = 'f100/install.sql'
         THEN
           l_export_files(i).name       := 'scripts/install_frontend_generated_by_apex.sql';
-          l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || lf
-          || lf || replace(
+          l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || lf || lf
+          || replace(
             replace(
               l_export_files(i).contents,
               '@application/',
@@ -1262,38 +1261,46 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       BEGIN
         l_file_path   := 'app_backend/_user/' || l_current_user || '.sql';
         util_ilog_start(l_file_path);
-        l_contents    := replace(
-          '
+        l_contents    := q'{
 BEGIN 
-  FOR i IN (SELECT ''#CURRENT_USER#'' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
-    EXECUTE IMMEDIATE q''[
+  FOR i IN (SELECT '#CURRENT_USER#' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
+    EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
-'
-        ,
+#DDL#
+--------------------------------------------------------------------------------
+    ]';
+  END LOOP;
+END;
+/
+}'
+        ;
+        l_contents    := replace(
+          l_contents,
           '#CURRENT_USER#',
           l_current_user
         );
+        util_setup_dbms_metadata(p_sqlterminator   => false);
         BEGIN
-          l_contents   := l_contents || dbms_metadata.get_ddl(
-            'USER',
-            l_current_user
+          l_contents   := replace(
+            l_contents,
+            '#DDL#',
+            dbms_metadata.get_ddl(
+              'USER',
+              l_current_user
+            )
           );
         EXCEPTION
           WHEN OTHERS THEN
             exception_occured   := true;
             util_ilog_append_action_text(' ' || sqlerrm);
-            l_contents          := l_contents || sqlerrm;
+            l_contents          := replace(
+              l_contents,
+              '#DDL#',
+              sqlerrm
+            );
         END;
 
-        l_contents    := l_contents || '
---------------------------------------------------------------------------------
-    ]'';
-  END LOOP;
-END;
-/
-'
-
-        ;
+        util_setup_dbms_metadata;
         util_export_files_append(
           p_export_files   => l_export_files,
           p_name           => l_file_path,
@@ -1305,6 +1312,7 @@ END;
       -- roles
 
       BEGIN
+        l_contents    := NULL;
         l_file_path   := 'app_backend/_user/' || l_current_user || '_roles.sql';
         util_ilog_start(l_file_path);
         FOR i IN (
@@ -1336,6 +1344,7 @@ END;
       -- system privileges
 
       BEGIN
+        l_contents    := NULL;
         l_file_path   := 'app_backend/_user/' || l_current_user || '_system_privileges.sql';
         util_ilog_start(l_file_path);
         FOR i IN (
@@ -1367,6 +1376,7 @@ END;
       -- object privileges
 
       BEGIN
+        l_contents    := NULL;
         l_file_path   := 'app_backend/_user/' || l_current_user || '_object_privileges.sql';
         util_ilog_start(l_file_path);
         FOR i IN (
@@ -1637,44 +1647,45 @@ Please have a look in these files and check for errors.
             'SEQUENCE'
           ) THEN
             util_setup_dbms_metadata(p_sqlterminator   => false);
-            l_contents   := replace(
-              '
+            l_contents   := q'{
 BEGIN
-  FOR i IN (SELECT ''#OBJECT_NAME#'' AS object_name FROM dual 
+  FOR i IN (SELECT '#OBJECT_NAME#' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
-    EXECUTE IMMEDIATE q''[
+    EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
-'
-            ,
-              '#OBJECT_NAME#',
-              l_rec.object_name
-            );
-            l_contents   := l_contents || dbms_metadata.get_ddl(
-              object_type   => l_rec.object_type,
-              name          => l_rec.object_name,
-              schema        => l_current_user
-            );
-
-            l_contents   := l_contents || '
+#DDL#
 --------------------------------------------------------------------------------
-    ]'';
+    ]';
   END LOOP;
 END;
 /
 
 -- Put your ALTER statements below in the same style as before to ensure that
 -- the script is restartable.
-'
-
+}'
             ;
-            util_setup_dbms_metadata(p_sqlterminator   => true);
+            l_contents   := replace(
+              replace(
+                l_contents,
+                '#OBJECT_NAME#',
+                l_rec.object_name
+              ),
+              '#DDL#',
+              dbms_metadata.get_ddl(
+                object_type   => l_rec.object_type,
+                name          => l_rec.object_name,
+                schema        => l_current_user
+              )
+            );
+
             util_export_files_append(
               p_export_files   => l_export_files,
               p_name           => l_rec.file_path,
               p_contents       => l_contents
             );
 
+            util_setup_dbms_metadata(p_sqlterminator   => true);
           ELSE
             l_contents   := dbms_metadata.get_ddl(
               object_type   => l_rec.object_type,
@@ -1744,7 +1755,7 @@ END;
 
       CURSOR l_cur IS SELECT table_name,
                              constraint_name,
-                             'app_backend/tab_ref_constraints/' || constraint_name || '.sql' AS file_path
+                             'app_backend/table_ref_constraints/' || constraint_name || '.sql' AS file_path
                       FROM user_constraints
                       WHERE constraint_type = 'R'
                       AND REGEXP_LIKE ( table_name,
@@ -1766,31 +1777,34 @@ END;
         EXIT WHEN l_cur%notfound;
         util_ilog_start(l_rec.file_path);
         util_setup_dbms_metadata(p_sqlterminator   => false);
-        l_contents                                                           := replace(
-          '
+        l_contents                                                           := q'{
 BEGIN
-  FOR i IN (SELECT ''#CONSTRAINT_NAME#'' AS constraint_name FROM dual
+  FOR i IN (SELECT '#CONSTRAINT_NAME#' AS constraint_name FROM dual
             MINUS
             SELECT constraint_name FROM user_constraints) LOOP
-    EXECUTE IMMEDIATE q''[
+    EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
-'
-        ,
-          '#CONSTRAINT_NAME#',
-          l_rec.constraint_name
-        );
-        l_contents                                                           := l_contents || dbms_metadata.get_ddl(
-          'REF_CONSTRAINT',
-          l_rec.constraint_name
-        );
-        l_contents                                                           := l_contents || '
+#DDL#
 --------------------------------------------------------------------------------
-    ]'';
+    ]';
   END LOOP;
 END;
 /
-'
+}'
         ;
+        l_contents                                                           := replace(
+          replace(
+            l_contents,
+            '#CONSTRAINT_NAME#',
+            l_rec.constraint_name
+          ),
+          '#DDL#',
+          dbms_metadata.get_ddl(
+            'REF_CONSTRAINT',
+            l_rec.constraint_name
+          )
+        );
+
         util_setup_dbms_metadata(p_sqlterminator   => true);
         l_ddl_files.ref_constraints_(l_ddl_files.ref_constraints_.count + 1) := l_rec.file_path;
         util_export_files_append(
@@ -1967,16 +1981,10 @@ END;
       CLOSE l_cur;
     END process_data;
 
-    PROCEDURE create_template_files
-      IS
+    PROCEDURE create_template_files IS
+      l_file_template   VARCHAR2(32767 CHAR);
     BEGIN
-      l_file_path   := 'template.README.md';
-      util_ilog_start(l_file_path);
-      util_export_files_append(
-        p_export_files   => l_export_files,
-        p_name           => l_file_path,
-        p_contents       => replace(
-          '
+      l_file_template   := q'{
 Your Global README File
 =======================
       
@@ -1985,7 +1993,7 @@ a high level overview of your application. Put the more detailed docs in the
 docs folder.
 
 You can start with a copy of this file. Name it README.md and try to use 
-Markdown when writing your content - this has many benefits and you don''t
+Markdown when writing your content - this has many benefits and you don't
 waist time by formatting your docs. If you are unsure have a look at some 
 projects at [Github](https://github.com) or any other code hosting platform.
 
@@ -2013,156 +2021,148 @@ portion and modify it to your needs. Doing it this way your changes are
 overwrite save.
 
 [Feedback is welcome](#PLEX_URL#/issues/new)
-'
-        ,
+}'
+      ;
+      l_file_path       := 'template.README.md';
+      util_ilog_start(l_file_path);
+      util_export_files_append(
+        p_export_files   => l_export_files,
+        p_name           => l_file_path,
+        p_contents       => replace(
+          l_file_template,
           '#PLEX_URL#',
           c_plex_url
         )
       );
 
       util_ilog_stop;
-
-      --
-      l_file_path   := 'scripts/template.1_export_app_from_DEV.bat';
-      util_ilog_start(l_file_path);
-      util_export_files_append(
-        p_export_files   => l_export_files,
-        p_name           => l_file_path,
-        p_contents       => util_multi_replace(
-          '
+      l_file_template   := q'{
 echo off
 setlocal
-set areyousure = N
+set systemrole=#SYSTEMROLE#
+set connection=localhost:1521/orcl
+set schema=#APP_OWNER#
+set app_id=#APP_ID#
+set areyousure=N
+
 rem align delimiters to your os locale
-for /f "tokens=1-3 delims=. " %%a in (''date /t'') do (set mydate=%%c%%b%%a)
-for /f "tokens=1-2 delims=:"  %%a in (''time /t'') do (set mytime=%%a%%b)
+for /f "tokens=1-3 delims=. " %%a in ('date /t') do (set mydate=%%c%%b%%a)
+for /f "tokens=1-2 delims=:"  %%a in ('time /t') do (set mytime=%%a%%b)
 
 :PROMPT
 echo.
 echo. 
-set /p areyousure=Export app #APP_ALIAS# from DEV (Y/N)?
+set /p areyousure=#AREYOUSURE#
+
 if /i %areyousure% neq y goto END
 set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
-set /p password_db_user=Please enter password for #APP_OWNER# on DEV:
-echo exit | sqlplus -S #APP_OWNER#/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @export_app_custom_code.sql DEV %mydate% %mytime%
+set /p password=Please enter password for %schema% on %systemrole%:
+echo exit | sqlplus -S %schema%/%password%@%connection% ^
+  @#SCRIPT# ^
+  %app_id% ^
+  %systemrole% ^
+  %mydate% ^
+  %mytime%
 
 :END
 pause
-
-'
-        ,
-          '#APP_ALIAS#',
-          l_app_alias,
+}'
+      ;
+      l_file_path       := 'scripts/template.1_export_app_from_DEV.bat';
+      util_ilog_start(l_file_path);
+      util_export_files_append(
+        p_export_files   => l_export_files,
+        p_name           => l_file_path,
+        p_contents       => util_multi_replace(
+          l_file_template,
+          '#SYSTEMROLE#',
+          'DEV',
           '#APP_OWNER#',
-          l_app_owner
+          l_app_owner,
+          '#APP_ID#',
+          p_app_id,
+          '#AREYOUSURE#',
+          'Export %schema% app %app_id% from %systemrole% (Y/N)?',
+          '#SCRIPT#',
+          'export_app_custom_code.sql'
         )
       );
 
       util_ilog_stop;
 
       --
-      l_file_path   := 'scripts/template.2_install_app_into_TEST.bat';
+      l_file_path       := 'scripts/template.2_install_app_into_TEST.bat';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => util_multi_replace(
-          '
-@echo off
-setlocal
-set areyousure = N
-rem align delimiters to your os locale
-for /f "tokens=1-3 delims=. " %%a in (''date /t'') do (set mydate=%%c%%b%%a)
-for /f "tokens=1-2 delims=:"  %%a in (''time /t'') do (set mytime=%%a%%b)
-
-:PROMPT
-set /p areyousure=Install app #APP_ALIAS# into TEST (Y/N)?
-if /i %areyousure% neq y goto END
-set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
-set /p password_db_user=Please enter password for #APP_OWNER# on TEST:
-echo exit | sqlplus -S #APP_OWNER#/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @install_app_custom_code.sql TEST %mydate% %mytime%
-
-:END
-pause
-'
-        ,
-          '#APP_ALIAS#',
-          l_app_alias,
+          l_file_template,
+          '#SYSTEMROLE#',
+          'TEST',
           '#APP_OWNER#',
-          l_app_owner
+          l_app_owner,
+          '#APP_ID#',
+          p_app_id,
+          '#AREYOUSURE#',
+          'Install %schema% app %app_id% into %systemrole% (Y/N)?',
+          '#SCRIPT#',
+          'install_app_custom_code.sql'
         )
       );
 
       util_ilog_stop;
 
       --
-      l_file_path   := 'scripts/template.3_install_app_into_PROD.bat';
+      l_file_path       := 'scripts/template.3_install_app_into_PROD.bat';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => util_multi_replace(
-          '
-@echo off
-setlocal
-set areyousure = N
-rem align delimiters to your os locale
-for /f "tokens=1-3 delims=. " %%a in (''date /t'') do (set mydate=%%c%%b%%a)
-for /f "tokens=1-2 delims=:"  %%a in (''time /t'') do (set mytime=%%a%%b)
-
-:PROMPT
-set /p areyousure=Install app #APP_ALIAS# into PROD (Y/N)?
-if /i %areyousure% neq y goto END
-set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
-set /p password_db_user=Please enter password for #APP_OWNER# on PROD:
-echo exit | sqlplus -S #APP_OWNER#/%password_db_user%@#YOUR_HOST#:#YOUR_PORT#/#YOUR_SID# @install_app_custom_code.sql PROD %mydate% %mytime%
-
-:END
-pause
-'
-        ,
-          '#APP_ALIAS#',
-          l_app_alias,
+          l_file_template,
+          '#SYSTEMROLE#',
+          'PROD',
           '#APP_OWNER#',
-          l_app_owner
+          l_app_owner,
+          '#APP_ID#',
+          p_app_id,
+          '#AREYOUSURE#',
+          'Install %schema% app %app_id% into %systemrole% (Y/N)?',
+          '#SCRIPT#',
+          'install_app_custom_code.sql'
         )
       );
 
       util_ilog_stop;
 
       --
-      l_file_path   := 'scripts/template.export_app_custom_code.sql';
-      util_ilog_start(l_file_path);
-      util_export_files_append(
-        p_export_files   => l_export_files,
-        p_name           => l_file_path,
-        p_contents       => util_multi_replace(
-          '
+      l_file_template   := q'{
 set verify off feedback off heading off 
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 
 -- https://blogs.oracle.com/opal/sqlplus-101-substitution-variables
-define logfile = "logs/export_app_from_&1._&2._&3..log"
+define logfile = "logs/export_app_&1._from_&2._&3._&4..log"
 spool "&logfile." replace
 
 
 prompt
-prompt Start app export of #APP_ALIAS# on &1.
+prompt Start frontend export of app &1. from &2.
 prompt =========================================================================
 prompt Create global temporary table temp_export_files if not exist
 BEGIN
-  FOR i IN (SELECT ''TEMP_EXPORT_FILES'' AS object_name FROM dual 
+  FOR i IN (SELECT 'TEMP_EXPORT_FILES' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
-    EXECUTE IMMEDIATE q''[
+    EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
 CREATE GLOBAL TEMPORARY TABLE temp_export_files (
   name       VARCHAR2(255),
   contents   CLOB
 ) ON COMMIT DELETE ROWS
 --------------------------------------------------------------------------------
-    ]'';
+    ]';
   END LOOP;
 END;
 /
@@ -2174,7 +2174,7 @@ DECLARE
 BEGIN
   l_files   := plex.backapp_to_collection (
   -- These are the defaults - align it to your needs:
-  p_app_id                  => #APP_ID#,
+  p_app_id                  => &1.,
   p_app_date                => true,
   p_app_public_reports      => true,
   p_app_private_reports     => false,
@@ -2200,7 +2200,7 @@ BEGIN
 
   -- relocate files to own project structure, we are inside the scripts folder
   FOR i IN 1..l_files.count LOOP
-    l_files(i).name := ''../'' || l_files(i).name; 
+    l_files(i).name := '../' || l_files(i).name; 
   END LOOP;
   
   FORALL i IN 1..l_files.count
@@ -2220,37 +2220,37 @@ BEGIN
   -- create host commands for the needed directories (spool does not create missing directories)
   FOR i IN (
     WITH t AS (
-      SELECT regexp_substr(name, ''^((\w|\.)+\/)+'' /*path without file name*/) AS dir
+      SELECT regexp_substr(name, '^((\w|\.)+\/)+' /*path without file name*/) AS dir
         FROM temp_export_files
     )
     SELECT DISTINCT
            dir,
           -- This is for Windows to create a directory and suppress warning if it exist.
           -- Align the command to your operating system:
-          ''host mkdir "'' || replace(dir,''/'',''\'') || ''" 2>NUL'' AS mkdir
-      FROM t1
+          'host mkdir "' || replace(dir,'/','\') || '" 2>NUL' AS mkdir
+      FROM t
      WHERE dir IS NOT NULL 
   ) LOOP
-    dbms_output.put_line(''set termout on'');
-    dbms_output.put_line(''spool "&logfile." append'');
-    dbms_output.put_line(''prompt --create directory if not exist: '' || i.dir);
-    dbms_output.put_line(''spool off'');
-    dbms_output.put_line(''set termout off'');
+    dbms_output.put_line('set termout on');
+    dbms_output.put_line('spool "&logfile." append');
+    dbms_output.put_line('prompt --create directory if not exist: ' || i.dir);
+    dbms_output.put_line('spool off');
+    dbms_output.put_line('set termout off');
     dbms_output.put_line(i.mkdir);
-    dbms_output.put_line(''-----'');
+    dbms_output.put_line('-----');
   END LOOP;
 
   -- create the spool calls for unload the files
   FOR i IN (SELECT * FROM temp_export_files) LOOP
-    dbms_output.put_line(''set termout on'');
-    dbms_output.put_line(''spool "&logfile." append'');
-    dbms_output.put_line(''prompt --'' || i.name);
-    dbms_output.put_line(''spool off'');
-    dbms_output.put_line(''set termout off'');
-    dbms_output.put_line(''spool "'' || i.name || ''"'');
-    dbms_output.put_line(''select contents from temp_export_files where name = '''''' || i.name || '''''';'');
-    dbms_output.put_line(''spool off'');
-    dbms_output.put_line(''-----'');
+    dbms_output.put_line('set termout on');
+    dbms_output.put_line('spool "&logfile." append');
+    dbms_output.put_line('prompt --' || i.name);
+    dbms_output.put_line('spool off');
+    dbms_output.put_line('set termout off');
+    dbms_output.put_line('spool "' || i.name || '"');
+    dbms_output.put_line('select contents from temp_export_files where name = ''' || i.name || ''';');
+    dbms_output.put_line('spool off');
+    dbms_output.put_line('-----');
   END LOOP;
  
 END;
@@ -2274,38 +2274,28 @@ COMMIT;
 prompt =========================================================================
 prompt Export DONE :-) 
 prompt
-'
-        ,
-          '#APP_ID#',
-            CASE
-              WHEN p_app_id IS NOT NULL THEN TO_CHAR(p_app_id)
-              ELSE '#YourAppID#'
-            END,
-          '#APP_ALIAS#',
-          l_app_alias,
-          '#APP_OWNER#',
-          l_app_owner
-        )
-      );
-
-      util_ilog_stop;
-
-      --
-      l_file_path   := 'scripts/template.install_app_custom_code.sql';
+}'
+      ;
+      l_file_path       := 'scripts/template.export_app_custom_code.sql';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
-        p_contents       => util_multi_replace(
-          '
-spool "logs/install_app_into_&1._&2._&3..log"
-set define off verify off feedback off
-whenever sqlerror exit sql.sqlcode rollback
+        p_contents       => l_file_template
+      );
+      util_ilog_stop;
+
+      --
+      l_file_template   := q'{
+spool "logs/install_app_&1._into_&2._&3._&4..log"
 
 prompt 
-prompt Start installation of app #APP_ALIAS# into &1.
+prompt Start installation of app &1. into &2.
 prompt =========================================================================
 prompt Start backend installation
+
+set define off verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
 
 prompt Call PLEX backend install script
 @install_backend_generated_by_plex.sql
@@ -2327,28 +2317,28 @@ DECLARE
 BEGIN
   SELECT COUNT(*),
          listagg(object_name,
-                 '', '') within GROUP(ORDER BY object_name)
+                 ', ') within GROUP(ORDER BY object_name)
     INTO v_count,
          v_objects
     FROM user_objects
-   WHERE status = ''INVALID'';
+   WHERE status = 'INVALID';
   IF v_count > 0
   THEN
     raise_application_error(-20000,
-                            ''Found '' || v_count || '' invalid object'' || CASE
+                            'Found ' || v_count || ' invalid object' || CASE
                               WHEN v_count > 1 THEN
-                               ''s''
-                            END || '' :-( '' || v_objects);
+                               's'
+                            END || ' :-( ' || v_objects);
   END IF;
 END;
 /
 
 prompt Start frontend installation
 BEGIN
-   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( ''#APP_WORKSPACE#'' ) );
-   apex_application_install.set_application_alias( ''#APP_ALIAS#'' );
+   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( '#APP_WORKSPACE#' ) );
+   apex_application_install.set_application_alias( '#APP_ALIAS#' );
    apex_application_install.set_application_id( #APP_ID# );
-   apex_application_install.set_schema( ''#APP_OWNER#'' );
+   apex_application_install.set_schema( '#APP_OWNER#' );
    apex_application_install.generate_offset;
 END;
 /
@@ -2359,17 +2349,21 @@ prompt Call APEX frontend install script
 prompt =========================================================================
 prompt Installation DONE :-)
 prompt
-'
-        ,
+}'
+      ;
+      l_file_path       := 'scripts/template.install_app_custom_code.sql';
+      util_ilog_start(l_file_path);
+      util_export_files_append(
+        p_export_files   => l_export_files,
+        p_name           => l_file_path,
+        p_contents       => util_multi_replace(
+          l_file_template,
           '#APP_WORKSPACE#',
           l_app_workspace,
           '#APP_ALIAS#',
           l_app_alias,
           '#APP_ID#',
-            CASE
-              WHEN p_app_id IS NOT NULL THEN TO_CHAR(p_app_id)
-              ELSE '#YourAppID#'
-            END,
+          p_app_id,
           '#APP_OWNER#',
           l_app_owner
         )
