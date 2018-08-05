@@ -2,10 +2,12 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   -- CONSTANTS, TYPES
 
-  c_tab                  CONSTANT VARCHAR2(2) := chr(9);
-  c_lf                   CONSTANT VARCHAR2(2) := chr(10);
-  c_cr                   CONSTANT VARCHAR2(2) := chr(13);
+  c_tab                  CONSTANT VARCHAR2(1) := chr(9);
+  c_lf                   CONSTANT VARCHAR2(1) := chr(10);
+  c_cr                   CONSTANT VARCHAR2(1) := chr(13);
   c_crlf                 CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+  c_slash                CONSTANT VARCHAR2(1) := '/'; -- We need it to be able to compile this package via SQL*Plus. SQL*Plus starts actions
+  c_at                   CONSTANT VARCHAR2(1) := '@'; -- on these characters regardsless if they encapsulated in strings or not :-(
   c_vc2_max_size         CONSTANT PLS_INTEGER := 32767;
   
   --
@@ -67,30 +69,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
 
   -- UTILITIES
-
-  FUNCTION tab RETURN VARCHAR2
-    IS
-  BEGIN
-    RETURN c_tab;
-  END;
-
-  FUNCTION lf RETURN VARCHAR2
-    IS
-  BEGIN
-    RETURN c_lf;
-  END;
-
-  FUNCTION cr RETURN VARCHAR2
-    IS
-  BEGIN
-    RETURN c_cr;
-  END;
-
-  FUNCTION crlf RETURN VARCHAR2
-    IS
-  BEGIN
-    RETURN c_crlf;
-  END;
 
   FUNCTION util_bool_to_string (
     p_bool IN BOOLEAN
@@ -416,6 +394,26 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     RETURN l_return;
   END util_multi_replace;
 
+  FUNCTION util_set_build_status_run_only (
+    p_contents CLOB
+  ) RETURN CLOB IS
+    l_position   PLS_INTEGER;
+  BEGIN
+    l_position   := instr(
+      p_contents,
+      ',p_exact_substitutions_only'
+    );
+    RETURN substr(
+      p_contents,
+      1,
+      l_position - 1
+    ) || ',p_build_status=>''RUN_ONLY''' || c_lf || substr(
+      p_contents,
+      l_position
+    );
+
+  END util_set_build_status_run_only;
+
   PROCEDURE util_export_files_append (
     p_export_files   IN OUT NOCOPY apex_t_export_files,
     p_name           VARCHAR2,
@@ -438,8 +436,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     l_return   TIMESTAMP;
   BEGIN
     EXECUTE IMMEDIATE replace(
-      q'{SELECT systimestamp - INTERVAL '#MINUTES#' MINUTE FROM dual}',
-      '#MINUTES#',
+      q'[SELECT systimestamp - INTERVAL '{{MINUTES}}' MINUTE FROM dual]',
+      '{{MINUTES}}',
       TO_CHAR(p_as_of_minutes_ago)
     )
     INTO l_return;
@@ -854,36 +852,36 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   BEGIN
     util_g_clob_append(util_multi_replace(
       '
-#MAIN_FUNCTION# - Runtime Log
+{{MAIN_FUNCTION}} - Runtime Log
 ============================================================
 
-- Export started at #START_TIME# and took #RUN_TIME# seconds to finish
-- Unmeasured execution time because of system waits, missing log calls or log overhead was #UNMEASURED_TIME# seconds
-- The used plex version was #PLEX_VERSION#
-- More infos here: [PLEX on GitHub](#PLEX_URL#)
+- Export started at {{START_TIME}} and took {{RUN_TIME}} seconds to finish
+- Unmeasured execution time because of system waits, missing log calls or log overhead was {{UNMEASURED_TIME}} seconds
+- The used plex version was {{PLEX_VERSION}}
+- More infos here: [PLEX on GitHub]({{PLEX_URL}})
 
 '
     ,
-      '#MAIN_FUNCTION#',
+      '{{MAIN_FUNCTION}}',
       upper(g_ilog.module),
-      '#START_TIME#',
+      '{{START_TIME}}',
       TO_CHAR(
         g_ilog.start_time,
         'yyyy-mm-dd hh24:mi:ss'
       ),
-      '#RUN_TIME#',
+      '{{RUN_TIME}}',
       trim(TO_CHAR(
         g_ilog.run_time,
         '999G990D000'
       ) ),
-      '#UNMEASURED_TIME#',
+      '{{UNMEASURED_TIME}}',
       trim(TO_CHAR(
         g_ilog.unmeasured_time,
         '999G990D000000'
       ) ),
-      '#PLEX_VERSION#',
+      '{{PLEX_VERSION}}',
       c_plex_version,
-      '#PLEX_URL#',
+      '{{PLEX_URL}}',
       c_plex_url
     ) );
 
@@ -895,13 +893,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     );
     FOR i IN 1..g_ilog.data.count LOOP
       util_g_clob_append(util_multi_replace(
-        '| #STEP# | #ELAPSED# | #EXECUTION# | #ACTION# |' || lf,
-        '#STEP#',
+        '| {{STEP}} | {{ELAPSED}} | {{EXECUTION}} | {{ACTION}} |' || c_lf,
+        '{{STEP}}',
         lpad(
           TO_CHAR(i),
           4
         ),
-        '#ELAPSED#',
+        '{{ELAPSED}}',
         lpad(
           trim(TO_CHAR(
             g_ilog.data(i).elapsed,
@@ -909,7 +907,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
           ) ),
           9
         ),
-        '#EXECUTION#',
+        '{{EXECUTION}}',
         lpad(
           trim(TO_CHAR(
             g_ilog.data(i).execution,
@@ -917,7 +915,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
           ) ),
           11
         ),
-        '#ACTION#',
+        '{{ACTION}}',
         rpad(
           g_ilog.data(i).action,
           64
@@ -1070,26 +1068,27 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   -- MAIN CODE
 
   FUNCTION backapp_to_collection (
-    p_app_id                    IN NUMBER DEFAULT NULL,
-    p_app_date                  IN BOOLEAN DEFAULT true,
-    p_app_public_reports        IN BOOLEAN DEFAULT true,
-    p_app_private_reports       IN BOOLEAN DEFAULT false,
-    p_app_notifications         IN BOOLEAN DEFAULT false,
-    p_app_translations          IN BOOLEAN DEFAULT true,
-    p_app_pkg_app_mapping       IN BOOLEAN DEFAULT false,
-    p_app_original_ids          IN BOOLEAN DEFAULT true,
-    p_app_subscriptions         IN BOOLEAN DEFAULT true,
-    p_app_comments              IN BOOLEAN DEFAULT true,
-    p_app_supporting_objects    IN VARCHAR2 DEFAULT NULL,
-    p_app_include_single_file   IN BOOLEAN DEFAULT false,
-    p_include_object_ddl        IN BOOLEAN DEFAULT true,
-    p_object_filter_regex       IN VARCHAR2 DEFAULT NULL,
-    p_include_data              IN BOOLEAN DEFAULT false,
-    p_data_as_of_minutes_ago    IN NUMBER DEFAULT 0,
-    p_data_max_rows             IN NUMBER DEFAULT 1000,
-    p_data_table_filter_regex   IN VARCHAR2 DEFAULT NULL,
-    p_include_templates         IN BOOLEAN DEFAULT true,
-    p_include_runtime_log       IN BOOLEAN DEFAULT true
+    p_app_id                      IN NUMBER DEFAULT NULL,
+    p_app_date                    IN BOOLEAN DEFAULT true,
+    p_app_public_reports          IN BOOLEAN DEFAULT true,
+    p_app_private_reports         IN BOOLEAN DEFAULT false,
+    p_app_notifications           IN BOOLEAN DEFAULT false,
+    p_app_translations            IN BOOLEAN DEFAULT true,
+    p_app_pkg_app_mapping         IN BOOLEAN DEFAULT false,
+    p_app_original_ids            IN BOOLEAN DEFAULT true,
+    p_app_subscriptions           IN BOOLEAN DEFAULT true,
+    p_app_comments                IN BOOLEAN DEFAULT true,
+    p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
+    p_app_include_single_file     IN BOOLEAN DEFAULT false,
+    p_app_build_status_run_only   IN BOOLEAN DEFAULT false,
+    p_include_object_ddl          IN BOOLEAN DEFAULT true,
+    p_object_filter_regex         IN VARCHAR2 DEFAULT NULL,
+    p_include_data                IN BOOLEAN DEFAULT false,
+    p_data_as_of_minutes_ago      IN NUMBER DEFAULT 0,
+    p_data_max_rows               IN NUMBER DEFAULT 1000,
+    p_data_table_filter_regex     IN VARCHAR2 DEFAULT NULL,
+    p_include_templates           IN BOOLEAN DEFAULT true,
+    p_include_runtime_log         IN BOOLEAN DEFAULT true
   ) RETURN apex_t_export_files IS
 
     l_apex_version     NUMBER;
@@ -1186,7 +1185,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         -- relocate files to own project structure
         l_export_files(i).name       := replace(
           l_export_files(i).name,
-          'f100/application/',
+          'f' || p_app_id || '/application/',
           'app_frontend/'
         );
         -- correct prompts for relocation
@@ -1199,10 +1198,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         -- special handling for install file
 
         IF
-          l_export_files(i).name = 'f100/install.sql'
+          l_export_files(i).name = 'f' || p_app_id || '/install.sql'
         THEN
           l_export_files(i).name       := 'scripts/install_frontend_generated_by_apex.sql';
-          l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || lf || lf
+          l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || c_lf || c_lf
           || replace(
             replace(
               l_export_files(i).contents,
@@ -1213,6 +1212,14 @@ CREATE OR REPLACE PACKAGE BODY plex IS
             'prompt --install_frontend_generated_by_apex'
           );
 
+        END IF;
+        
+        -- handle build status RUN_ONLY
+
+        IF
+          l_export_files(i).name = 'app_frontend/create_application.sql' AND p_app_build_status_run_only
+        THEN
+          l_export_files(i).contents   := util_set_build_status_run_only(l_export_files(i).contents);
         END IF;
 
       END LOOP;
@@ -1242,6 +1249,12 @@ CREATE OR REPLACE PACKAGE BODY plex IS
           p_with_supporting_objects   => p_app_supporting_objects
         );
 
+        IF
+          p_app_build_status_run_only
+        THEN
+          l_single_file(1).contents   := util_set_build_status_run_only(l_single_file(1).contents);
+        END IF;
+
         util_export_files_append(
           p_export_files   => l_export_files,
           p_name           => 'app_frontend/' || l_single_file(1).name,
@@ -1261,46 +1274,45 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       BEGIN
         l_file_path   := 'app_backend/_user/' || l_current_user || '.sql';
         util_ilog_start(l_file_path);
-        l_contents    := q'{
+        l_contents    := replace(
+          q'^
 BEGIN 
-  FOR i IN (SELECT '#CURRENT_USER#' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
+  FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
     EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
-#DDL#
---------------------------------------------------------------------------------
-    ]';
-  END LOOP;
-END;
-/
-}'
-        ;
-        l_contents    := replace(
-          l_contents,
-          '#CURRENT_USER#',
+^'
+        ,
+          '{{CURRENT_USER}}',
           l_current_user
         );
+        --
         util_setup_dbms_metadata(p_sqlterminator   => false);
         BEGIN
-          l_contents   := replace(
-            l_contents,
-            '#DDL#',
-            dbms_metadata.get_ddl(
-              'USER',
-              l_current_user
-            )
+          l_contents   := l_contents || dbms_metadata.get_ddl(
+            'USER',
+            l_current_user
           );
         EXCEPTION
           WHEN OTHERS THEN
             exception_occured   := true;
             util_ilog_append_action_text(' ' || sqlerrm);
-            l_contents          := replace(
-              l_contents,
-              '#DDL#',
-              sqlerrm
-            );
+            l_contents          := l_contents || sqlerrm;
         END;
 
         util_setup_dbms_metadata;
+        --
+        l_contents    := l_contents || replace(
+          q'^
+--------------------------------------------------------------------------------
+    ]'
+  END LOOP;
+END;
+{{SLASH}}
+^'
+        ,
+          '{{SLASH}}',
+          c_slash
+        );
         util_export_files_append(
           p_export_files   => l_export_files,
           p_name           => l_file_path,
@@ -1567,7 +1579,7 @@ Please have a look in these files and check for errors.
                   l_position - 1
                 )
               END,
-              ' ' || lf
+              ' ' || c_lf
             );
 
             util_export_files_append(
@@ -1632,7 +1644,7 @@ Please have a look in these files and check for errors.
                 1,
                 'im'
               ),
-              ' ' || lf
+              ' ' || c_lf
             );
 
             util_export_files_append(
@@ -1647,36 +1659,36 @@ Please have a look in these files and check for errors.
             'SEQUENCE'
           ) THEN
             util_setup_dbms_metadata(p_sqlterminator   => false);
-            l_contents   := q'{
+            l_contents   := replace(
+              q'^
 BEGIN
-  FOR i IN (SELECT '#OBJECT_NAME#' AS object_name FROM dual 
+  FOR i IN (SELECT '{{OBJECT_NAME}}' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
     EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
-#DDL#
+^'
+            ,
+              '{{OBJECT_NAME}}',
+              l_rec.object_name
+            ) || dbms_metadata.get_ddl(
+              object_type   => l_rec.object_type,
+              name          => l_rec.object_name,
+              schema        => l_current_user
+            ) || replace(
+              q'^
 --------------------------------------------------------------------------------
     ]';
   END LOOP;
 END;
-/
+{{SLASH}}
 
 -- Put your ALTER statements below in the same style as before to ensure that
 -- the script is restartable.
-}'
-            ;
-            l_contents   := replace(
-              replace(
-                l_contents,
-                '#OBJECT_NAME#',
-                l_rec.object_name
-              ),
-              '#DDL#',
-              dbms_metadata.get_ddl(
-                object_type   => l_rec.object_type,
-                name          => l_rec.object_name,
-                schema        => l_current_user
-              )
+^'
+            ,
+              '{{SLASH}}',
+              c_slash
             );
 
             util_export_files_append(
@@ -1777,32 +1789,32 @@ END;
         EXIT WHEN l_cur%notfound;
         util_ilog_start(l_rec.file_path);
         util_setup_dbms_metadata(p_sqlterminator   => false);
-        l_contents                                                           := q'{
+        l_contents                                                           := replace(
+          q'^
 BEGIN
-  FOR i IN (SELECT '#CONSTRAINT_NAME#' AS constraint_name FROM dual
+  FOR i IN (SELECT '{{CONSTRAINT_NAME}}' AS constraint_name FROM dual
             MINUS
             SELECT constraint_name FROM user_constraints) LOOP
     EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
-#DDL#
+^'
+        ,
+          '{{CONSTRAINT_NAME}}',
+          l_rec.constraint_name
+        ) || dbms_metadata.get_ddl(
+          'REF_CONSTRAINT',
+          l_rec.constraint_name
+        ) || replace(
+          q'^ 
 --------------------------------------------------------------------------------
     ]';
   END LOOP;
 END;
-/
-}'
-        ;
-        l_contents                                                           := replace(
-          replace(
-            l_contents,
-            '#CONSTRAINT_NAME#',
-            l_rec.constraint_name
-          ),
-          '#DDL#',
-          dbms_metadata.get_ddl(
-            'REF_CONSTRAINT',
-            l_rec.constraint_name
-          )
+{{SLASH}}
+^'
+        ,
+          '{{SLASH}}',
+          c_slash
         );
 
         util_setup_dbms_metadata(p_sqlterminator   => true);
@@ -1830,19 +1842,20 @@ END;
           p_file_path,
           '.sql',
           NULL
-        ) || lf || '@' || '../' || p_file_path || lf || lf;
+        ) || c_lf || '@' || '../' || p_file_path || c_lf || c_lf;
       END get_script_line;
 
     BEGIN
-    
+
+      
     -- file one
       l_file_path   := 'scripts/install_backend_generated_by_plex.sql';
       util_ilog_start(l_file_path);
       util_g_clob_createtemporary;
-      util_g_clob_append('-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || lf || lf || 'set define off verify off feedback off'
-      || lf || 'whenever sqlerror exit sql.sqlcode rollback' || lf || lf);
+      util_g_clob_append('-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || c_lf || c_lf || 'set define off verify off feedback off'
+      || c_lf || 'whenever sqlerror exit sql.sqlcode rollback' || c_lf || c_lf);
 
-      util_g_clob_append('prompt --install_backend_generated_by_plex' || lf || lf);
+      util_g_clob_append('prompt --install_backend_generated_by_plex' || c_lf || c_lf);
       FOR i IN 1..l_ddl_files.sequences_.count LOOP
         util_g_clob_append(get_script_line(l_ddl_files.sequences_(i) ) );
       END LOOP;
@@ -1984,7 +1997,7 @@ END;
     PROCEDURE create_template_files IS
       l_file_template   VARCHAR2(32767 CHAR);
     BEGIN
-      l_file_template   := q'{
+      l_file_template   := q'^
 Your Global README File
 =======================
       
@@ -1997,10 +2010,8 @@ Markdown when writing your content - this has many benefits and you don't
 waist time by formatting your docs. If you are unsure have a look at some 
 projects at [Github](https://github.com) or any other code hosting platform.
 
-Have also a look at the provided install scripts - these could be a starting
-point for you to do basic scripting. If you have already some sort of CI/CD
-up and running then ignore simply the files. Depending on your options when
-calling `plex.backapp` these files are generated for you:
+Depending on your options when calling `plex.backapp` these files are generated
+for you:
 
 - scripts/install_backend_generated_by_plex.sql
 - scripts/install_frontend_generated_by_apex.sql
@@ -2010,18 +2021,18 @@ plex call. If you need to do modifications for the install process then have
 a look at the following templates - they call the generated files and you
 can do your own stuff before or after the calls.
 
-- scripts/template.1_export_app_from_DEV.bat
-- scripts/template.2_install_app_into_TEST.bat
-- scripts/template.3_install_app_into_PROD.bat
-- scripts/template.export_app_custom_code.sql
-- scripts/template.install_app_custom_code.sql
+- scripts/templates/1_export_app_from_DEV.bat
+- scripts/templates/2_install_app_into_TEST.bat
+- scripts/templates/3_install_app_into_PROD.bat
+- scripts/templates/export_app_custom_code.sql
+- scripts/templates/install_app_custom_code.sql
 
-If you want to use these files please make a copy of it without the `template.`
-portion and modify it to your needs. Doing it this way your changes are 
+If you want to use these files please make a copy into the scripts directory
+and modify it to your needs. Doing it this way your changes are 
 overwrite save.
 
-[Feedback is welcome](#PLEX_URL#/issues/new)
-}'
+[Feedback is welcome]({{PLEX_URL}}/issues/new)
+^'
       ;
       l_file_path       := 'template.README.md';
       util_ilog_start(l_file_path);
@@ -2030,142 +2041,196 @@ overwrite save.
         p_name           => l_file_path,
         p_contents       => replace(
           l_file_template,
-          '#PLEX_URL#',
+          '{{PLEX_URL}}',
           c_plex_url
         )
       );
 
       util_ilog_stop;
-      l_file_template   := q'{
-echo off
+      l_file_template   := q'^
+rem Template generated by PLEX version {{PLEX_VERSION}} - more infos here: {{PLEX_URL}}
+{{AT}}echo off
 setlocal
-set systemrole=#SYSTEMROLE#
-set connection=localhost:1521/orcl
-set schema=#APP_OWNER#
-set app_id=#APP_ID#
-set areyousure=N
+set "areyousure=N"
 
-rem align delimiters to your os locale
-for /f "tokens=1-3 delims=. " %%a in ('date /t') do (set mydate=%%c%%b%%a)
-for /f "tokens=1-2 delims=:"  %%a in ('time /t') do (set mytime=%%a%%b)
+rem ### BEGIN CONFIG ###########################################################
+rem Align delimiters to your operating system locale:
+for /f "tokens=1-3 delims=. " %%a in ("%DATE%") do (set "mydate=%%c%%b%%a")
+for /f "tokens=1-3 delims=:." %%a in ("%TIME: =0%") do (set "mytime=%%a%%b%%c")
+set "systemrole={{SYSTEMROLE}}"
+set "connection=localhost:1521/orcl"
+set "scriptfile={{SCRIPTFILE}}"
+set "app_id={{APP_ID}}"
+set "app_alias={{APP_ALIAS}}"
+set "app_schema={{APP_OWNER}}"
+set "app_workspace={{APP_WORKSPACE}}"
+set "logfile={{LOGFILE}}"
+rem ### END CONFIG #############################################################
 
 :PROMPT
 echo.
-echo. 
-set /p areyousure=#AREYOUSURE#
-
+echo.
+set /p "areyousure=Run %scriptfile% on %app_schema%@%systemrole%(%connection%) [Y/N]? " || set "areyousure=N"
 if /i %areyousure% neq y goto END
-set NLS_LANG=AMERICAN_AMERICA.AL32UTF8
-set /p password=Please enter password for %schema% on %systemrole%:
-echo exit | sqlplus -S %schema%/%password%@%connection% ^
-  @#SCRIPT# ^
+set NLS_LANG=AMERICAN_AMERICA.UTF8
+set /p "password=Please enter password for %app_schema% [default = oracle]: " || set "password=oracle"
+echo This is the runlog for %scriptfile% on %app_schema%@%systemrole%(%connection%) > %logfile%
+echo exit | sqlplus -S %app_schema%/%password%@%connection% ^
+  {{AT}}%scriptfile% ^
+  %logfile% ^
   %app_id% ^
-  %systemrole% ^
-  %mydate% ^
-  %mytime%
+  %app_alias% ^
+  %app_schema% ^
+  %app_workspace%
+
+if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-( >> %logfile%
+if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-(
 
 :END
+rem Remove "pause" for fully automated setup:
 pause
-}'
+if %errorlevel% neq 0 exit /b %errorlevel%
+^'
       ;
-      l_file_path       := 'scripts/template.1_export_app_from_DEV.bat';
+      l_file_path       := 'scripts/templates/1_export_app_from_DEV.bat';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => util_multi_replace(
           l_file_template,
-          '#SYSTEMROLE#',
+          '{{PLEX_VERSION}}',
+          c_plex_version,
+          '{{PLEX_URL}}',
+          c_plex_url,
+          '{{SYSTEMROLE}}',
           'DEV',
-          '#APP_OWNER#',
-          l_app_owner,
-          '#APP_ID#',
+          '{{APP_ID}}',
           p_app_id,
-          '#AREYOUSURE#',
-          'Export %schema% app %app_id% from %systemrole% (Y/N)?',
-          '#SCRIPT#',
-          'export_app_custom_code.sql'
+          '{{APP_ALIAS}}',
+          l_app_alias,
+          '{{APP_OWNER}}',
+          l_app_owner,
+          '{{APP_WORKSPACE}}',
+          l_app_workspace,
+          '{{SCRIPTFILE}}',
+          'export_app_custom_code.sql',
+          '{{LOGFILE}}',
+          'logs/export_app_%app_id%_from_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+          '{{AT}}',
+          c_at
         )
       );
 
       util_ilog_stop;
 
       --
-      l_file_path       := 'scripts/template.2_install_app_into_TEST.bat';
+      l_file_path       := 'scripts/templates/2_install_app_into_TEST.bat';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => util_multi_replace(
           l_file_template,
-          '#SYSTEMROLE#',
+          '{{PLEX_VERSION}}',
+          c_plex_version,
+          '{{PLEX_URL}}',
+          c_plex_url,
+          '{{SYSTEMROLE}}',
           'TEST',
-          '#APP_OWNER#',
-          l_app_owner,
-          '#APP_ID#',
+          '{{APP_ID}}',
           p_app_id,
-          '#AREYOUSURE#',
-          'Install %schema% app %app_id% into %systemrole% (Y/N)?',
-          '#SCRIPT#',
-          'install_app_custom_code.sql'
+          '{{APP_ALIAS}}',
+          l_app_alias,
+          '{{APP_OWNER}}',
+          l_app_owner,
+          '{{APP_WORKSPACE}}',
+          l_app_workspace,
+          '{{SCRIPTFILE}}',
+          'install_app_custom_code.sql',
+          '{{LOGFILE}}',
+          'logs/install_app_%app_id%_into_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+          '{{AT}}',
+          c_at
         )
       );
 
       util_ilog_stop;
 
       --
-      l_file_path       := 'scripts/template.3_install_app_into_PROD.bat';
+      l_file_path       := 'scripts/templates/3_install_app_into_PROD.bat';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => util_multi_replace(
           l_file_template,
-          '#SYSTEMROLE#',
+          '{{PLEX_VERSION}}',
+          c_plex_version,
+          '{{PLEX_URL}}',
+          c_plex_url,
+          '{{SYSTEMROLE}}',
           'PROD',
-          '#APP_OWNER#',
-          l_app_owner,
-          '#APP_ID#',
+          '{{APP_ID}}',
           p_app_id,
-          '#AREYOUSURE#',
-          'Install %schema% app %app_id% into %systemrole% (Y/N)?',
-          '#SCRIPT#',
-          'install_app_custom_code.sql'
+          '{{APP_ALIAS}}',
+          l_app_alias,
+          '{{APP_OWNER}}',
+          l_app_owner,
+          '{{APP_WORKSPACE}}',
+          l_app_workspace,
+          '{{SCRIPTFILE}}',
+          'install_app_custom_code.sql',
+          '{{LOGFILE}}',
+          'logs/install_app_%app_id%_into_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+          '{{AT}}',
+          c_at
         )
       );
 
       util_ilog_stop;
 
       --
-      l_file_template   := q'{
+      l_file_template   := q'^
+-- Template generated by PLEX version {{PLEX_VERSION}} - more infos here: {{PLEX_URL}}
 set verify off feedback off heading off 
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
-
--- https://blogs.oracle.com/opal/sqlplus-101-substitution-variables
-define logfile = "logs/export_app_&1._from_&2._&3._&4..log"
-spool "&logfile." replace
+whenever oserror exit failure rollback
+define logfile = "&1"
+spool "&logfile" append
+variable app_id        varchar2(100)
+variable app_alias     varchar2(100)
+variable app_schema    varchar2(100)
+variable app_workspace varchar2(100)
+begin
+  :app_id        := &2;
+  :app_alias     := '&3';
+  :app_schema    := '&4';
+  :app_workspace := '&5';
+end;
+{{SLASH}}
 
 
 prompt
-prompt Start frontend export of app &1. from &2.
+prompt Start Export
 prompt =========================================================================
 prompt Create global temporary table temp_export_files if not exist
 BEGIN
   FOR i IN (SELECT 'TEMP_EXPORT_FILES' AS object_name FROM dual 
             MINUS
             SELECT object_name FROM user_objects) LOOP
-    EXECUTE IMMEDIATE q'[
+    EXECUTE IMMEDIATE '
 --------------------------------------------------------------------------------
 CREATE GLOBAL TEMPORARY TABLE temp_export_files (
   name       VARCHAR2(255),
   contents   CLOB
 ) ON COMMIT DELETE ROWS
 --------------------------------------------------------------------------------
-    ]';
+    ';
   END LOOP;
 END;
-/
+{{SLASH}}
 
 
 prompt Do the app export, relocate files and save to temporary table
@@ -2174,29 +2239,30 @@ DECLARE
 BEGIN
   l_files   := plex.backapp_to_collection (
   -- These are the defaults - align it to your needs:
-  p_app_id                  => &1.,
-  p_app_date                => true,
-  p_app_public_reports      => true,
-  p_app_private_reports     => false,
-  p_app_notifications       => false,
-  p_app_translations        => true,
-  p_app_pkg_app_mapping     => false,
-  p_app_original_ids        => true,
-  p_app_subscriptions       => true,
-  p_app_comments            => true,
-  p_app_supporting_objects  => null,
-  p_app_include_single_file => false,
+  p_app_id                    => :app_id,
+  p_app_date                  => true,
+  p_app_public_reports        => true,
+  p_app_private_reports       => false,
+  p_app_notifications         => false,
+  p_app_translations          => true,
+  p_app_pkg_app_mapping       => false,
+  p_app_original_ids          => true,
+  p_app_subscriptions         => true,
+  p_app_comments              => true,
+  p_app_supporting_objects    => null,
+  p_app_include_single_file   => false,
+  p_app_build_status_run_only => false,
 
-  p_include_object_ddl      => true,
-  p_object_filter_regex     => null,
+  p_include_object_ddl        => true,
+  p_object_filter_regex       => null,
 
-  p_include_data            => false,
-  p_data_as_of_minutes_ago  => 0,
-  p_data_max_rows           => 1000,
-  p_data_table_filter_regex => null,
+  p_include_data              => false,
+  p_data_as_of_minutes_ago    => 0,
+  p_data_max_rows             => 1000,
+  p_data_table_filter_regex   => null,
 
-  p_include_templates       => true,
-  p_include_runtime_log     => true );
+  p_include_templates         => true,
+  p_include_runtime_log       => true );
 
   -- relocate files to own project structure, we are inside the scripts folder
   FOR i IN 1..l_files.count LOOP
@@ -2209,7 +2275,7 @@ BEGIN
       l_files(i).contents
     );
 END;
-/
+{{SLASH}}
 
 
 prompt Create intermediate script file to unload the table contents into files
@@ -2254,7 +2320,7 @@ BEGIN
   END LOOP;
  
 END;
-/
+{{SLASH}}
 spool off
 set termout on serveroutput off
 spool "&logfile." append
@@ -2262,10 +2328,9 @@ spool "&logfile." append
 
 prompt Call the intermediate script file to save the files
 spool off
-@logs/temp_export_files.sql
+{{AT}}logs/temp_export_files.sql
 set termout on serveroutput off
 spool "&logfile." append
-
 
 prompt Delete files from the global temporary table
 COMMIT;
@@ -2274,31 +2339,59 @@ COMMIT;
 prompt =========================================================================
 prompt Export DONE :-) 
 prompt
-}'
+^'
       ;
-      l_file_path       := 'scripts/template.export_app_custom_code.sql';
+      l_file_path       := 'scripts/templates/export_app_custom_code.sql';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
-        p_contents       => l_file_template
+        p_contents       => util_multi_replace(
+          l_file_template,
+          '{{PLEX_VERSION}}',
+          c_plex_version,
+          '{{PLEX_URL}}',
+          c_plex_url,
+          '{{SLASH}}',
+          '/',
+          '{{AT}}',
+          c_at
+        )
       );
+
       util_ilog_stop;
 
       --
-      l_file_template   := q'{
-spool "logs/install_app_&1._into_&2._&3._&4..log"
+      l_file_template   := q'^
+-- Template generated by PLEX version {{PLEX_VERSION}} - more infos here: {{PLEX_URL}}
+set define on verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+whenever oserror exit failure rollback
+define logfile = "&1"
+spool "&logfile" append
+variable app_id        varchar2(100)
+variable app_alias     varchar2(100)
+variable app_schema    varchar2(100)
+variable app_workspace varchar2(100)
+begin
+  :app_id        := &2;
+  :app_alias     := '&3';
+  :app_schema    := '&4';
+  :app_workspace := '&5';
+end;
+{{SLASH}}
+set define off
+
 
 prompt 
-prompt Start installation of app &1. into &2.
+prompt Start Installation
 prompt =========================================================================
 prompt Start backend installation
 
-set define off verify off feedback off
-whenever sqlerror exit sql.sqlcode rollback
 
 prompt Call PLEX backend install script
-@install_backend_generated_by_plex.sql
+{{AT}}install_backend_generated_by_plex.sql
+
 
 prompt Compile invalid objects
 BEGIN
@@ -2308,7 +2401,8 @@ BEGIN
     reuse_settings   => true
   );
 END;
-/
+{{SLASH}}
+
 
 prompt Check invalid objects
 DECLARE
@@ -2331,41 +2425,44 @@ BEGIN
                             END || ' :-( ' || v_objects);
   END IF;
 END;
-/
+{{SLASH}}
+
 
 prompt Start frontend installation
 BEGIN
-   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( '#APP_WORKSPACE#' ) );
-   apex_application_install.set_application_alias( '#APP_ALIAS#' );
-   apex_application_install.set_application_id( #APP_ID# );
-   apex_application_install.set_schema( '#APP_OWNER#' );
+   apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( :app_workspace ) );
+   apex_application_install.set_application_alias( :app_alias );
+   apex_application_install.set_application_id( :app_id );
+   apex_application_install.set_schema( :app_schema );
    apex_application_install.generate_offset;
 END;
-/
+{{SLASH}}
+
 
 prompt Call APEX frontend install script
-@install_frontend_generated_by_APEX.sql
+{{AT}}install_frontend_generated_by_APEX.sql
+
 
 prompt =========================================================================
 prompt Installation DONE :-)
 prompt
-}'
+^'
       ;
-      l_file_path       := 'scripts/template.install_app_custom_code.sql';
+      l_file_path       := 'scripts/templates/install_app_custom_code.sql';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => util_multi_replace(
           l_file_template,
-          '#APP_WORKSPACE#',
-          l_app_workspace,
-          '#APP_ALIAS#',
-          l_app_alias,
-          '#APP_ID#',
-          p_app_id,
-          '#APP_OWNER#',
-          l_app_owner
+          '{{PLEX_VERSION}}',
+          c_plex_version,
+          '{{PLEX_URL}}',
+          c_plex_url,
+          '{{SLASH}}',
+          '/',
+          '{{AT}}',
+          c_at
         )
       );
 
@@ -2377,7 +2474,7 @@ prompt
     PROCEDURE create_directory_keepers IS
       l_the_point   VARCHAR2(30) := '. < this is the point ;-)';
     BEGIN
-      l_file_path   := 'docs/_save_your_docs_here';
+      l_file_path   := 'docs/_save_your_docs_here.txt';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
@@ -2387,7 +2484,7 @@ prompt
       util_ilog_stop;
 
       --
-      l_file_path   := 'scripts/logs/_spool_your_script_logs_here';
+      l_file_path   := 'scripts/logs/_spool_your_script_logs_here.txt';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
@@ -2397,7 +2494,7 @@ prompt
       util_ilog_stop;
 
       --
-      l_file_path   := 'tests/_save_your_tests_here';
+      l_file_path   := 'tests/_save_your_tests_here.txt';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
@@ -2471,26 +2568,27 @@ prompt
   END backapp_to_collection;
 
   FUNCTION backapp_to_zip (
-    p_app_id                    IN NUMBER DEFAULT NULL,
-    p_app_date                  IN BOOLEAN DEFAULT true,
-    p_app_public_reports        IN BOOLEAN DEFAULT true,
-    p_app_private_reports       IN BOOLEAN DEFAULT false,
-    p_app_notifications         IN BOOLEAN DEFAULT false,
-    p_app_translations          IN BOOLEAN DEFAULT true,
-    p_app_pkg_app_mapping       IN BOOLEAN DEFAULT false,
-    p_app_original_ids          IN BOOLEAN DEFAULT true,
-    p_app_subscriptions         IN BOOLEAN DEFAULT true,
-    p_app_comments              IN BOOLEAN DEFAULT true,
-    p_app_supporting_objects    IN VARCHAR2 DEFAULT NULL,
-    p_app_include_single_file   IN BOOLEAN DEFAULT false,
-    p_include_object_ddl        IN BOOLEAN DEFAULT true,
-    p_object_filter_regex       IN VARCHAR2 DEFAULT NULL,
-    p_include_data              IN BOOLEAN DEFAULT false,
-    p_data_as_of_minutes_ago    IN NUMBER DEFAULT 0,
-    p_data_max_rows             IN NUMBER DEFAULT 1000,
-    p_data_table_filter_regex   IN VARCHAR2 DEFAULT NULL,
-    p_include_templates         IN BOOLEAN DEFAULT true,
-    p_include_runtime_log       IN BOOLEAN DEFAULT true
+    p_app_id                      IN NUMBER DEFAULT NULL,
+    p_app_date                    IN BOOLEAN DEFAULT true,
+    p_app_public_reports          IN BOOLEAN DEFAULT true,
+    p_app_private_reports         IN BOOLEAN DEFAULT false,
+    p_app_notifications           IN BOOLEAN DEFAULT false,
+    p_app_translations            IN BOOLEAN DEFAULT true,
+    p_app_pkg_app_mapping         IN BOOLEAN DEFAULT false,
+    p_app_original_ids            IN BOOLEAN DEFAULT true,
+    p_app_subscriptions           IN BOOLEAN DEFAULT true,
+    p_app_comments                IN BOOLEAN DEFAULT true,
+    p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
+    p_app_include_single_file     IN BOOLEAN DEFAULT false,
+    p_app_build_status_run_only   IN BOOLEAN DEFAULT false,
+    p_include_object_ddl          IN BOOLEAN DEFAULT true,
+    p_object_filter_regex         IN VARCHAR2 DEFAULT NULL,
+    p_include_data                IN BOOLEAN DEFAULT false,
+    p_data_as_of_minutes_ago      IN NUMBER DEFAULT 0,
+    p_data_max_rows               IN NUMBER DEFAULT 1000,
+    p_data_table_filter_regex     IN VARCHAR2 DEFAULT NULL,
+    p_include_templates           IN BOOLEAN DEFAULT true,
+    p_include_runtime_log         IN BOOLEAN DEFAULT true
   ) RETURN BLOB IS
 
     l_zip            BLOB;

@@ -46,36 +46,36 @@ BEGIN
   
   -- do something with the files collection
 END;
-/
 ```
 
 SIGNATURE
 
 ```sql
 FUNCTION backapp_to_collection (
-  p_app_id                  IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
-  p_app_date                IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
-  p_app_public_reports      IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
-  p_app_private_reports     IN BOOLEAN  DEFAULT false, -- If true, include private reports that a user saved.
-  p_app_notifications       IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
-  p_app_translations        IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
-  p_app_pkg_app_mapping     IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
-  p_app_original_ids        IN BOOLEAN  DEFAULT true,  -- If true, export with the IDs as they were when the application was imported.
-  p_app_subscriptions       IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
-  p_app_comments            IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
-  p_app_supporting_objects  IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
-  p_app_include_single_file IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
+  p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
+  p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
+  p_app_public_reports        IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
+  p_app_private_reports       IN BOOLEAN  DEFAULT false, -- If true, include private reports that a user saved.
+  p_app_notifications         IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
+  p_app_translations          IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
+  p_app_pkg_app_mapping       IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
+  p_app_original_ids          IN BOOLEAN  DEFAULT true,  -- If true, export with the IDs as they were when the application was imported.
+  p_app_subscriptions         IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
+  p_app_comments              IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
+  p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
+  p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
+  p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
 
-  p_include_object_ddl      IN BOOLEAN  DEFAULT true,  -- If true, include DDL of current user/schema and all its objects.
-  p_object_filter_regex     IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the provided object prefix.
+  p_include_object_ddl        IN BOOLEAN  DEFAULT true,  -- If true, include DDL of current user/schema and all its objects.
+  p_object_filter_regex       IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the provided object prefix.
 
-  p_include_data            IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
-  p_data_as_of_minutes_ago  IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
-  p_data_max_rows           IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
-  p_data_table_filter_regex IN VARCHAR2 DEFAULT null,  -- Filter user_tables with the given regular expression.
+  p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
+  p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
+  p_data_max_rows             IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
+  p_data_table_filter_regex   IN VARCHAR2 DEFAULT null,  -- Filter user_tables with the given regular expression.
 
-  p_include_templates       IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
-  p_include_runtime_log     IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
+  p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
 ) RETURN apex_t_export_files;
 ```
 
@@ -103,36 +103,36 @@ BEGIN
   
   -- do something with the zip file
 END;
-/
 ```
 
 SIGNATURE
 
 ```sql
 FUNCTION backapp_to_zip (
-  p_app_id                  IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
-  p_app_date                IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
-  p_app_public_reports      IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
-  p_app_private_reports     IN BOOLEAN  DEFAULT false, -- If true, include private reports that a user saved.
-  p_app_notifications       IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
-  p_app_translations        IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
-  p_app_pkg_app_mapping     IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
-  p_app_original_ids        IN BOOLEAN  DEFAULT true,  -- If true, export with the IDs as they were when the application was imported.
-  p_app_subscriptions       IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
-  p_app_comments            IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
-  p_app_supporting_objects  IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
-  p_app_include_single_file IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
+  p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
+  p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
+  p_app_public_reports        IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
+  p_app_private_reports       IN BOOLEAN  DEFAULT false, -- If true, include private reports that a user saved.
+  p_app_notifications         IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
+  p_app_translations          IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
+  p_app_pkg_app_mapping       IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
+  p_app_original_ids          IN BOOLEAN  DEFAULT true,  -- If true, export with the IDs as they were when the application was imported.
+  p_app_subscriptions         IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
+  p_app_comments              IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
+  p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
+  p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
+  p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
 
-  p_include_object_ddl      IN BOOLEAN  DEFAULT true,  -- If true, include DDL of current user/schema and all its objects.
-  p_object_filter_regex     IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the provided object prefix.
+  p_include_object_ddl        IN BOOLEAN  DEFAULT true,  -- If true, include DDL of current user/schema and all its objects.
+  p_object_filter_regex       IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the provided object prefix.
 
-  p_include_data            IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
-  p_data_as_of_minutes_ago  IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
-  p_data_max_rows           IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
-  p_data_table_filter_regex IN VARCHAR2 DEFAULT null,  -- Filter user_tables with the given regular expression.
+  p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
+  p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
+  p_data_max_rows             IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
+  p_data_table_filter_regex   IN VARCHAR2 DEFAULT null,  -- Filter user_tables with the given regular expression.
 
-  p_include_templates       IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
-  p_include_runtime_log     IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
+  p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
 ) RETURN BLOB;
 ```
 
@@ -152,7 +152,6 @@ BEGIN
     p_file_name   => 'user_tables'
   );
 END;
-/
 ```
 
 SIGNATURE
@@ -195,7 +194,6 @@ BEGIN
   -- do something with the file collection...
 
 END;
-/
 ```
 
 SIGNATURE
@@ -239,7 +237,6 @@ BEGIN
   -- do something with the zip file...
 
 END;
-/
 ```
 
 SIGNATURE
