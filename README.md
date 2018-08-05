@@ -18,7 +18,7 @@ STANDARDS
 
 DEPENDENCIES
 
-- APEX 5.1.4 because we use the some APEX packages (APEX_EXPORT exists since 5.1.4)
+- APEX 5.1.4 because we use the APEX_EXPORT package
 
 [Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 

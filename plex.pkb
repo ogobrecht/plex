@@ -170,23 +170,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_11_find         VARCHAR2 DEFAULT NULL,
     p_11_replace      VARCHAR2 DEFAULT NULL,
     p_12_find         VARCHAR2 DEFAULT NULL,
-    p_12_replace      VARCHAR2 DEFAULT NULL,
-    p_13_find         VARCHAR2 DEFAULT NULL,
-    p_13_replace      VARCHAR2 DEFAULT NULL,
-    p_14_find         VARCHAR2 DEFAULT NULL,
-    p_14_replace      VARCHAR2 DEFAULT NULL,
-    p_15_find         VARCHAR2 DEFAULT NULL,
-    p_15_replace      VARCHAR2 DEFAULT NULL,
-    p_16_find         VARCHAR2 DEFAULT NULL,
-    p_16_replace      VARCHAR2 DEFAULT NULL,
-    p_17_find         VARCHAR2 DEFAULT NULL,
-    p_17_replace      VARCHAR2 DEFAULT NULL,
-    p_18_find         VARCHAR2 DEFAULT NULL,
-    p_18_replace      VARCHAR2 DEFAULT NULL,
-    p_19_find         VARCHAR2 DEFAULT NULL,
-    p_19_replace      VARCHAR2 DEFAULT NULL,
-    p_20_find         VARCHAR2 DEFAULT NULL,
-    p_20_replace      VARCHAR2 DEFAULT NULL
+    p_12_replace      VARCHAR2 DEFAULT NULL
   ) RETURN VARCHAR2 IS
     l_return   VARCHAR2(32767);
   BEGIN
@@ -308,86 +292,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         l_return,
         p_12_find,
         p_12_replace
-      );
-    END IF;
-
-    IF
-      p_13_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_13_find,
-        p_13_replace
-      );
-    END IF;
-
-    IF
-      p_14_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_14_find,
-        p_14_replace
-      );
-    END IF;
-
-    IF
-      p_15_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_15_find,
-        p_15_replace
-      );
-    END IF;
-
-    IF
-      p_16_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_16_find,
-        p_16_replace
-      );
-    END IF;
-
-    IF
-      p_17_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_17_find,
-        p_17_replace
-      );
-    END IF;
-
-    IF
-      p_18_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_18_find,
-        p_18_replace
-      );
-    END IF;
-
-    IF
-      p_19_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_19_find,
-        p_19_replace
-      );
-    END IF;
-
-    IF
-      p_20_find IS NOT NULL
-    THEN
-      l_return   := replace(
-        l_return,
-        p_20_find,
-        p_20_replace
       );
     END IF;
 
