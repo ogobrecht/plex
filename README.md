@@ -8,19 +8,19 @@ PLEX - PL/SQL Export Utilities
 - [Queries_to_csv_zip](#queries_to_csv_zip) - main function
 - [View_runtime_log](#view_runtime_log) - helper function
 
+[Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
+
 STANDARDS
 
 - All main functions (see list above) are overloaded
   - One implementation returning a file collection
   - The other implementation returning a zip file (blob)
 - All main functions have a parameter to include a runtime log in the zip file (default: true)
-- All main functions setting the session module and action infos while procssing their work
+- All main functions set the session module and action infos while procssing their work
 
 DEPENDENCIES
 
 - APEX 5.1.4 because we use the APEX_EXPORT package
-
-[Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 
 PACKAGE SIGNATURE / META DATA
 
