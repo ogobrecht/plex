@@ -1,4 +1,10 @@
 CREATE OR REPLACE PACKAGE plex AUTHID current_user IS
+c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL export utilities';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '0.14.0';
+c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
+c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
+c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
+c_plex_author      CONSTANT VARCHAR2(20 CHAR) := 'Ottmar Gobrecht';
 /*******************************************************************************
 
 PLEX - PL/SQL Export Utilities
@@ -30,13 +36,7 @@ DEPENDENCIES
 
 -- CONSTANTS, TYPES
 
-c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL export utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '0.13.0';
-c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
-c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
-c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
-c_plex_author      CONSTANT VARCHAR2(20 CHAR) := 'Ottmar Gobrecht';
-c_app_info_length  CONSTANT PLS_INTEGER       := 64;
+c_app_info_length  CONSTANT PLS_INTEGER := 64;
 
 SUBTYPE app_info_text IS VARCHAR2(64 CHAR);
 
@@ -95,7 +95,7 @@ FUNCTION backapp_to_collection (
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
 
-  p_include_object_ddl        IN BOOLEAN  DEFAULT true,  -- If true, include DDL of current user/schema and all its objects.
+  p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_filter_regex       IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the provided object prefix.
 
   p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
@@ -151,7 +151,7 @@ FUNCTION backapp_to_zip (
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
 
-  p_include_object_ddl        IN BOOLEAN  DEFAULT true,  -- If true, include DDL of current user/schema and all its objects.
+  p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_filter_regex       IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the provided object prefix.
 
   p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.

@@ -985,7 +985,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
     p_app_include_single_file     IN BOOLEAN DEFAULT false,
     p_app_build_status_run_only   IN BOOLEAN DEFAULT false,
-    p_include_object_ddl          IN BOOLEAN DEFAULT true,
+    p_include_object_ddl          IN BOOLEAN DEFAULT false,
     p_object_filter_regex         IN VARCHAR2 DEFAULT NULL,
     p_include_data                IN BOOLEAN DEFAULT false,
     p_data_as_of_minutes_ago      IN NUMBER DEFAULT 0,
@@ -1065,7 +1065,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     BEGIN
 
       -- save as individual files
-      util_ilog_start('app:export_application:individual_files');
+      util_ilog_start('app_frontend/APEX_EXPORT:individual_files');
       l_export_files   := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
@@ -1133,7 +1133,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         p_app_include_single_file
       THEN
       -- save as single file 
-        util_ilog_start('app:export_application:single_file');
+        util_ilog_start('app_frontend/APEX_EXPORT:single_file');
         l_single_file   := apex_export.get_application(
           p_application_id            => p_app_id,
           p_split                     => false,
@@ -1426,7 +1426,7 @@ Please have a look in these files and check for errors.
       l_rec              l_cur%rowtype;
     BEGIN
       util_setup_dbms_metadata;
-      util_ilog_start('ddl:open_objects_cursor');
+      util_ilog_start('app_backend/open_objects_cursor');
       OPEN l_cur;
       util_ilog_stop;
       LOOP
@@ -1642,7 +1642,7 @@ END;
 
       l_rec   l_cur%rowtype;
     BEGIN
-      util_ilog_start('ddl:grants:open_cursor');
+      util_ilog_start('app_backend/grants:open_cursor');
       OPEN l_cur;
       util_ilog_stop;
       LOOP
@@ -1685,7 +1685,7 @@ END;
 
       l_rec   l_cur%rowtype;
     BEGIN
-      util_ilog_start('ddl:ref_constraints:open_cursor');
+      util_ilog_start('app_backend/table_ref_constraints:open_cursor');
       OPEN l_cur;
       util_ilog_stop;
       LOOP
@@ -1861,10 +1861,10 @@ END;
 
       l_rec   l_cur%rowtype;
     BEGIN
-      util_ilog_start('data:open_tables_cursor');
+      util_ilog_start('app_data/open_tables_cursor');
       OPEN l_cur;
       util_ilog_stop;
-      util_ilog_start('data:get_scn');
+      util_ilog_start('app_data/get_scn');
       l_data_timestamp   := util_calc_data_timestamp(nvl(
         p_data_as_of_minutes_ago,
         0
@@ -1909,13 +1909,13 @@ It is a good practice to have a README file in the root of your project with
 a high level overview of your application. Put the more detailed docs in the 
 docs folder.
 
-You can start with a copy of this file. Name it README.md and try to use 
-Markdown when writing your content - this has many benefits and you don't
-waist time by formatting your docs. If you are unsure have a look at some 
-projects at [Github](https://github.com) or any other code hosting platform.
+You can start with a copy of this file. Rename it to README.md and try to use
+Markdown when writing your content - this has many benefits and you don't waist
+time by formatting your docs. If you are unsure have a look at some projects at
+[Github](https://github.com) or any other code hosting platform.
 
-Depending on your options when calling `plex.backapp` these files are generated
-for you:
+Depending on your options when calling `plex.backapp_to_[zip|collection]` these
+files are generated for you:
 
 - scripts/install_backend_generated_by_plex.sql
 - scripts/install_frontend_generated_by_apex.sql
@@ -1938,7 +1938,7 @@ overwrite save.
 [Feedback is welcome]({{PLEX_URL}}/issues/new)
 ^'
       ;
-      l_file_path       := 'template.README.md';
+      l_file_path       := 'plex_README.md';
       util_ilog_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
@@ -2485,7 +2485,7 @@ prompt
     p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
     p_app_include_single_file     IN BOOLEAN DEFAULT false,
     p_app_build_status_run_only   IN BOOLEAN DEFAULT false,
-    p_include_object_ddl          IN BOOLEAN DEFAULT true,
+    p_include_object_ddl          IN BOOLEAN DEFAULT false,
     p_object_filter_regex         IN VARCHAR2 DEFAULT NULL,
     p_include_data                IN BOOLEAN DEFAULT false,
     p_data_as_of_minutes_ago      IN NUMBER DEFAULT 0,
