@@ -18,6 +18,8 @@ DEPENDENCIES
 
 - APEX 5.1.4 because we use the APEX_EXPORT package
 
+PACKAGE SIGNATURE / META DATA
+
 ```sql
 CREATE OR REPLACE PACKAGE plex AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
