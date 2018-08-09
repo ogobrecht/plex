@@ -22,8 +22,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     
     --
   TYPE rec_ilog IS RECORD ( --
-   called_by_wrapper      BOOLEAN,
-  module                 app_info_text,
+   module                 app_info_text,
   enabled                BOOLEAN,
   start_time             TIMESTAMP(6),
   stop_time              TIMESTAMP(6),
@@ -841,60 +840,42 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_ilog_get_runtime;
 
   PROCEDURE util_ilog_init (
-    p_module                VARCHAR2,
-    p_include_runtime_log   BOOLEAN,
-    p_called_by_wrapper     BOOLEAN DEFAULT false
+    p_module VARCHAR2,
+    p_include_runtime_log BOOLEAN
   )
     IS
   BEGIN
-    -- mark as called by wrapper
+    g_ilog.module            := substr(
+      p_module,
+      1,
+      c_app_info_length
+    );
     IF
-      p_called_by_wrapper
+      p_include_runtime_log
     THEN
-      g_ilog.called_by_wrapper   := true;
+      g_ilog.enabled   := true;
     END IF;
-
-    -- allow subprocedure only to init, when not called by a wrapper
-    IF
-      ( ( NOT g_ilog.called_by_wrapper AND NOT p_called_by_wrapper ) OR ( g_ilog.called_by_wrapper AND p_called_by_wrapper ) )
-    THEN
-      g_ilog.module            := substr(
-        p_module,
-        1,
-        c_app_info_length
-      );
-      IF
-        p_include_runtime_log
-      THEN
-        g_ilog.enabled   := true;
-      END IF;
-      g_ilog.start_time        := systimestamp;
-      g_ilog.stop_time         := NULL;
-      g_ilog.run_time          := 0;
-      g_ilog.measured_time     := 0;
-      g_ilog.unmeasured_time   := 0;
-      g_ilog.data.DELETE;
-    END IF;
-
+    g_ilog.start_time        := systimestamp;
+    g_ilog.stop_time         := NULL;
+    g_ilog.run_time          := 0;
+    g_ilog.measured_time     := 0;
+    g_ilog.unmeasured_time   := 0;
+    g_ilog.data.DELETE;
   END util_ilog_init;
 
-  PROCEDURE util_ilog_exit (
-    p_called_by_wrapper BOOLEAN DEFAULT false
-  )
+  PROCEDURE util_ilog_exit
     IS
   BEGIN
     IF
-      g_ilog.enabled AND ( ( NOT g_ilog.called_by_wrapper AND NOT p_called_by_wrapper ) OR ( g_ilog.called_by_wrapper AND p_called_by_wrapper
-      ) )
+      g_ilog.enabled
     THEN
-      g_ilog.stop_time           := systimestamp;
-      g_ilog.run_time            := util_ilog_get_runtime(
+      g_ilog.stop_time         := systimestamp;
+      g_ilog.run_time          := util_ilog_get_runtime(
         g_ilog.start_time,
         g_ilog.stop_time
       );
-      g_ilog.unmeasured_time     := g_ilog.run_time - g_ilog.measured_time;
-      g_ilog.enabled             := false;
-      g_ilog.called_by_wrapper   := false;
+      g_ilog.unmeasured_time   := g_ilog.run_time - g_ilog.measured_time;
+      g_ilog.enabled           := false;
     END IF;
   END util_ilog_exit;
 
@@ -971,7 +952,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   -- MAIN CODE
 
-  FUNCTION backapp_to_collection (
+  FUNCTION backapp (
     p_app_id                      IN NUMBER DEFAULT NULL,
     p_app_date                    IN BOOLEAN DEFAULT true,
     p_app_public_reports          IN BOOLEAN DEFAULT true,
@@ -1012,7 +993,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       IS
     BEGIN
       util_ilog_init(
-        p_module                => 'plex.backapp_to_collection' || CASE
+        p_module                => 'plex.backapp' || CASE
           WHEN p_app_id IS NOT NULL THEN '(' || TO_CHAR(p_app_id) || ')'
         END,
         p_include_runtime_log   => p_include_runtime_log
@@ -1671,7 +1652,7 @@ END;
 
       CURSOR l_cur IS SELECT table_name,
                              constraint_name,
-                             'app_backend/table_ref_constraints/' || constraint_name || '.sql' AS file_path
+                             'app_backend/ref_constraints/' || constraint_name || '.sql' AS file_path
                       FROM user_constraints
                       WHERE constraint_type = 'R'
                       AND REGEXP_LIKE ( table_name,
@@ -1685,7 +1666,7 @@ END;
 
       l_rec   l_cur%rowtype;
     BEGIN
-      util_ilog_start('app_backend/table_ref_constraints:open_cursor');
+      util_ilog_start('app_backend/ref_constraints:open_cursor');
       OPEN l_cur;
       util_ilog_stop;
       LOOP
@@ -1914,7 +1895,7 @@ Markdown when writing your content - this has many benefits and you don't waist
 time by formatting your docs. If you are unsure have a look at some projects at
 [Github](https://github.com) or any other code hosting platform.
 
-Depending on your options when calling `plex.backapp_to_[zip|collection]` these
+Depending on your options when calling `plex.backapp` these
 files are generated for you:
 
 - scripts/install_backend_generated_by_plex.sql
@@ -2141,7 +2122,7 @@ prompt Do the app export, relocate files and save to temporary table
 DECLARE
   l_files   apex_t_export_files;
 BEGIN
-  l_files   := plex.backapp_to_collection (
+  l_files   := plex.backapp (
   -- These are the defaults - align it to your needs:
   p_app_id                    => :app_id,
   p_app_date                  => true,
@@ -2414,14 +2395,14 @@ prompt
       util_ilog_exit;
     --
       IF
-        p_include_runtime_log AND NOT g_ilog.called_by_wrapper
+        p_include_runtime_log
       THEN
         util_g_clob_createtemporary;
         util_g_clob_create_runtime_log;
         util_g_clob_flush_cache;
         util_export_files_append(
           p_export_files   => l_export_files,
-          p_name           => 'plex_runtime_log.md',
+          p_name           => 'plex_backapp_log.md',
           p_contents       => g_clob
         );
         util_g_clob_freetemporary;
@@ -2469,124 +2450,7 @@ prompt
     finish;
     --
     RETURN l_export_files;
-  END backapp_to_collection;
-
-  FUNCTION backapp_to_zip (
-    p_app_id                      IN NUMBER DEFAULT NULL,
-    p_app_date                    IN BOOLEAN DEFAULT true,
-    p_app_public_reports          IN BOOLEAN DEFAULT true,
-    p_app_private_reports         IN BOOLEAN DEFAULT false,
-    p_app_notifications           IN BOOLEAN DEFAULT false,
-    p_app_translations            IN BOOLEAN DEFAULT true,
-    p_app_pkg_app_mapping         IN BOOLEAN DEFAULT false,
-    p_app_original_ids            IN BOOLEAN DEFAULT true,
-    p_app_subscriptions           IN BOOLEAN DEFAULT true,
-    p_app_comments                IN BOOLEAN DEFAULT true,
-    p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
-    p_app_include_single_file     IN BOOLEAN DEFAULT false,
-    p_app_build_status_run_only   IN BOOLEAN DEFAULT false,
-    p_include_object_ddl          IN BOOLEAN DEFAULT false,
-    p_object_filter_regex         IN VARCHAR2 DEFAULT NULL,
-    p_include_data                IN BOOLEAN DEFAULT false,
-    p_data_as_of_minutes_ago      IN NUMBER DEFAULT 0,
-    p_data_max_rows               IN NUMBER DEFAULT 1000,
-    p_data_table_filter_regex     IN VARCHAR2 DEFAULT NULL,
-    p_include_templates           IN BOOLEAN DEFAULT true,
-    p_include_runtime_log         IN BOOLEAN DEFAULT true
-  ) RETURN BLOB IS
-
-    l_zip            BLOB;
-    l_export_files   apex_t_export_files;
-
-    PROCEDURE init
-      IS
-    BEGIN
-      util_ilog_init(
-        p_module                => 'plex.backapp_to_zip' || CASE
-          WHEN p_app_id IS NOT NULL THEN '(' || TO_CHAR(p_app_id) || ')'
-        END,
-        p_include_runtime_log   => p_include_runtime_log,
-        p_called_by_wrapper     => true
-      );
-    END init;
-
-    PROCEDURE create_export_files
-      IS
-    BEGIN
-      l_export_files   := backapp_to_collection(
-        p_app_id                    => p_app_id,
-        p_app_date                  => p_app_date,
-        p_app_public_reports        => p_app_public_reports,
-        p_app_private_reports       => p_app_private_reports,
-        p_app_notifications         => p_app_notifications,
-        p_app_translations          => p_app_translations,
-        p_app_pkg_app_mapping       => p_app_pkg_app_mapping,
-        p_app_original_ids          => p_app_original_ids,
-        p_app_subscriptions         => p_app_subscriptions,
-        p_app_comments              => p_app_comments,
-        p_app_supporting_objects    => p_app_supporting_objects,
-        p_app_include_single_file   => p_app_include_single_file,
-        p_include_object_ddl        => p_include_object_ddl,
-        p_object_filter_regex       => p_object_filter_regex,
-        p_include_data              => p_include_data,
-        p_data_as_of_minutes_ago    => p_data_as_of_minutes_ago,
-        p_data_max_rows             => p_data_max_rows,
-        p_data_table_filter_regex   => p_data_table_filter_regex,
-        p_include_templates         => p_include_templates,
-        p_include_runtime_log       => p_include_runtime_log
-      );
-    END create_export_files;
-
-    PROCEDURE create_zip_file
-      IS
-    BEGIN
-      util_ilog_start('convert ' || l_export_files.count || ' files to blob and add to zip');
-      dbms_lob.createtemporary(
-        l_zip,
-        true
-      );
-      FOR i IN 1..l_export_files.count LOOP
-        apex_zip.add_file(
-          p_zipped_blob   => l_zip,
-          p_file_name     => l_export_files(i).name,
-          p_content       => util_clob_to_blob(l_export_files(i).contents)
-        );
-      END LOOP;
-
-      util_ilog_stop;
-    END create_zip_file;
-
-    PROCEDURE finish
-      IS
-    BEGIN
-      util_ilog_exit(p_called_by_wrapper   => true);
-    --
-      IF
-        p_include_runtime_log
-      THEN
-        util_g_clob_createtemporary;
-        util_g_clob_create_runtime_log;
-        util_g_clob_flush_cache;
-        apex_zip.add_file(
-          p_zipped_blob   => l_zip,
-          p_file_name     => 'plex_runtime_log.md',
-          p_content       => util_clob_to_blob(g_clob)
-        );
-
-        util_g_clob_freetemporary;
-      END IF;
-    --
-
-      apex_zip.finish(l_zip);
-    END finish;
-
-  BEGIN
-    init;
-    create_export_files;
-    create_zip_file;
-    finish;
-    RETURN l_zip;
-  END;
+  END backapp;
 
   PROCEDURE add_query (
     p_query       VARCHAR2,
@@ -2601,7 +2465,7 @@ prompt
     g_queries(l_index).max_rows    := p_max_rows;
   END add_query;
 
-  FUNCTION queries_to_csv_collection (
+  FUNCTION queries_to_csv (
     p_delimiter             IN VARCHAR2 DEFAULT ',',
     p_quote_mark            IN VARCHAR2 DEFAULT '"',
     p_header_prefix         IN VARCHAR2 DEFAULT NULL,
@@ -2623,7 +2487,7 @@ prompt
         );
       END IF;
       util_ilog_init(
-        p_module                => 'plex.queries_to_csv_collection',
+        p_module                => 'plex.queries_to_csv',
         p_include_runtime_log   => p_include_runtime_log
       );
     END init;
@@ -2646,7 +2510,7 @@ prompt
         util_g_clob_flush_cache;
         util_export_files_append(
           p_export_files   => l_export_files,
-          p_name           => g_queries(i).file_name,
+          p_name           => g_queries(i).file_name || '.csv',
           p_contents       => g_clob
         );
 
@@ -2661,14 +2525,14 @@ prompt
       g_queries.DELETE;
       util_ilog_exit;
       IF
-        p_include_runtime_log AND NOT g_ilog.called_by_wrapper
+        p_include_runtime_log
       THEN
         util_g_clob_createtemporary;
         util_g_clob_create_runtime_log;
         util_g_clob_flush_cache;
         util_export_files_append(
           p_export_files   => l_export_files,
-          p_name           => 'plex_runtime_log.md',
+          p_name           => 'plex_queries_to_csv_log.md',
           p_contents       => g_clob
         );
         util_g_clob_freetemporary;
@@ -2681,97 +2545,28 @@ prompt
     process_queries;
     finish;
     RETURN l_export_files;
-  END queries_to_csv_collection;
+  END queries_to_csv;
 
-  FUNCTION queries_to_csv_zip (
-    p_delimiter             IN VARCHAR2 DEFAULT ',',
-    p_quote_mark            IN VARCHAR2 DEFAULT '"',
-    p_header_prefix         IN VARCHAR2 DEFAULT NULL,
-    p_include_runtime_log   IN BOOLEAN DEFAULT true
+  FUNCTION to_zip (
+    p_file_collection IN apex_t_export_files
   ) RETURN BLOB IS
-
-    l_zip            BLOB;
-    l_export_files   apex_t_export_files;
-
-    PROCEDURE init
-      IS
-    BEGIN
-      IF
-        g_queries.count = 0
-      THEN
-        raise_application_error(
-          -20201,
-          'You need first to add queries by using plex.add_query. Calling plex.queries_to_csv clears the global queries array for subsequent processing.'
-        );
-      END IF;
-      util_ilog_init(
-        p_module                => 'plex.queries_to_csv_zip',
-        p_include_runtime_log   => p_include_runtime_log,
-        p_called_by_wrapper     => true
-      );
-    END init;
-
-    PROCEDURE create_export_files
-      IS
-    BEGIN
-      l_export_files   := queries_to_csv_collection(
-        p_delimiter             => p_delimiter,
-        p_quote_mark            => p_quote_mark,
-        p_header_prefix         => p_header_prefix,
-        p_include_runtime_log   => p_include_runtime_log
-      );
-    END create_export_files;
-
-    PROCEDURE create_zip_file
-      IS
-    BEGIN
-      util_ilog_start('convert ' || l_export_files.count || ' files to blob and add to zip');
-      dbms_lob.createtemporary(
-        l_zip,
-        true
-      );
-      FOR i IN 1..l_export_files.count LOOP
-        apex_zip.add_file(
-          p_zipped_blob   => l_zip,
-          p_file_name     => l_export_files(i).name,
-          p_content       => util_clob_to_blob(l_export_files(i).contents)
-        );
-      END LOOP;
-
-      util_ilog_stop;
-    END create_zip_file;
-
-    PROCEDURE finish
-      IS
-    BEGIN
-      util_ilog_exit(p_called_by_wrapper   => true);
-    --
-      IF
-        p_include_runtime_log
-      THEN
-        util_g_clob_createtemporary;
-        util_g_clob_create_runtime_log;
-        util_g_clob_flush_cache;
-        apex_zip.add_file(
-          p_zipped_blob   => l_zip,
-          p_file_name     => 'plex_runtime_log.md',
-          p_content       => util_clob_to_blob(g_clob)
-        );
-
-        util_g_clob_freetemporary;
-      END IF;
-    --
-
-      apex_zip.finish(l_zip);
-    END finish;
-
+    l_zip   BLOB;
   BEGIN
-    init;
-    create_export_files;
-    create_zip_file;
-    finish;
+    dbms_lob.createtemporary(
+      l_zip,
+      true
+    );
+    FOR i IN 1..p_file_collection.count LOOP
+      apex_zip.add_file(
+        p_zipped_blob   => l_zip,
+        p_file_name     => p_file_collection(i).name,
+        p_content       => util_clob_to_blob(p_file_collection(i).contents)
+      );
+    END LOOP;
+
+    apex_zip.finish(l_zip);
     RETURN l_zip;
-  END queries_to_csv_zip;
+  END to_zip;
 
   FUNCTION view_runtime_log RETURN tab_runtime_log
     PIPELINED
@@ -2802,7 +2597,5 @@ prompt
 
   END view_runtime_log;
 
-BEGIN
-  g_ilog.called_by_wrapper   := false;
 END plex;
 /
