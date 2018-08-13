@@ -1,10 +1,11 @@
 {
   "name": "plex",
   "scripts": {
-    "build:readme": "node scripts/create_readme.js PLEX.pks README.md",
-    "watch": "chokidar *.pks scripts/*.js --initial -c 'npm run build:readme'"
+    "build:readme": "node scripts/create_docs.js 'PLEX.pks' 'README'",
+    "watch:readme": "chokidar '*.pks' 'scripts/**/*.js' 'package.json' --initial -c 'npm run build:readme'"
   },
   "dependencies": {
-    "chokidar-cli": "^1.2.0"
+    "chokidar-cli": "^1.2.0",
+    "glob": "^7.1.2"
   }
 }
