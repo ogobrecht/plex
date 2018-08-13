@@ -1,5 +1,7 @@
+
+
 PLEX - PL/SQL Export Utilities
-==============================
+===============================
 
 - [BackApp](#backapp) - main function
 - [Add_query](#add_query) - helper procedure
@@ -9,14 +11,18 @@ PLEX - PL/SQL Export Utilities
 
 [Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 
+
 STANDARDS
 
 - All main functions returning a file collection of type apex_t_export_files
 - All main functions set the session module and action infos while procssing their work
 
+
 DEPENDENCIES
 
-- APEX 5.1.4 because we use the APEX_EXPORT package
+- APEX 5.1.4 because we use the packages APEX_EXPORT and APEX_ZIP
+
+
 
 PACKAGE SIGNATURE / META DATA
 
@@ -33,7 +39,7 @@ c_plex_author      CONSTANT VARCHAR2(20 CHAR) := 'Ottmar Gobrecht';
 
 
 BackApp
----------------------
+--------
 
 Get a file collection of an APEX application (or the current user/schema only) including:
 
@@ -66,6 +72,7 @@ BEGIN
   END LOOP;
 END;
 ```
+
 
 SIGNATURE
 
@@ -101,7 +108,7 @@ FUNCTION backapp (
 
 
 Add_query
----------
+-----------
 
 Add a query to be processed by the method queries_to_csv. You can add as many
 queries as you like.
@@ -117,6 +124,7 @@ BEGIN
 END;
 ```
 
+
 SIGNATURE
 
 ```sql
@@ -130,7 +138,7 @@ PROCEDURE add_query (
 
 
 Queries_to_csv
--------------------------
+---------------
 
 Export one or more queries as CSV data within a file collection.
 
@@ -168,6 +176,7 @@ BEGIN
 END;
 ```
 
+
 SIGNATURE
 
 ```sql
@@ -182,7 +191,7 @@ FUNCTION queries_to_csv (
 
 
 To_zip
-------------------
+-------
 
 Convert a file collection to a zip file.
 
@@ -201,6 +210,7 @@ BEGIN
 END;
 ```
 
+
 SIGNATURE
 
 ```sql
@@ -212,7 +222,7 @@ FUNCTION to_zip (
 
 
 View_runtime_log
-----------------
+-----------------
 
 View the log from the last plex run. The internal array for the runtime log
 is cleared after each call of BackApp or Queries_to_CSV.
@@ -223,8 +233,10 @@ EXAMPLE
 SELECT * FROM TABLE(plex.view_runtime_log);
 ```
 
+
 SIGNATURE
 
 ```sql
 FUNCTION view_runtime_log RETURN tab_runtime_log PIPELINED;
 ```
+
