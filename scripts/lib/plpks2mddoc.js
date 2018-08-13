@@ -1,5 +1,4 @@
 'use strict';
-
 var fs = require('fs');
 var glob = require('glob');
 var createSingleDoc = function (pathToSpec, pathToDoc) {
@@ -34,7 +33,7 @@ var createSingleDoc = function (pathToSpec, pathToDoc) {
       while (match = regexpSpec.exec(text)) {
         if (counter === 0) {
           // this is the package definition (first match, comment below code)
-          content = match[2] + '\n\nPACKAGE SIGNATURE / META DATA\n\n```sql\n' + match[1] + '```\n\n';
+          content = match[2] + '\n\nSIGNATURE\n\n```sql\n' + match[1] + '```\n\n';
         } else {
           // these are the functions and procedures (all other matches, comment above code)
           content += match[3] + '\n\nSIGNATURE\n\n```sql\n' + match[4] + '\n```\n\n';

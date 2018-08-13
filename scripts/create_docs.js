@@ -3,6 +3,6 @@
 // https://css-tricks.com/why-npm-scripts/
 
 var plpks2mddoc = require('./lib/plpks2mddoc');
-var inputFiles = process.argv[2];     // first commandline parameter
-var outputTemplate = process.argv[3]; // second commandline parameter
+var inputFiles = process.argv[2];     // first command line parameter
+var outputTemplate = process.argv[3]; // second command line parameter
 plpks2mddoc(inputFiles, outputTemplate);
