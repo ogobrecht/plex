@@ -1,13 +1,23 @@
 
+- [Package PLEX](#plex)
+- [Function backapp](#backapp)
+- [Procedure add_query](#add_query)
+- [Function queries_to_csv](#queries_to_csv)
+- [Function to_zip](#to_zip)
+- [Function view_runtime_log](#view_runtime_log)
 
-PLEX - PL/SQL Export Utilities
-===============================
 
-- [BackApp](#backapp) - main function
-- [Add_query](#add_query) - helper procedure
-- [Queries_to_csv](#queries_to_csv) - main function
-- [To_zip](#to_zip) - helper function
-- [View_runtime_log](#view_runtime_log) - helper function
+<h1><a id="plex"></a>Package PLEX</h1>
+<!--===============================-->
+
+PL/SQL Export Utilities
+
+PLEX was created to be able to quickstart version control for existing (APEX) apps and has currently two main functions called __BackApp__ and __Queries_to_CSV__. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone. 
+
+See also this resources for more information:
+
+- PLEX project page on [GitHub](https://github.com/ogobrecht/plex)
+- Blog post on how to [getting started](FIXME: providelink)
 
 [Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 
@@ -15,19 +25,17 @@ PLEX - PL/SQL Export Utilities
 STANDARDS
 
 - All main functions returning a file collection of type apex_t_export_files
-- All main functions set the session module and action infos while procssing their work
+- All main functions setting the session module and action infos while procssing their work
 
 
 DEPENDENCIES
 
 - APEX 5.1.4 because we use the packages APEX_EXPORT and APEX_ZIP
 
-
-
 SIGNATURE
 
 ```sql
-CREATE OR REPLACE PACKAGE plex AUTHID current_user IS
+PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
 c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '0.15.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
@@ -37,9 +45,8 @@ c_plex_author      CONSTANT VARCHAR2(20 CHAR) := 'Ottmar Gobrecht';
 ```
 
 
-
-BackApp
---------
+<h2><a id="backapp"></a>Function backapp</h2>
+<!------------------------------------------>
 
 Get a file collection of an APEX application (or the current user/schema only) including:
 
@@ -73,7 +80,6 @@ BEGIN
 END;
 ```
 
-
 SIGNATURE
 
 ```sql
@@ -106,12 +112,10 @@ FUNCTION backapp (
 ```
 
 
+<h2><a id="add_query"></a>Procedure add_query</h2>
+<!----------------------------------------------->
 
-Add_query
------------
-
-Add a query to be processed by the method queries_to_csv. You can add as many
-queries as you like.
+Add a query to be processed by the method queries_to_csv. You can add as many queries as you like.
 
 EXAMPLE
 
@@ -124,7 +128,6 @@ BEGIN
 END;
 ```
 
-
 SIGNATURE
 
 ```sql
@@ -136,9 +139,8 @@ PROCEDURE add_query (
 ```
 
 
-
-Queries_to_csv
----------------
+<h2><a id="queries_to_csv"></a>Function queries_to_csv</h2>
+<!-------------------------------------------------------->
 
 Export one or more queries as CSV data within a file collection.
 
@@ -176,7 +178,6 @@ BEGIN
 END;
 ```
 
-
 SIGNATURE
 
 ```sql
@@ -189,9 +190,8 @@ FUNCTION queries_to_csv (
 ```
 
 
-
-To_zip
--------
+<h2><a id="to_zip"></a>Function to_zip</h2>
+<!---------------------------------------->
 
 Convert a file collection to a zip file.
 
@@ -210,7 +210,6 @@ BEGIN
 END;
 ```
 
-
 SIGNATURE
 
 ```sql
@@ -220,12 +219,10 @@ FUNCTION to_zip (
 ```
 
 
+<h2><a id="view_runtime_log"></a>Function view_runtime_log</h2>
+<!------------------------------------------------------------>
 
-View_runtime_log
------------------
-
-View the log from the last plex run. The internal array for the runtime log
-is cleared after each call of BackApp or Queries_to_CSV.
+View the log from the last plex run. The internal array for the runtime logis cleared after each call of  BackApp or Queries_to_CSV.
 
 EXAMPLE
 
@@ -233,10 +230,10 @@ EXAMPLE
 SELECT * FROM TABLE(plex.view_runtime_log);
 ```
 
-
 SIGNATURE
 
 ```sql
 FUNCTION view_runtime_log RETURN tab_runtime_log PIPELINED;
 ```
+
 

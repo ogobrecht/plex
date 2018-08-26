@@ -1,11 +1,19 @@
 {
   "name": "plex",
   "scripts": {
-    "build:readme": "node scripts/create_docs.js 'PLEX.pks' 'README'",
-    "watch:readme": "chokidar '*.pks' 'scripts/**/*.js' 'package.json' --initial -c 'npm run build:readme'"
+    "build:docs": "node scripts/build_docs.js 'PLEX.pks' 'README.md' 3",
+    "watch:docs": "chokidar '*.pks' 'scripts/**/*.js' 'package.json' --initial -c 'npm run build:readme'"
   },
   "dependencies": {
     "chokidar-cli": "^1.2.0",
     "glob": "^7.1.2"
+  },
+  "devDependencies": {
+    "eslint": "^5.3.0",
+    "eslint-config-standard": "^11.0.0",
+    "eslint-plugin-import": "^2.14.0",
+    "eslint-plugin-node": "^7.0.1",
+    "eslint-plugin-promise": "^3.8.0",
+    "eslint-plugin-standard": "^3.1.0"
   }
 }
