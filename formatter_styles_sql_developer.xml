@@ -4,7 +4,7 @@
 <breakAfterElsif>false</breakAfterElsif>
 <singleLineComments>CommentsUnchanged</singleLineComments>
 <breakAnsiiJoin>false</breakAnsiiJoin>
-<maxCharLineSize>120</maxCharLineSize>
+<maxCharLineSize>128</maxCharLineSize>
 <alignAssignments>true</alignAssignments>
 <breaksProcArgs>true</breaksProcArgs>
 <alignRight>true</alignRight>

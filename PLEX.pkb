@@ -1333,18 +1333,28 @@ Please have a look in these files and check for errors.
 
     PROCEDURE process_object_ddl IS
 
-      l_ddl_file         CLOB;
-      l_contents         CLOB;
-      l_file_path_body   VARCHAR2(1000 CHAR);
-      l_pattern          VARCHAR2(100);
-      l_position         PLS_INTEGER;
+      l_contents   CLOB;
       CURSOR l_cur IS SELECT
-        CASE --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
-          WHEN object_type IN (
-            'JOB',
-            'PROGRAM',
-            'SCHEDULE'
-          ) THEN 'PROCOBJ'
+      -- https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
+      -- https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
+        CASE object_type
+          WHEN 'DATABASE LINK'        THEN 'DB_LINK'
+          WHEN 'EVALUATION CONTEXT'   THEN 'PROCOBJ'
+          WHEN 'JAVA CLASS'           THEN 'JAVA_CLASS'
+          WHEN 'JAVA RESOURCE'        THEN 'JAVA_RESOURCE'
+          WHEN 'JAVA SOURCE'          THEN 'JAVA_SOURCE'
+          WHEN 'JAVA TYPE'            THEN 'JAVA_TYPE'
+          WHEN 'JOB'                  THEN 'PROCOBJ'
+          WHEN 'MATERIALIZED VIEW'    THEN 'MATERIALIZED_VIEW'
+          WHEN 'PACKAGE BODY'         THEN 'PACKAGE_BODY'
+          WHEN 'PACKAGE'              THEN 'PACKAGE_SPEC'
+          WHEN 'PROGRAM'              THEN 'PROCOBJ'
+          WHEN 'QUEUE'                THEN 'AQ_QUEUE'
+          WHEN 'RULE SET'             THEN 'PROCOBJ'
+          WHEN 'RULE'                 THEN 'PROCOBJ'
+          WHEN 'SCHEDULE'             THEN 'PROCOBJ'
+          WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
+          WHEN 'TYPE'                 THEN 'TYPE_SPEC'
           ELSE object_type
         END
       AS object_type,
@@ -1376,25 +1386,46 @@ Please have a look in these files and check for errors.
           '_'
         ) || '/' || object_name ||
           CASE object_type
-            WHEN 'PACKAGE'     THEN '.pks'
-            WHEN 'FUNCTION'    THEN '.fnc'
-            WHEN 'PROCEDURE'   THEN '.prc'
-            WHEN 'TRIGGER'     THEN '.trg'
-            WHEN 'TYPE'        THEN '.typ'
+            WHEN 'FUNCTION'       THEN '.fnc'
+            WHEN 'PACKAGE BODY'   THEN '.pkb'
+            WHEN 'PACKAGE'        THEN '.pks'
+            WHEN 'PROCEDURE'      THEN '.prc'
+            WHEN 'TRIGGER'        THEN '.trg'
+            WHEN 'TYPE BODY'      THEN '.tpb'
+            WHEN 'TYPE'           THEN '.tps'
             ELSE '.sql'
           END
         AS file_path
                       FROM user_objects
+                      -- These objects are included within other object types.
                       WHERE object_type NOT IN (
+                        'INDEX PARTITION',
+                        'INDEX SUBPARTITION',
+                        'LOB',
+                        'LOB PARTITION',
                         'TABLE PARTITION',
-                        'PACKAGE BODY',
-                        'TYPE BODY',
-                        'LOB'
+                        'TABLE SUBPARTITION'
                       )
-                      AND object_name NOT LIKE 'SYS_PLSQL%'
-                      AND object_name NOT LIKE 'SYS_IL%$$'
-                      AND object_name NOT LIKE 'SYS_C%'
-                      AND object_name NOT LIKE 'ISEQ$$%'
+                      -- Ignore system-generated types for collection processing.
+                      AND NOT (
+                        object_type = 'TYPE'
+                        AND object_name LIKE 'SYS_PLSQL_%'
+                      )
+                      -- Ignore system-generated sequences for identity columns.
+                      AND NOT (
+                        object_type = 'SEQUENCE'
+                        AND object_name LIKE 'ISEQ$$_%'
+                      )                      
+                      -- Ignore LOB indices, their DDL is part of the table.
+                      AND object_name NOT IN (
+                        SELECT index_name
+                        FROM user_lobs
+                      )
+                      -- Ignore nested tables, their DDL is part of their parent table.
+                      AND object_name NOT IN (
+                        SELECT table_name
+                        FROM user_nested_tables
+                      )
                       AND REGEXP_LIKE ( object_name,
                                         nvl(
                                           p_object_filter_regex,
@@ -1404,7 +1435,7 @@ Please have a look in these files and check for errors.
       ORDER BY object_type,
                object_name;
 
-      l_rec              l_cur%rowtype;
+      l_rec        l_cur%rowtype;
     BEGIN
       util_setup_dbms_metadata;
       util_ilog_start('app_backend/open_objects_cursor');
@@ -1424,89 +1455,25 @@ Please have a look in these files and check for errors.
             l_ddl_files.indices_(l_ddl_files.indices_.count + 1) := l_rec.file_path;
           WHEN 'VIEW' THEN
             l_ddl_files.views_(l_ddl_files.views_.count + 1) := l_rec.file_path;
-          WHEN 'TYPE' THEN
+          WHEN 'TYPE_SPEC' THEN
             l_ddl_files.types_(l_ddl_files.types_.count + 1) := l_rec.file_path;
+          WHEN 'TYPE_BODY' THEN
+            l_ddl_files.type_bodies_(l_ddl_files.type_bodies_.count + 1) := l_rec.file_path;
           WHEN 'TRIGGER' THEN
             l_ddl_files.triggers_(l_ddl_files.triggers_.count + 1) := l_rec.file_path;
           WHEN 'FUNCTION' THEN
             l_ddl_files.functions_(l_ddl_files.functions_.count + 1) := l_rec.file_path;
           WHEN 'PROCEDURE' THEN
             l_ddl_files.procedures_(l_ddl_files.procedures_.count + 1) := l_rec.file_path;
-          WHEN 'PACKAGE' THEN
+          WHEN 'PACKAGE_SPEC' THEN
             l_ddl_files.packages_(l_ddl_files.packages_.count + 1) := l_rec.file_path;
+          WHEN 'PACKAGE_BODY' THEN
+            l_ddl_files.package_bodies_(l_ddl_files.package_bodies_.count + 1) := l_rec.file_path;
           ELSE
             l_ddl_files.other_objects_(l_ddl_files.other_objects_.count + 1) := l_rec.file_path;
         END CASE;
 
         CASE
-          WHEN l_rec.object_type IN (
-            'PACKAGE',
-            'TYPE'
-          ) THEN
-            l_ddl_file   := dbms_metadata.get_ddl(
-              object_type   => l_rec.object_type,
-              name          => l_rec.object_name,
-              schema        => l_current_user
-            );
-
-            l_pattern    := 'CREATE OR REPLACE( EDITIONABLE)? (PACKAGE|TYPE) BODY';
-            l_position   := regexp_instr(
-              l_ddl_file,
-              l_pattern
-            );
-            -- SPEC
-            l_contents   := ltrim(
-              CASE
-                WHEN l_position = 0 THEN l_ddl_file
-                ELSE substr(
-                  l_ddl_file,
-                  1,
-                  l_position - 1
-                )
-              END,
-              ' ' || c_lf
-            );
-
-            util_export_files_append(
-              p_export_files   => l_export_files,
-              p_name           => l_rec.file_path,
-              p_contents       => l_contents
-            );
-                        
-            -- BODY - only when existing
-
-            IF
-              l_position > 0
-            THEN
-              l_file_path_body   := util_multi_replace(
-                p_source_string   => l_rec.file_path,
-                p_1_find          => '/packages/',
-                p_1_replace       => '/package_bodies/',
-                p_2_find          => '.pks',
-                p_2_replace       => '.pkb',
-                p_3_find          => '/types/',
-                p_3_replace       => '/type_bodies/'
-              );
-
-              CASE
-                l_rec.object_type
-                WHEN 'TYPE' THEN
-                  l_ddl_files.type_bodies_(l_ddl_files.type_bodies_.count + 1) := l_file_path_body;
-                WHEN 'PACKAGE' THEN
-                  l_ddl_files.package_bodies_(l_ddl_files.package_bodies_.count + 1) := l_file_path_body;
-              END CASE;
-
-              l_contents         := substr(
-                l_ddl_file,
-                l_position
-              );
-              util_export_files_append(
-                p_export_files   => l_export_files,
-                p_name           => l_file_path_body,
-                p_contents       => l_contents
-              );
-            END IF;
-
           WHEN l_rec.object_type = 'VIEW' THEN
             l_contents   := ltrim(
               regexp_replace(
@@ -2119,6 +2086,7 @@ END;
 
 
 prompt Do the app export, relocate files and save to temporary table
+prompt ATTENTION: Depending on your options this could take some time ...
 DECLARE
   l_files   apex_t_export_files;
 BEGIN

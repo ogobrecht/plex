@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '0.15.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '1.0.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -13,7 +13,7 @@ PLEX was created to be able to quickstart version control for existing (APEX) ap
 See also this resources for more information:
 
 - PLEX project page on [GitHub](https://github.com/ogobrecht/plex)
-- Blog post on how to [getting started](FIXME: providelink)
+- Blog post on how to [getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
 
 [Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 

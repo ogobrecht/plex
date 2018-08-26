@@ -125,6 +125,7 @@ ploc.files2doc = function (inFilePattern, outFilePattern, minItemsForToc) {
   glob(inFilePattern, options, function (err, files) {
     if (err) throw err;
     files.forEach(function (inFilePath) {
+      //console.log('inFilePath: ' + inFilePath);
       outFilePath = ploc.util.getOutFilePath(inFilePath, outFilePattern);
       console.log(inFilePath + ' => ' + outFilePath);
       fs.writeFileSync(

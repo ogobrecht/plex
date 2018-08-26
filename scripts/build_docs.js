@@ -6,4 +6,7 @@ var ploc = require('./lib/ploc')
 var inFilePattern = process.argv[2] // first command line parameter
 var outFilePattern = process.argv[3] // second command line parameter
 var minItemsForToc = process.argv[4] // third command line parameter
+//console.log('inFilePattern: ' + inFilePattern);
+//console.log('outFilePattern: ' + outFilePattern);
+//console.log('minItemsForToc: ' + minItemsForToc);
 ploc.files2doc(inFilePattern, outFilePattern, minItemsForToc)
