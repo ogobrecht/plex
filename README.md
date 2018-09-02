@@ -52,7 +52,7 @@ Get a file collection of an APEX application (or the current user/schema only) i
 
 - The app export SQL files splitted ready to use for version control and deployment
 - Optional the DDL scripts for all objects and grants
-- Optional the data in csv files - useful for small applications in cloud environments for a logical backup
+- Optional the data in csv files (this option was implemented to track catalog tables, can be used as logical backup, has the typical csv limitations...)
 - Everything in a (hopefully) nice directory structure
 
 EXAMPLE
@@ -183,7 +183,7 @@ SIGNATURE
 
 ```sql
 FUNCTION queries_to_csv (
-  p_delimiter                 IN VARCHAR2 DEFAULT ',',   -- The column delimiter - there is also plex.tab as a helper function.
+  p_delimiter                 IN VARCHAR2 DEFAULT ',',   -- The column delimiter.
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_log.md with runtime statistics.
