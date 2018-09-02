@@ -58,7 +58,7 @@ FUNCTION backapp (
   p_app_notifications         IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
   p_app_translations          IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
   p_app_pkg_app_mapping       IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
-  p_app_original_ids          IN BOOLEAN  DEFAULT true,  -- If true, export with the IDs as they were when the application was imported.
+  p_app_original_ids          IN BOOLEAN  DEFAULT false, -- If true, export with the IDs as they were when the application was imported.
   p_app_subscriptions         IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
   p_app_comments              IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
   p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
@@ -81,7 +81,7 @@ Get a file collection of an APEX application (or the current user/schema only) i
 
 - The app export SQL files splitted ready to use for version control and deployment
 - Optional the DDL scripts for all objects and grants
-- Optional the data in csv files (this option was implemented to track catalog tables, can be used as logical backup, has the typical csv limitations...)
+- Optional the data in CSV files (this option was implemented to track catalog tables, can be used as logical backup, has the typical CSV limitations...)
 - Everything in a (hopefully) nice directory structure
 
 EXAMPLE

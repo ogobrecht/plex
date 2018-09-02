@@ -960,7 +960,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_app_notifications           IN BOOLEAN DEFAULT false,
     p_app_translations            IN BOOLEAN DEFAULT true,
     p_app_pkg_app_mapping         IN BOOLEAN DEFAULT false,
-    p_app_original_ids            IN BOOLEAN DEFAULT true,
+    p_app_original_ids            IN BOOLEAN DEFAULT false,
     p_app_subscriptions           IN BOOLEAN DEFAULT true,
     p_app_comments                IN BOOLEAN DEFAULT true,
     p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
