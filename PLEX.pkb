@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE BODY plex IS 
+CREATE OR REPLACE PACKAGE BODY plex IS
 
   -- CONSTANTS, TYPES
 
@@ -967,11 +967,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_app_include_single_file     IN BOOLEAN DEFAULT false,
     p_app_build_status_run_only   IN BOOLEAN DEFAULT false,
     p_include_object_ddl          IN BOOLEAN DEFAULT false,
-    p_object_filter_regex         IN VARCHAR2 DEFAULT NULL,
+    p_object_name_like            IN VARCHAR2 DEFAULT NULL,
+    p_object_name_not_like        IN VARCHAR2 DEFAULT NULL,
     p_include_data                IN BOOLEAN DEFAULT false,
     p_data_as_of_minutes_ago      IN NUMBER DEFAULT 0,
     p_data_max_rows               IN NUMBER DEFAULT 1000,
-    p_data_table_filter_regex     IN VARCHAR2 DEFAULT NULL,
+    p_data_table_name_like        IN VARCHAR2 DEFAULT NULL,
+    p_data_table_name_not_like    IN VARCHAR2 DEFAULT NULL,
     p_include_templates           IN BOOLEAN DEFAULT true,
     p_include_runtime_log         IN BOOLEAN DEFAULT true
   ) RETURN apex_t_export_files IS
@@ -988,6 +990,10 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     l_ddl_files        rec_ddl_files;
     l_contents         CLOB;
     l_export_files     apex_t_export_files;
+    --
+    TYPE obj_cur_typ IS REF CURSOR;
+    l_cur              obj_cur_typ;
+    l_query            VARCHAR2(32767);
 
     PROCEDURE init
       IS
@@ -1151,6 +1157,60 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       END IF;
 
     END process_apex_app;
+
+    PROCEDURE replace_query_like_expressions (
+      p_like_list       VARCHAR2,
+      p_not_like_list   VARCHAR2,
+      p_column_name     VARCHAR2
+    ) IS
+      l_expression_table   apex_t_varchar2;
+    BEGIN
+        -- process filter "like"
+      l_expression_table   := apex_string.split(
+        p_like_list,
+        ','
+      );
+      FOR i IN 1..l_expression_table.count LOOP
+        l_expression_table(i)   := p_column_name || ' like ''' || trim(l_expression_table(i) ) || '''';
+      END LOOP;
+
+      l_query              := replace(
+        l_query,
+        '#LIKE_EXPRESSIONS#',
+        nvl(
+          apex_string.join(
+            l_expression_table,
+            ' or '
+          ),
+          '1 = 1'
+        )
+      );
+
+    -- process filter "not like"
+
+      l_expression_table   := apex_string.split(
+        p_not_like_list,
+        ','
+      );
+      FOR i IN 1..l_expression_table.count LOOP
+        l_expression_table(i)   := p_column_name || ' not like ''' || trim(l_expression_table(i) ) || '''';
+      END LOOP;
+
+      l_query              := replace(
+        l_query,
+        '#NOT_LIKE_EXPRESSIONS#',
+        nvl(
+          apex_string.join(
+            l_expression_table,
+            ' and '
+          ),
+          '1 = 1'
+        )
+      );
+
+      --dbms_output.put_line(l_query);
+
+    END replace_query_like_expressions;
 
     PROCEDURE process_user_ddl IS
       exception_occured   BOOLEAN := false;
@@ -1333,113 +1393,88 @@ Please have a look in these files and check for errors.
 
     PROCEDURE process_object_ddl IS
 
-      l_contents   CLOB;
-      CURSOR l_cur IS SELECT
-      -- https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
-      -- https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
-        CASE object_type
-          WHEN 'DATABASE LINK'        THEN 'DB_LINK'
-          WHEN 'EVALUATION CONTEXT'   THEN 'PROCOBJ'
-          WHEN 'JAVA CLASS'           THEN 'JAVA_CLASS'
-          WHEN 'JAVA RESOURCE'        THEN 'JAVA_RESOURCE'
-          WHEN 'JAVA SOURCE'          THEN 'JAVA_SOURCE'
-          WHEN 'JAVA TYPE'            THEN 'JAVA_TYPE'
-          WHEN 'JOB'                  THEN 'PROCOBJ'
-          WHEN 'MATERIALIZED VIEW'    THEN 'MATERIALIZED_VIEW'
-          WHEN 'PACKAGE BODY'         THEN 'PACKAGE_BODY'
-          WHEN 'PACKAGE'              THEN 'PACKAGE_SPEC'
-          WHEN 'PROGRAM'              THEN 'PROCOBJ'
-          WHEN 'QUEUE'                THEN 'AQ_QUEUE'
-          WHEN 'RULE SET'             THEN 'PROCOBJ'
-          WHEN 'RULE'                 THEN 'PROCOBJ'
-          WHEN 'SCHEDULE'             THEN 'PROCOBJ'
-          WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
-          WHEN 'TYPE'                 THEN 'TYPE_SPEC'
-          ELSE object_type
-        END
-      AS object_type,
-        object_name,
-        'app_backend/' || replace(
-          lower(
-            CASE
-              WHEN object_type LIKE '%S' THEN object_type || 'ES'
-              WHEN object_type LIKE '%EX' THEN regexp_replace(
-                object_type,
-                'EX$',
-                'ICES',
-                1,
-                0,
-                'i'
-              )
-              WHEN object_type LIKE '%Y' THEN regexp_replace(
-                object_type,
-                'Y$',
-                'IES',
-                1,
-                0,
-                'i'
-              )
-              ELSE object_type || 'S'
-            END
-          ),
-          ' ',
-          '_'
-        ) || '/' || object_name ||
-          CASE object_type
-            WHEN 'FUNCTION'       THEN '.fnc'
-            WHEN 'PACKAGE BODY'   THEN '.pkb'
-            WHEN 'PACKAGE'        THEN '.pks'
-            WHEN 'PROCEDURE'      THEN '.prc'
-            WHEN 'TRIGGER'        THEN '.trg'
-            WHEN 'TYPE BODY'      THEN '.tpb'
-            WHEN 'TYPE'           THEN '.tps'
-            ELSE '.sql'
-          END
-        AS file_path
-                      FROM user_objects
-                      -- These objects are included within other object types.
-                      WHERE object_type NOT IN (
-                        'INDEX PARTITION',
-                        'INDEX SUBPARTITION',
-                        'LOB',
-                        'LOB PARTITION',
-                        'TABLE PARTITION',
-                        'TABLE SUBPARTITION'
-                      )
-                      -- Ignore system-generated types for collection processing.
-                      AND NOT (
-                        object_type = 'TYPE'
-                        AND object_name LIKE 'SYS_PLSQL_%'
-                      )
-                      -- Ignore system-generated sequences for identity columns.
-                      AND NOT (
-                        object_type = 'SEQUENCE'
-                        AND object_name LIKE 'ISEQ$$_%'
-                      )                      
-                      -- Ignore LOB indices, their DDL is part of the table.
-                      AND object_name NOT IN (
-                        SELECT index_name
-                        FROM user_lobs
-                      )
-                      -- Ignore nested tables, their DDL is part of their parent table.
-                      AND object_name NOT IN (
-                        SELECT table_name
-                        FROM user_nested_tables
-                      )
-                      AND REGEXP_LIKE ( object_name,
-                                        nvl(
-                                          p_object_filter_regex,
-                                          '.*'
-                                        ),
-                                        'i' )
-      ORDER BY object_type,
-               object_name;
-
-      l_rec        l_cur%rowtype;
+      l_contents    CLOB;
+      TYPE obj_rec_typ IS RECORD ( object_type   VARCHAR2(128),
+      object_name   VARCHAR2(256),
+      file_path     VARCHAR2(512) );
+      l_rec         obj_rec_typ;
     BEGIN
-      util_setup_dbms_metadata;
       util_ilog_start('app_backend/open_objects_cursor');
-      OPEN l_cur;
+      l_query   := q'^
+--https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
+--https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
+SELECT CASE object_type
+         WHEN 'DATABASE LINK'        THEN 'DB_LINK'
+         WHEN 'EVALUATION CONTEXT'   THEN 'PROCOBJ'
+         WHEN 'JAVA CLASS'           THEN 'JAVA_CLASS'
+         WHEN 'JAVA RESOURCE'        THEN 'JAVA_RESOURCE'
+         WHEN 'JAVA SOURCE'          THEN 'JAVA_SOURCE'
+         WHEN 'JAVA TYPE'            THEN 'JAVA_TYPE'
+         WHEN 'JOB'                  THEN 'PROCOBJ'
+         WHEN 'MATERIALIZED VIEW'    THEN 'MATERIALIZED_VIEW'
+         WHEN 'PACKAGE BODY'         THEN 'PACKAGE_BODY'
+         WHEN 'PACKAGE'              THEN 'PACKAGE_SPEC'
+         WHEN 'PROGRAM'              THEN 'PROCOBJ'
+         WHEN 'QUEUE'                THEN 'AQ_QUEUE'
+         WHEN 'RULE SET'             THEN 'PROCOBJ'
+         WHEN 'RULE'                 THEN 'PROCOBJ'
+         WHEN 'SCHEDULE'             THEN 'PROCOBJ'
+         WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
+         WHEN 'TYPE'                 THEN 'TYPE_SPEC'
+         ELSE object_type
+       END AS object_type,
+       object_name,
+       'app_backend/' || 
+         replace(
+           lower(
+             CASE
+               WHEN object_type LIKE '%S'  THEN object_type || 'ES'
+               WHEN object_type LIKE '%EX' THEN regexp_replace(object_type, 'EX$', 'ICES', 1, 0, 'i')
+               WHEN object_type LIKE '%Y'  THEN regexp_replace(object_type, 'Y$', 'IES', 1, 0, 'i')
+               ELSE object_type || 'S'
+             END
+           ),
+           ' ',
+           '_'
+         ) || '/' || object_name ||
+       CASE object_type
+         WHEN 'FUNCTION'       THEN '.fnc'
+         WHEN 'PACKAGE BODY'   THEN '.pkb'
+         WHEN 'PACKAGE'        THEN '.pks'
+         WHEN 'PROCEDURE'      THEN '.prc'
+         WHEN 'TRIGGER'        THEN '.trg'
+         WHEN 'TYPE BODY'      THEN '.tpb'
+         WHEN 'TYPE'           THEN '.tps'
+         ELSE '.sql'
+       END AS file_path
+  FROM user_objects
+ WHERE 1 = 1
+       --These objects are included within other object types:
+   AND object_type NOT IN ('INDEX PARTITION','INDEX SUBPARTITION','LOB','LOB PARTITION','TABLE PARTITION','TABLE SUBPARTITION')
+       --Ignore system-generated types for collection processing:
+   AND NOT (object_type = 'TYPE' AND object_name LIKE 'SYS_PLSQL_%')
+       --Ignore system-generated sequences for identity columns:
+   AND NOT (object_type = 'SEQUENCE' AND object_name LIKE 'ISEQ$$_%')                      
+       --Ignore LOB indices, their DDL is part of the table:
+   AND object_name NOT IN (SELECT index_name FROM user_lobs)
+       --Ignore nested tables, their DDL is part of their parent table:
+   AND object_name NOT IN (SELECT table_name FROM user_nested_tables)
+       --Set user specific like filters:
+   AND (#LIKE_EXPRESSIONS#)
+   AND (#NOT_LIKE_EXPRESSIONS#)
+ ORDER BY
+       object_type,
+       object_name
+^'
+      ;
+      replace_query_like_expressions(
+        p_like_list       => p_object_name_like,
+        p_not_like_list   => p_object_name_not_like,
+        p_column_name     => 'object_name'
+      );
+      util_setup_dbms_metadata;
+      OPEN l_cur FOR l_query;
+
       util_ilog_stop;
       LOOP
         FETCH l_cur INTO l_rec;
@@ -1573,25 +1608,35 @@ END;
 
     PROCEDURE process_object_grants IS
 
-      CURSOR l_cur IS SELECT DISTINCT p.grantor,
-                                      p.privilege,
-                                      p.table_name AS object_name,
-                                      'app_backend/grants/' || p.privilege || '_on_' || p.table_name || '.sql' AS file_path
-                      FROM user_tab_privs p
-                      JOIN user_objects o ON p.table_name = o.object_name
-                      WHERE REGEXP_LIKE ( o.object_name,
-                                          nvl(
-                                            p_object_filter_regex,
-                                            '.*'
-                                          ),
-                                          'i' )
-      ORDER BY privilege,
-               object_name;
-
-      l_rec   l_cur%rowtype;
+      TYPE obj_rec_typ IS RECORD ( grantor       VARCHAR2(128),
+      privilege     VARCHAR2(128),
+      object_name   VARCHAR2(256),
+      file_path     VARCHAR2(512) );
+      l_rec         obj_rec_typ;
     BEGIN
       util_ilog_start('app_backend/grants:open_cursor');
-      OPEN l_cur;
+      l_query   := q'^
+SELECT DISTINCT 
+       p.grantor,
+       p.privilege,
+       p.table_name as object_name,
+       'app_backend/grants/' || p.privilege || '_on_' || p.table_name || '.sql' AS file_path
+  FROM user_tab_privs p
+  JOIN user_objects o ON p.table_name = o.object_name
+ WHERE (#LIKE_EXPRESSIONS#)
+   AND (#NOT_LIKE_EXPRESSIONS#)
+ ORDER BY 
+       privilege,
+       object_name
+^'
+      ;
+      replace_query_like_expressions(
+        p_like_list       => p_object_name_like,
+        p_not_like_list   => p_object_name_not_like,
+        p_column_name     => 'o.object_name'
+      );
+      OPEN l_cur FOR l_query;
+
       util_ilog_stop;
       LOOP
         FETCH l_cur INTO l_rec;
@@ -1617,24 +1662,32 @@ END;
 
     PROCEDURE process_ref_constraints IS
 
-      CURSOR l_cur IS SELECT table_name,
-                             constraint_name,
-                             'app_backend/ref_constraints/' || constraint_name || '.sql' AS file_path
-                      FROM user_constraints
-                      WHERE constraint_type = 'R'
-                      AND REGEXP_LIKE ( table_name,
-                                        nvl(
-                                          p_object_filter_regex,
-                                          '.*'
-                                        ),
-                                        'i' )
-      ORDER BY table_name,
-               constraint_name;
-
-      l_rec   l_cur%rowtype;
+      TYPE obj_rec_typ IS RECORD ( table_name        VARCHAR2(256),
+      constraint_name   VARCHAR2(256),
+      file_path         VARCHAR2(512) );
+      l_rec             obj_rec_typ;
     BEGIN
       util_ilog_start('app_backend/ref_constraints:open_cursor');
-      OPEN l_cur;
+      l_query   := q'^
+SELECT table_name,
+       constraint_name,
+       'app_backend/ref_constraints/' || constraint_name || '.sql' AS file_path
+  FROM user_constraints
+ WHERE constraint_type = 'R'
+   AND (#LIKE_EXPRESSIONS#)
+   AND (#NOT_LIKE_EXPRESSIONS#)
+ ORDER BY 
+       table_name,
+       constraint_name
+^'
+      ;
+      replace_query_like_expressions(
+        p_like_list       => p_object_name_like,
+        p_not_like_list   => p_object_name_not_like,
+        p_column_name     => 'table_name'
+      );
+      OPEN l_cur FOR l_query;
+
       util_ilog_stop;
       LOOP
         FETCH l_cur INTO l_rec;
@@ -1776,41 +1829,37 @@ END;
 
     PROCEDURE process_data IS
 
-      CURSOR l_cur IS SELECT table_name,
-                             (
-                               SELECT
-                                 LISTAGG(column_name,
-                                           ', ') WITHIN GROUP(
-                                   ORDER BY position
-                                 )
-                               FROM user_cons_columns
-                               WHERE constraint_name = (
-                                 SELECT constraint_name
-                                 FROM user_constraints c
-                                 WHERE constraint_type = 'P'
-                                 AND c.table_name = t.table_name
-                               )
-                             ) AS pk_columns
-                      FROM user_tables t
-                      WHERE table_name IN (
-                        SELECT table_name
-                        FROM user_tables
-                        MINUS
-                        SELECT table_name
-                        FROM user_external_tables
-                      )
-                      AND REGEXP_LIKE ( table_name,
-                                        nvl(
-                                          p_data_table_filter_regex,
-                                          '.*'
-                                        ),
-                                        'i' )
-      ORDER BY table_name;
-
-      l_rec   l_cur%rowtype;
+      TYPE obj_rec_typ IS RECORD ( table_name   VARCHAR2(256),
+      pk_columns   VARCHAR2(4000) );
+      l_rec        obj_rec_typ;
     BEGIN
       util_ilog_start('app_data/open_tables_cursor');
-      OPEN l_cur;
+      l_query            := q'^
+SELECT table_name,
+       (SELECT LISTAGG(column_name, ', ') WITHIN GROUP(ORDER BY position)
+          FROM user_cons_columns
+         WHERE constraint_name = (SELECT constraint_name
+                                    FROM user_constraints c
+                                   WHERE constraint_type = 'P'
+                                     AND c.table_name = t.table_name)
+       ) AS pk_columns
+  FROM user_tables t
+ WHERE table_name IN (SELECT table_name FROM user_tables
+                       MINUS
+                      SELECT table_name FROM user_external_tables)
+   AND (#LIKE_EXPRESSIONS#)
+   AND (#NOT_LIKE_EXPRESSIONS#)
+ ORDER BY 
+       table_name
+^'
+      ;
+      replace_query_like_expressions(
+        p_like_list       => p_data_table_name_like,
+        p_not_like_list   => p_data_table_name_not_like,
+        p_column_name     => 'table_name'
+      );
+      OPEN l_cur FOR l_query;
+
       util_ilog_stop;
       util_ilog_start('app_data/get_scn');
       l_data_timestamp   := util_calc_data_timestamp(nvl(

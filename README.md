@@ -37,7 +37,7 @@ SIGNATURE
 ```sql
 PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '1.0.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '1.1.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -100,12 +100,14 @@ FUNCTION backapp (
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
-  p_object_filter_regex       IN VARCHAR2 DEFAULT null,  -- Filter the schema objects with the given regular expression.
+  p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: `EMP%,DEPT%` will be translated to: `where ... and (object_name like 'EMP%' or object_name like 'DEPT%')`.
+  p_object_name_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: `EMP%,DEPT%` will be translated to: `where ... and (object_name not like 'EMP%' and object_name not like 'DEPT%')`.
   -- Data related options:
   p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
   p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
   p_data_max_rows             IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
-  p_data_table_filter_regex   IN VARCHAR2 DEFAULT null,  -- Filter user_tables with the given regular expression.
+  p_data_table_name_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: `EMP%,DEPT%` will be translated to: `where ... and (table_name like 'EMP%' or table_name like 'DEPT%')`.
+  p_data_table_name_not_like  IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: `EMP%,DEPT%` will be translated to: `where ... and (table_name not like 'EMP%' and table_name not like 'DEPT%')`.
   -- Miscellaneous options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
