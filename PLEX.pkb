@@ -628,6 +628,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
             l_cursor,
             i
           );
+        ELSIF l_desc_tab(i).col_type in (c_raw, c_long_raw, c_blob, c_bfile) THEN
+          NULL; --> we ignore binary data types
         ELSE
           dbms_sql.define_column(
             l_cursor,
@@ -728,8 +730,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
               util_g_clob_append('LONG value skipped - larger then ' || c_vc2_max_size || ' characters');
             END IF;
 
-          ELSIF l_desc_tab(i).col_type = c_blob THEN
-            util_g_clob_append('BLOB value skipped - not supported for CSV');
+          ELSIF l_desc_tab(i).col_type in (c_raw, c_long_raw, c_blob, c_bfile) THEN
+            util_g_clob_append('Binary data type skipped - not supported for CSV');
           ELSE
             dbms_sql.column_value(
               l_cursor,
@@ -1171,7 +1173,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         ','
       );
       FOR i IN 1..l_expression_table.count LOOP
-        l_expression_table(i)   := p_column_name || ' like ''' || trim(l_expression_table(i) ) || '''';
+        l_expression_table(i)   := p_column_name || ' like ''' || trim(l_expression_table(i) ) || ''' escape ''\''';
       END LOOP;
 
       l_query              := replace(
@@ -1193,7 +1195,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         ','
       );
       FOR i IN 1..l_expression_table.count LOOP
-        l_expression_table(i)   := p_column_name || ' not like ''' || trim(l_expression_table(i) ) || '''';
+        l_expression_table(i)   := p_column_name || ' not like ''' || trim(l_expression_table(i) ) || ''' escape ''\''';
       END LOOP;
 
       l_query              := replace(
