@@ -2,10 +2,10 @@
   "name": "plex",
   "scripts": {
     "build:docs": "node scripts/build_docs.js PLEX.pks README.md",
-    "watch:docs": "chokidar *.pks scripts/**/*.js package.json --initial -c \"npm run build:docs\""
+    "watch:docs": "chokidar PLEX.pks package.json --initial -c \"npm run build:docs\""
   },
   "dependencies": {
-    "chokidar-cli": "^1.2.0",
-    "glob": "^7.1.2"
+    "chokidar-cli": "^1.2.1",
+    "ploc": "^0.3.1"
   }
 }
