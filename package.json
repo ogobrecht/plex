@@ -1,11 +1,16 @@
 {
   "name": "plex",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ogobrecht/plex.git"
+  },
   "scripts": {
-    "build:docs": "node scripts/build_docs.js PLEX.pks README.md",
+    "build:docs": "npx ploc --in PLEX.pks --out README.md",
     "watch:docs": "chokidar PLEX.pks package.json --initial -c \"npm run build:docs\""
   },
   "dependencies": {
     "chokidar-cli": "^1.2.1",
-    "ploc": "^0.3.1"
+    "ploc": "^0.4.0"
   }
 }
