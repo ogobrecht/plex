@@ -10,7 +10,7 @@
     "watch:docs": "chokidar PLEX.pks package.json --initial -c \"npm run build:docs\""
   },
   "dependencies": {
-    "chokidar-cli": "^1.2.1",
+    "chokidar-cli": "^1.2.2",
     "ploc": "^0.5.0"
   }
 }
