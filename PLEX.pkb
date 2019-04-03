@@ -982,6 +982,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   -- MAIN CODE
 
   FUNCTION backapp (
+  $if $$apex_exists $then
+
     p_app_id                      IN                            NUMBER DEFAULT NULL,
     p_app_date                    IN                            BOOLEAN DEFAULT true,
     p_app_public_reports          IN                            BOOLEAN DEFAULT true,
@@ -995,6 +997,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_app_supporting_objects      IN                            VARCHAR2 DEFAULT NULL,
     p_app_include_single_file     IN                            BOOLEAN DEFAULT false,
     p_app_build_status_run_only   IN                            BOOLEAN DEFAULT false,
+  $end
     p_include_object_ddl          IN                            BOOLEAN DEFAULT false,
     p_object_name_like            IN                            VARCHAR2 DEFAULT NULL,
     p_object_name_not_like        IN                            VARCHAR2 DEFAULT NULL,
@@ -1028,15 +1031,20 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     BEGIN
       util_ilog_init(
         p_module                => 'plex.backapp'
+          $if $$apex_exists $then
+
                     || CASE
           WHEN p_app_id IS NOT NULL THEN
             '('
             || TO_CHAR(p_app_id)
             || ')'
-        END,
+        END
+        $end,
         p_include_runtime_log   => p_include_runtime_log
       );
     END init;
+
+$if $$apex_exists $then
 
     PROCEDURE check_owner IS
       CURSOR cur_owner IS
@@ -1078,6 +1086,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
       util_ilog_stop;
     END check_owner;
+$end
+
+$if $$apex_exists $then
 
     PROCEDURE process_apex_app IS
       l_single_file tab_export_files;
@@ -1189,16 +1200,17 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       END IF;
 
     END process_apex_app;
+  $end
 
     PROCEDURE replace_query_like_expressions (
       p_like_list       VARCHAR2,
       p_not_like_list   VARCHAR2,
       p_column_name     VARCHAR2
     ) IS
-      l_expression_table apex_tab_varchar2;
+      l_expression_table tab_varchar2;
     BEGIN
         -- process filter "like"
-      l_expression_table   := apex_string.split(
+      l_expression_table   := util_split(
         p_like_list,
         ','
       );
@@ -1212,7 +1224,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         l_query,
         '#LIKE_EXPRESSIONS#',
         nvl(
-          apex_string.join(
+          util_join(
             l_expression_table,
             ' or '
           ),
@@ -1222,7 +1234,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
     -- process filter "not like"
 
-      l_expression_table   := apex_string.split(
+      l_expression_table   := util_split(
         p_not_like_list,
         ','
       );
@@ -1236,7 +1248,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         l_query,
         '#NOT_LIKE_EXPRESSIONS#',
         nvl(
-          apex_string.join(
+          util_join(
             l_expression_table,
             ' and '
           ),
@@ -2083,6 +2095,8 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           c_plex_url,
           '{{SYSTEMROLE}}',
           'DEV',
+        $if $$apex_exists $then
+
           '{{APP_ID}}',
           p_app_id,
           '{{APP_ALIAS}}',
@@ -2091,6 +2105,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           l_app_owner,
           '{{APP_WORKSPACE}}',
           l_app_workspace,
+        $end
           '{{SCRIPTFILE}}',
           'export_app_custom_code.sql',
           '{{LOGFILE}}',
@@ -2116,6 +2131,8 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           c_plex_url,
           '{{SYSTEMROLE}}',
           'TEST',
+        $if $$apex_exists $then
+
           '{{APP_ID}}',
           p_app_id,
           '{{APP_ALIAS}}',
@@ -2124,6 +2141,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           l_app_owner,
           '{{APP_WORKSPACE}}',
           l_app_workspace,
+        $end
           '{{SCRIPTFILE}}',
           'install_app_custom_code.sql',
           '{{LOGFILE}}',
@@ -2149,6 +2167,8 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           c_plex_url,
           '{{SYSTEMROLE}}',
           'PROD',
+        $if $$apex_exists $then
+
           '{{APP_ID}}',
           p_app_id,
           '{{APP_ALIAS}}',
@@ -2157,6 +2177,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           l_app_owner,
           '{{APP_WORKSPACE}}',
           l_app_workspace,
+        $end
           '{{SCRIPTFILE}}',
           'install_app_custom_code.sql',
           '{{LOGFILE}}',
@@ -2219,7 +2240,11 @@ DECLARE
   l_files   tab_export_files;
 BEGIN
   l_files   := plex.backapp (
-  -- These are the defaults - align it to your needs:
+  -- These are the defaults - align it to your needs:^'
+      ;
+$if $$apex_exists $then
+
+      l_file_template   := l_file_template || q'^
   p_app_id                    => :app_id,
   p_app_date                  => true,
   p_app_public_reports        => true,
@@ -2232,8 +2257,10 @@ BEGIN
   p_app_comments              => true,
   p_app_supporting_objects    => null,
   p_app_include_single_file   => false,
-  p_app_build_status_run_only => false,
-
+  p_app_build_status_run_only => false,^'
+      ;
+$end
+      l_file_template   := l_file_template || q'^
   p_include_object_ddl        => true,
   p_object_name_like          => null,
   p_object_name_not_like      => null,
@@ -2509,13 +2536,19 @@ prompt
 
   BEGIN
     init;
+  $if $$apex_exists $then
+
     check_owner;
     --
     IF p_app_id IS NOT NULL THEN
       process_apex_app;
     ELSE
+    $end
       l_export_files := NEW tab_export_files();
+    $if $$apex_exists $then
+
     END IF;
+    $end
     --
 
     IF p_include_object_ddl THEN

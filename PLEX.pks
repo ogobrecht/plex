@@ -59,6 +59,7 @@ TYPE tab_varchar2 IS TABLE OF varchar2(32767);
 
 
 FUNCTION backapp (
+$if $$apex_exists $then
   -- App related options:
   p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
   p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
@@ -73,6 +74,7 @@ FUNCTION backapp (
   p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
+$end
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
