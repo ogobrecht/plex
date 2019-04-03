@@ -20,7 +20,7 @@ See also this resources for more information:
 
 STANDARDS
 
-- All main functions returning a file collection of type apex_t_export_files
+- All main functions returning a file collection of type tab_export_files
 - All main functions setting the session module and action infos while processing their work
 
 
@@ -46,6 +46,15 @@ TYPE rec_runtime_log IS RECORD (
   action app_info_text );
 
 TYPE tab_runtime_log IS TABLE OF rec_runtime_log;
+
+TYPE rec_export_file IS RECORD (
+  name     VARCHAR2(255),
+  contents CLOB
+);
+
+TYPE tab_export_files IS TABLE OF rec_export_file;
+
+TYPE tab_varchar2 IS TABLE OF varchar2(32767);
 
 
 
@@ -77,7 +86,7 @@ FUNCTION backapp (
   -- Miscellaneous options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
-) RETURN apex_t_export_files;
+) RETURN tab_export_files;
 /**
 Get a file collection of an APEX application (or the current user/schema only) including:
 
@@ -90,7 +99,7 @@ EXAMPLE
 
 ```sql
 DECLARE
-  l_file_collection apex_t_export_files;
+  l_file_collection tab_export_files;
 BEGIN
   l_file_collection := plex.backapp(
     p_app_id             => 100,
@@ -141,7 +150,7 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_log.md with runtime statistics.
-) RETURN apex_t_export_files;
+) RETURN tab_export_files;
 /**
 Export one or more queries as CSV data within a file collection.
 
@@ -149,7 +158,7 @@ EXAMPLE
 
 ```sql
 DECLARE
-  l_file_collection apex_t_export_files;
+  l_file_collection tab_export_files;
 BEGIN
 
   --fill the queries array
@@ -183,7 +192,7 @@ END;
 
 
 FUNCTION to_zip (
-  p_file_collection IN apex_t_export_files -- The file collection to process with APEX_ZIP.
+  p_file_collection IN tab_export_files -- The file collection to process with APEX_ZIP.
 ) RETURN BLOB;
 /**
 Convert a file collection to a zip file.
