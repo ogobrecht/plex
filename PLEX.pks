@@ -31,8 +31,8 @@ INSTALLATION
 - Download the [latest version](https://github.com/ogobrecht/plex/releases/latest)
 - Unzip it, open a shell and `cd` into the root directory
 - Start SQL*Plus (or another tool which can run SQL scripts)
-- To install PLEX run the provided install script `1_install.sql` (script provides compiler flags)
-- To uninstall PLEX run the provided script `2_uninstall.sql` or drop the package manually
+- To install PLEX run the provided install script `plex_install.sql` (script provides compiler flags)
+- To uninstall PLEX run the provided script `plex_uninstall.sql` or drop the package manually
 
 
 CHANGELOG

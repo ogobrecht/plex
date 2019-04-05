@@ -4,37 +4,37 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   -- CONSTANTS, TYPES
   ------------------------------------------------------------------------------------------------------------------------------
 
-  c_tab                        CONSTANT VARCHAR2(1) := chr(9);
-  c_lf                         CONSTANT VARCHAR2(1) := chr(10);
-  c_cr                         CONSTANT VARCHAR2(1) := chr(13);
-  c_crlf                       CONSTANT VARCHAR2(2) := chr(13) || chr(10);
-  c_slash                      CONSTANT VARCHAR2(1) := '/';
-  c_at                         CONSTANT VARCHAR2(1) := '@';
-  c_vc2_max_size               CONSTANT PLS_INTEGER := 32767;
-  c_local_file_header          CONSTANT RAW(4) := hextoraw('504B0304'); -- local file header signature
-  c_end_of_central_directory   CONSTANT RAW(4) := hextoraw('504B0506'); -- end of central directory signature
+  c_tab                            CONSTANT VARCHAR2(1) := chr(9);
+  c_lf                             CONSTANT VARCHAR2(1) := chr(10);
+  c_cr                             CONSTANT VARCHAR2(1) := chr(13);
+  c_crlf                           CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+  c_slash                          CONSTANT VARCHAR2(1) := '/';
+  c_at                             CONSTANT VARCHAR2(1) := '@';
+  c_vc2_max_size                   CONSTANT PLS_INTEGER := 32767;
+  c_zip_local_file_header          CONSTANT RAW(4) := hextoraw('504B0304'); -- local file header signature
+  c_zip_end_of_central_directory   CONSTANT RAW(4) := hextoraw('504B0506'); -- end of central directory signature
   
   --
   TYPE rec_ilog_step IS RECORD ( --
-    action                       app_info_text,
-    start_time                   TIMESTAMP(6),
-    stop_time                    TIMESTAMP(6),
-    elapsed                      NUMBER,
-    execution                    NUMBER
+    action                           app_info_text,
+    start_time                       TIMESTAMP(6),
+    stop_time                        TIMESTAMP(6),
+    elapsed                          NUMBER,
+    execution                        NUMBER
   );
   TYPE tab_ilog_step IS
     TABLE OF rec_ilog_step INDEX BY BINARY_INTEGER;
     
  --
   TYPE rec_ilog IS RECORD ( --
-    module                       app_info_text,
-    enabled                      BOOLEAN,
-    start_time                   TIMESTAMP(6),
-    stop_time                    TIMESTAMP(6),
-    run_time                     NUMBER,
-    measured_time                NUMBER,
-    unmeasured_time              NUMBER,
-    data                         tab_ilog_step
+    module                           app_info_text,
+    enabled                          BOOLEAN,
+    start_time                       TIMESTAMP(6),
+    stop_time                        TIMESTAMP(6),
+    run_time                         NUMBER,
+    measured_time                    NUMBER,
+    unmeasured_time                  NUMBER,
+    data                             tab_ilog_step
   );
   
   --
@@ -43,36 +43,36 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     
     --
   TYPE rec_ddl_files IS RECORD ( --
-    sequences_                   tab_vc1000,
-    tables_                      tab_vc1000,
-    ref_constraints_             tab_vc1000,
-    indices_                     tab_vc1000,
-    views_                       tab_vc1000,
-    types_                       tab_vc1000,
-    type_bodies_                 tab_vc1000,
-    triggers_                    tab_vc1000,
-    functions_                   tab_vc1000,
-    procedures_                  tab_vc1000,
-    packages_                    tab_vc1000,
-    package_bodies_              tab_vc1000,
-    grants_                      tab_vc1000,
-    other_objects_               tab_vc1000
+    sequences_                       tab_vc1000,
+    tables_                          tab_vc1000,
+    ref_constraints_                 tab_vc1000,
+    indices_                         tab_vc1000,
+    views_                           tab_vc1000,
+    types_                           tab_vc1000,
+    type_bodies_                     tab_vc1000,
+    triggers_                        tab_vc1000,
+    functions_                       tab_vc1000,
+    procedures_                      tab_vc1000,
+    packages_                        tab_vc1000,
+    package_bodies_                  tab_vc1000,
+    grants_                          tab_vc1000,
+    other_objects_                   tab_vc1000
   );
   
     --
   TYPE rec_queries IS RECORD (--
-    query                        VARCHAR2(32767 CHAR),
-    file_name                    VARCHAR2(256 CHAR),
-    max_rows                     NUMBER DEFAULT 100000
+    query                            VARCHAR2(32767 CHAR),
+    file_name                        VARCHAR2(256 CHAR),
+    max_rows                         NUMBER DEFAULT 100000
   );
   TYPE tab_queries IS
     TABLE OF rec_queries INDEX BY PLS_INTEGER;
   
   -- GLOBAL VARIABLES
-  g_clob                       CLOB;
-  g_clob_varchar_cache         VARCHAR2(32767char);
-  g_log                       rec_ilog;
-  g_queries                    tab_queries;
+  g_clob                           CLOB;
+  g_clob_varchar_cache             VARCHAR2(32767char);
+  g_log                            rec_ilog;
+  g_queries                        tab_queries;
 
 
   ------------------------------------------------------------------------------------------------------------------------------
@@ -195,9 +195,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_join;
 
   FUNCTION util_zip_blob_to_num (
-    p_blob IN   BLOB,
-    p_len  IN   INTEGER,
-    p_pos  IN   INTEGER
+    p_blob   IN       BLOB,
+    p_len    IN       INTEGER,
+    p_pos    IN       INTEGER
   ) RETURN NUMBER IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     rv NUMBER;
   BEGIN
@@ -217,8 +217,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END;
 
   FUNCTION util_zip_little_endian (
-    p_big   IN NUMBER,
-    p_bytes IN PLS_INTEGER := 4
+    p_big     IN        NUMBER,
+    p_bytes   IN        PLS_INTEGER := 4
   ) RETURN RAW IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     t_big NUMBER := p_big;
   BEGIN
@@ -238,8 +238,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   PROCEDURE util_zip_add_file (
     p_zipped_blob   IN OUT          BLOB,
-    p_name          IN VARCHAR2,
-    p_content       IN BLOB
+    p_name          IN              VARCHAR2,
+    p_content       IN              BLOB
   ) IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
 
     t_now          DATE;
@@ -283,7 +283,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     dbms_lob.append(
       p_zipped_blob,
       utl_raw.concat(
-        c_local_file_header -- local file header signature
+        c_zip_local_file_header -- local file header signature
         ,
         hextoraw('1400') -- version 2.0
         ,
@@ -377,9 +377,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     t_offs              := 1;
     WHILE dbms_lob.substr(
       p_zipped_blob,
-      utl_raw.length(c_local_file_header),
+      utl_raw.length(c_zip_local_file_header),
       t_offs
-    ) = c_local_file_header LOOP
+    ) = c_zip_local_file_header LOOP
       t_cnt    := t_cnt + 1;
       dbms_lob.append(
         p_zipped_blob,
@@ -459,7 +459,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     dbms_lob.append(
       p_zipped_blob,
       utl_raw.concat(
-        c_end_of_central_directory                                -- End of central directory signature
+        c_zip_end_of_central_directory                                -- End of central directory signature
         ,
         hextoraw('0000')                                        -- Number of this disk
         ,
@@ -524,13 +524,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     RETURN l_blob;
   END util_clob_to_blob;
 
-    FUNCTION util_multireplace (
-    p_source_string   VARCHAR2,
-    p_replacements  tab_varchar2
-  ) RETURN VARCHAR2
-  is begin
-    null;
-  end;
+  FUNCTION util_multireplace (
+    p_source_string VARCHAR2,
+    p_replacements tab_varchar2
+  ) RETURN VARCHAR2 IS
+  BEGIN
+    NULL;
+  END;
 
   FUNCTION util_multi_replace (
     p_source_string   VARCHAR2,
@@ -683,8 +683,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   PROCEDURE util_export_files_append (
     p_export_files IN OUT NOCOPY tab_export_files,
-    p_name         IN     VARCHAR2,
-    p_contents     IN     CLOB
+    p_name       IN           VARCHAR2,
+    p_contents   IN           CLOB
   ) IS
     l_index PLS_INTEGER;
   BEGIN
@@ -842,11 +842,11 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_g_clob_append;
 
   PROCEDURE util_g_clob_query_to_csv (
-    p_query         IN   VARCHAR2,
-    p_max_rows      IN   NUMBER DEFAULT 1000,
-    p_delimiter     IN   VARCHAR2 DEFAULT ',',
-    p_quote_mark    IN   VARCHAR2 DEFAULT '"',
-    p_header_prefix IN   VARCHAR2 DEFAULT NULL
+    p_query           IN                VARCHAR2,
+    p_max_rows        IN                NUMBER DEFAULT 1000,
+    p_delimiter       IN                VARCHAR2 DEFAULT ',',
+    p_quote_mark      IN                VARCHAR2 DEFAULT '"',
+    p_header_prefix   IN                VARCHAR2 DEFAULT NULL
   ) IS 
     -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
 
@@ -1166,8 +1166,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_g_clob_create_runtime_log;
 
   FUNCTION util_g_log_get_runtime (
-    p_start IN TIMESTAMP,
-    p_stop  IN TIMESTAMP
+    p_start   IN        TIMESTAMP,
+    p_stop    IN        TIMESTAMP
   ) RETURN NUMBER IS
   BEGIN
     RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
@@ -1176,8 +1176,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_g_log_get_runtime;
 
   PROCEDURE util_g_log_init (
-    p_module              IN VARCHAR2,
-    p_include_runtime_log IN BOOLEAN
+    p_module                IN                      VARCHAR2,
+    p_include_runtime_log   IN                      BOOLEAN
   ) IS
   BEGIN
     g_log.module            := substr(
@@ -1219,7 +1219,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       action_name   => p_action
     );
     IF g_log.enabled THEN
-      l_index                           := g_log.data.count + 1;
+      l_index                          := g_log.data.count + 1;
       g_log.data(l_index).action       := substr(
         p_action,
         1,
@@ -1237,7 +1237,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     l_index PLS_INTEGER;
   BEGIN
     IF g_log.enabled THEN
-      l_index                       := g_log.data.count;
+      l_index                      := g_log.data.count;
       g_log.data(l_index).action   := substr(
         g_log.data(l_index).action || p_text,
         1,
