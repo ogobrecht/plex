@@ -1,37 +1,40 @@
 CREATE OR REPLACE PACKAGE BODY plex IS
 
+  ------------------------------------------------------------------------------------------------------------------------------
   -- CONSTANTS, TYPES
+  ------------------------------------------------------------------------------------------------------------------------------
 
-  c_tab                  CONSTANT VARCHAR2(1) := chr(9);
-  c_lf                   CONSTANT VARCHAR2(1) := chr(10);
-  c_cr                   CONSTANT VARCHAR2(1) := chr(13);
-  c_crlf                 CONSTANT VARCHAR2(2) := chr(13)
-                                 || chr(10);
-  c_slash                CONSTANT VARCHAR2(1) := '/'; -- We need it to be able to compile this package via SQL*Plus. SQL*Plus starts actions
-  c_at                   CONSTANT VARCHAR2(1) := '@'; -- on these characters regardsless if they encapsulated in strings or not :-(
-  c_vc2_max_size         CONSTANT PLS_INTEGER := 32767;
+  c_tab                        CONSTANT VARCHAR2(1) := chr(9);
+  c_lf                         CONSTANT VARCHAR2(1) := chr(10);
+  c_cr                         CONSTANT VARCHAR2(1) := chr(13);
+  c_crlf                       CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+  c_slash                      CONSTANT VARCHAR2(1) := '/';
+  c_at                         CONSTANT VARCHAR2(1) := '@';
+  c_vc2_max_size               CONSTANT PLS_INTEGER := 32767;
+  c_local_file_header          CONSTANT RAW(4) := hextoraw('504B0304'); -- local file header signature
+  c_end_of_central_directory   CONSTANT RAW(4) := hextoraw('504B0506'); -- end of central directory signature
   
   --
   TYPE rec_ilog_step IS RECORD ( --
-    action                 app_info_text,
-    start_time             TIMESTAMP(6),
-    stop_time              TIMESTAMP(6),
-    elapsed                NUMBER,
-    execution              NUMBER
+    action                       app_info_text,
+    start_time                   TIMESTAMP(6),
+    stop_time                    TIMESTAMP(6),
+    elapsed                      NUMBER,
+    execution                    NUMBER
   );
   TYPE tab_ilog_step IS
     TABLE OF rec_ilog_step INDEX BY BINARY_INTEGER;
     
-    --
+ --
   TYPE rec_ilog IS RECORD ( --
-    module                 app_info_text,
-    enabled                BOOLEAN,
-    start_time             TIMESTAMP(6),
-    stop_time              TIMESTAMP(6),
-    run_time               NUMBER,
-    measured_time          NUMBER,
-    unmeasured_time        NUMBER,
-    data                   tab_ilog_step
+    module                       app_info_text,
+    enabled                      BOOLEAN,
+    start_time                   TIMESTAMP(6),
+    stop_time                    TIMESTAMP(6),
+    run_time                     NUMBER,
+    measured_time                NUMBER,
+    unmeasured_time              NUMBER,
+    data                         tab_ilog_step
   );
   
   --
@@ -40,39 +43,41 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     
     --
   TYPE rec_ddl_files IS RECORD ( --
-    sequences_             tab_vc1000,
-    tables_                tab_vc1000,
-    ref_constraints_       tab_vc1000,
-    indices_               tab_vc1000,
-    views_                 tab_vc1000,
-    types_                 tab_vc1000,
-    type_bodies_           tab_vc1000,
-    triggers_              tab_vc1000,
-    functions_             tab_vc1000,
-    procedures_            tab_vc1000,
-    packages_              tab_vc1000,
-    package_bodies_        tab_vc1000,
-    grants_                tab_vc1000,
-    other_objects_         tab_vc1000
+    sequences_                   tab_vc1000,
+    tables_                      tab_vc1000,
+    ref_constraints_             tab_vc1000,
+    indices_                     tab_vc1000,
+    views_                       tab_vc1000,
+    types_                       tab_vc1000,
+    type_bodies_                 tab_vc1000,
+    triggers_                    tab_vc1000,
+    functions_                   tab_vc1000,
+    procedures_                  tab_vc1000,
+    packages_                    tab_vc1000,
+    package_bodies_              tab_vc1000,
+    grants_                      tab_vc1000,
+    other_objects_               tab_vc1000
   );
   
     --
   TYPE rec_queries IS RECORD (--
-    query                  VARCHAR2(32767 CHAR),
-    file_name              VARCHAR2(256 CHAR),
-    max_rows               NUMBER DEFAULT 100000
+    query                        VARCHAR2(32767 CHAR),
+    file_name                    VARCHAR2(256 CHAR),
+    max_rows                     NUMBER DEFAULT 100000
   );
   TYPE tab_queries IS
     TABLE OF rec_queries INDEX BY PLS_INTEGER;
   
   -- GLOBAL VARIABLES
-  g_clob                 CLOB;
-  g_clob_varchar_cache   VARCHAR2(32767char);
-  g_ilog                 rec_ilog;
-  g_queries              tab_queries;
+  g_clob                       CLOB;
+  g_clob_varchar_cache         VARCHAR2(32767char);
+  g_log                       rec_ilog;
+  g_queries                    tab_queries;
 
 
+  ------------------------------------------------------------------------------------------------------------------------------
   -- UTILITIES
+  ------------------------------------------------------------------------------------------------------------------------------
 
   FUNCTION util_bool_to_string (
     p_bool IN BOOLEAN
@@ -172,15 +177,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   FUNCTION util_join (
     p_array       IN            tab_varchar2,
-    p_delimiter   VARCHAR2 DEFAULT ','
+    p_delimiter   IN            VARCHAR2 DEFAULT ','
   ) RETURN VARCHAR2 IS
     v_return VARCHAR2(32767);
   BEGIN
     IF p_array IS NOT NULL AND p_array.count > 0 THEN
       v_return := p_array(1);
-      FOR i IN 2..p_array.count LOOP v_return := v_return
-                                                 || p_delimiter
-                                                 || p_array(i);
+      FOR i IN 2..p_array.count LOOP v_return := v_return || p_delimiter || p_array(i);
       END LOOP;
 
     END IF;
@@ -190,6 +193,305 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     WHEN value_error THEN
       RETURN v_return;
   END util_join;
+
+  FUNCTION util_zip_blob_to_num (
+    p_blob IN   BLOB,
+    p_len  IN   INTEGER,
+    p_pos  IN   INTEGER
+  ) RETURN NUMBER IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+    rv NUMBER;
+  BEGIN
+    rv := utl_raw.cast_to_binary_integer(
+      dbms_lob.substr(
+        p_blob,
+        p_len,
+        p_pos
+      ),
+      utl_raw.little_endian
+    );
+
+    IF rv < 0 THEN
+      rv := rv + 4294967296;
+    END IF;
+    RETURN rv;
+  END;
+
+  FUNCTION util_zip_little_endian (
+    p_big   IN NUMBER,
+    p_bytes IN PLS_INTEGER := 4
+  ) RETURN RAW IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+    t_big NUMBER := p_big;
+  BEGIN
+    IF t_big > 2147483647 THEN
+      t_big := t_big - 4294967296;
+    END IF;
+    RETURN utl_raw.substr(
+      utl_raw.cast_from_binary_integer(
+        t_big,
+        utl_raw.little_endian
+      ),
+      1,
+      p_bytes
+    );
+
+  END;
+
+  PROCEDURE util_zip_add_file (
+    p_zipped_blob   IN OUT          BLOB,
+    p_name          IN VARCHAR2,
+    p_content       IN BLOB
+  ) IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+
+    t_now          DATE;
+    t_blob         BLOB;
+    t_len          INTEGER;
+    t_clen         INTEGER;
+    t_crc32        RAW(4) := hextoraw('00000000');
+    t_compressed   BOOLEAN := false;
+    t_name         RAW(32767);
+  BEGIN
+    t_now    := SYSDATE;
+    t_len    := nvl(
+      dbms_lob.getlength(p_content),
+      0
+    );
+    IF t_len > 0 THEN
+      t_blob         := utl_compress.lz_compress(p_content);
+      t_clen         := dbms_lob.getlength(t_blob) - 18;
+      t_compressed   := t_clen < t_len;
+      t_crc32        := dbms_lob.substr(
+        t_blob,
+        4,
+        t_clen + 11
+      );
+    END IF;
+
+    IF NOT t_compressed THEN
+      t_clen   := t_len;
+      t_blob   := p_content;
+    END IF;
+    IF p_zipped_blob IS NULL THEN
+      dbms_lob.createtemporary(
+        p_zipped_blob,
+        true
+      );
+    END IF;
+    t_name   := utl_i18n.string_to_raw(
+      p_name,
+      'AL32UTF8'
+    );
+    dbms_lob.append(
+      p_zipped_blob,
+      utl_raw.concat(
+        c_local_file_header -- local file header signature
+        ,
+        hextoraw('1400') -- version 2.0
+        ,
+          CASE
+            WHEN t_name = utl_i18n.string_to_raw(
+              p_name,
+              'US8PC437'
+            ) THEN
+              hextoraw('0000') -- no General purpose bits
+            ELSE hextoraw('0008') -- set Language encoding flag (EFS)
+          END,
+          CASE
+            WHEN t_compressed THEN
+              hextoraw('0800') -- deflate
+            ELSE hextoraw('0000') -- stored
+          END,
+        util_zip_little_endian(
+          to_number(TO_CHAR(
+            t_now,
+            'ss'
+          )) / 2 + to_number(TO_CHAR(
+            t_now,
+            'mi'
+          )) * 32 + to_number(TO_CHAR(
+            t_now,
+            'hh24'
+          )) * 2048,
+          2
+        ), -- file last modification time
+        util_zip_little_endian(
+          to_number(TO_CHAR(
+            t_now,
+            'dd'
+          )) + to_number(TO_CHAR(
+            t_now,
+            'mm'
+          )) * 32 +(to_number(TO_CHAR(
+            t_now,
+            'yyyy'
+          )) - 1980) * 512,
+          2
+        ), -- file last modification date
+        t_crc32, -- CRC-32
+        util_zip_little_endian(t_clen), -- compressed size
+        util_zip_little_endian(t_len), -- uncompressed size
+        util_zip_little_endian(
+          utl_raw.length(t_name),
+          2
+        ), -- file name length
+        hextoraw('0000'), -- extra field length
+        t_name -- file name
+      )
+    );
+
+    IF t_compressed THEN
+      dbms_lob.copy(
+        p_zipped_blob,
+        t_blob,
+        t_clen,
+        dbms_lob.getlength(p_zipped_blob) + 1,
+        11
+      ); -- compressed content
+    ELSIF t_clen > 0 THEN
+      dbms_lob.copy(
+        p_zipped_blob,
+        t_blob,
+        t_clen,
+        dbms_lob.getlength(p_zipped_blob) + 1,
+        1
+      ); --  content
+    END IF;
+
+    IF dbms_lob.istemporary(t_blob) = 1 THEN
+      dbms_lob.freetemporary(t_blob);
+    END IF;
+
+  END;
+
+  PROCEDURE util_zip_finish (
+    p_zipped_blob IN OUT BLOB
+  ) IS
+    -- copyright by Anton Scheffer (MIT license, also see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+
+    t_cnt               PLS_INTEGER := 0;
+    t_offs              INTEGER;
+    t_offs_dir_header   INTEGER;
+    t_offs_end_header   INTEGER;
+    t_comment           RAW(32767) := utl_raw.cast_to_raw('Implementation by Anton Scheffer');
+  BEGIN
+    t_offs_dir_header   := dbms_lob.getlength(p_zipped_blob);
+    t_offs              := 1;
+    WHILE dbms_lob.substr(
+      p_zipped_blob,
+      utl_raw.length(c_local_file_header),
+      t_offs
+    ) = c_local_file_header LOOP
+      t_cnt    := t_cnt + 1;
+      dbms_lob.append(
+        p_zipped_blob,
+        utl_raw.concat(
+          hextoraw('504B0102')      -- Central directory file header signature
+          ,
+          hextoraw('1400')          -- version 2.0
+          ,
+          dbms_lob.substr(
+            p_zipped_blob,
+            26,
+            t_offs + 4
+          ),
+          hextoraw('0000')          -- File comment length
+          ,
+          hextoraw('0000')          -- Disk number where file starts
+          ,
+          hextoraw('0000')          -- Internal file attributes =>
+                                                                   --     0000 binary file
+                                                                   --     0100 (ascii)text file
+          ,
+            CASE
+              WHEN dbms_lob.substr(
+                p_zipped_blob,
+                1,
+                t_offs + 30 + util_zip_blob_to_num(
+                  p_zipped_blob,
+                  2,
+                  t_offs + 26
+                ) - 1
+              ) IN(
+                hextoraw(
+                  '2F'
+                ) -- /
+                ,
+                hextoraw(
+                  '5C'
+                ) -- \
+              ) THEN
+                hextoraw('10000000') -- a directory/folder
+              ELSE hextoraw('2000B681') -- a file
+            END                         -- External file attributes
+            ,
+          util_zip_little_endian(t_offs - 1) -- Relative offset of local file header
+          ,
+          dbms_lob.substr(
+            p_zipped_blob,
+            util_zip_blob_to_num(
+              p_zipped_blob,
+              2,
+              t_offs + 26
+            ),
+            t_offs + 30
+          )            -- File name
+        )
+      );
+
+      t_offs   := t_offs + 30 + util_zip_blob_to_num(
+        p_zipped_blob,
+        4,
+        t_offs + 18
+      )  -- compressed size
+       + util_zip_blob_to_num(
+        p_zipped_blob,
+        2,
+        t_offs + 26
+      )  -- File name length
+       + util_zip_blob_to_num(
+        p_zipped_blob,
+        2,
+        t_offs + 28
+      ); -- Extra field length
+
+    END LOOP;
+
+    t_offs_end_header   := dbms_lob.getlength(p_zipped_blob);
+    dbms_lob.append(
+      p_zipped_blob,
+      utl_raw.concat(
+        c_end_of_central_directory                                -- End of central directory signature
+        ,
+        hextoraw('0000')                                        -- Number of this disk
+        ,
+        hextoraw('0000')                                        -- Disk where central directory starts
+        ,
+        util_zip_little_endian(
+          t_cnt,
+          2
+        )                                 -- Number of central directory records on this disk
+        ,
+        util_zip_little_endian(
+          t_cnt,
+          2
+        )                                 -- Total number of central directory records
+        ,
+        util_zip_little_endian(t_offs_end_header - t_offs_dir_header)    -- Size of central directory
+        ,
+        util_zip_little_endian(t_offs_dir_header)                        -- Offset of start of central directory, relative to start of archive
+        ,
+        util_zip_little_endian(
+          nvl(
+            utl_raw.length(t_comment),
+            0
+          ),
+          2
+        ) -- ZIP file comment length
+        ,
+        t_comment
+      )
+    );
+
+  END;
 
   FUNCTION util_clob_to_blob (
     p_clob CLOB
@@ -221,6 +523,14 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
     RETURN l_blob;
   END util_clob_to_blob;
+
+    FUNCTION util_multireplace (
+    p_source_string   VARCHAR2,
+    p_replacements  tab_varchar2
+  ) RETURN VARCHAR2
+  is begin
+    null;
+  end;
 
   FUNCTION util_multi_replace (
     p_source_string   VARCHAR2,
@@ -352,23 +662,20 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_multi_replace;
 
   FUNCTION util_set_build_status_run_only (
-    p_contents CLOB
+    p_app_export_sql CLOB
   ) RETURN CLOB IS
     l_position PLS_INTEGER;
   BEGIN
     l_position := instr(
-      p_contents,
+      p_app_export_sql,
       ',p_exact_substitutions_only'
     );
     RETURN substr(
-      p_contents,
+      p_app_export_sql,
       1,
       l_position - 1
-    )
-           || ',p_build_status=>''RUN_ONLY'''
-           || c_lf
-           || substr(
-      p_contents,
+    ) || ',p_build_status=>''RUN_ONLY''' || c_lf || substr(
+      p_app_export_sql,
       l_position
     );
 
@@ -376,8 +683,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   PROCEDURE util_export_files_append (
     p_export_files IN OUT NOCOPY tab_export_files,
-    p_name       VARCHAR2,
-    p_contents   CLOB
+    p_name         IN     VARCHAR2,
+    p_contents     IN     CLOB
   ) IS
     l_index PLS_INTEGER;
   BEGIN
@@ -391,7 +698,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_export_files_append;
 
   FUNCTION util_calc_data_timestamp (
-    p_as_of_minutes_ago NUMBER
+    p_as_of_minutes_ago IN NUMBER
   ) RETURN TIMESTAMP IS
     l_return TIMESTAMP;
   BEGIN
@@ -400,7 +707,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       '{{MINUTES}}',
       TO_CHAR(p_as_of_minutes_ago)
     )
-    INTO l_return;
+      INTO l_return;
     RETURN l_return;
   END util_calc_data_timestamp;
 
@@ -535,12 +842,11 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_g_clob_append;
 
   PROCEDURE util_g_clob_query_to_csv (
-    p_query           VARCHAR2,
-    p_max_rows        NUMBER DEFAULT 1000,
-    --
-    p_delimiter       VARCHAR2 DEFAULT ',',
-    p_quote_mark      VARCHAR2 DEFAULT '"',
-    p_header_prefix   VARCHAR2 DEFAULT NULL
+    p_query         IN   VARCHAR2,
+    p_max_rows      IN   NUMBER DEFAULT 1000,
+    p_delimiter     IN   VARCHAR2 DEFAULT ',',
+    p_quote_mark    IN   VARCHAR2 DEFAULT '"',
+    p_header_prefix IN   VARCHAR2 DEFAULT NULL
   ) IS 
     -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
 
@@ -557,15 +863,15 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     l_buffer_long_length         PLS_INTEGER;
 
     -- numeric type identfiers
-    c_number                     CONSTANT PLS_INTEGER := 2; -- also FLOAT
+    c_number                     CONSTANT PLS_INTEGER := 2; -- FLOAT
     c_binary_float               CONSTANT PLS_INTEGER := 100;
     c_binary_double              CONSTANT PLS_INTEGER := 101;
     -- string type identfiers
-    c_char                       CONSTANT PLS_INTEGER := 96; -- also NCHAR
-    c_varchar2                   CONSTANT PLS_INTEGER := 1; -- also NVARCHAR2
+    c_char                       CONSTANT PLS_INTEGER := 96; -- NCHAR
+    c_varchar2                   CONSTANT PLS_INTEGER := 1; -- NVARCHAR2
     c_long                       CONSTANT PLS_INTEGER := 8;
-    c_clob                       CONSTANT PLS_INTEGER := 112; -- also NCLOB
-    c_xmltype                    CONSTANT PLS_INTEGER := 109; -- also ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
+    c_clob                       CONSTANT PLS_INTEGER := 112; -- NCLOB
+    c_xmltype                    CONSTANT PLS_INTEGER := 109; -- ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
     c_rowid                      CONSTANT PLS_INTEGER := 11;
     c_urowid                     CONSTANT PLS_INTEGER := 208;
     -- binary type identfiers
@@ -610,22 +916,18 @@ CREATE OR REPLACE PACKAGE BODY plex IS
           l_buffer_varchar2,
           c_lf
         ) > 0 THEN
-          l_buffer_varchar2 := p_quote_mark
-                               || replace(
+          l_buffer_varchar2 := p_quote_mark || replace(
             l_buffer_varchar2,
             p_quote_mark,
             p_quote_mark || p_quote_mark
-          )
-                               || p_quote_mark;
+          ) || p_quote_mark;
 
         END IF;
 
       END IF;
     EXCEPTION
       WHEN value_error THEN
-        l_buffer_varchar2 := 'Value skipped - escaped text larger then '
-                             || c_vc2_max_size
-                             || ' characters';
+        l_buffer_varchar2 := 'Value skipped - escaped text larger then ' || c_vc2_max_size || ' characters';
     END escape_varchar2_buffer_for_csv;
 
   BEGIN
@@ -720,9 +1022,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
               escape_varchar2_buffer_for_csv;
               util_g_clob_append(l_buffer_varchar2);
             ELSE
-              l_buffer_varchar2 := 'CLOB value skipped - larger then '
-                                   || c_vc2_max_size
-                                   || ' characters';
+              l_buffer_varchar2 := 'CLOB value skipped - larger then ' || c_vc2_max_size || ' characters';
               util_g_clob_append(l_buffer_varchar2);
             END IF;
 
@@ -742,9 +1042,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
               escape_varchar2_buffer_for_csv;
               util_g_clob_append(l_buffer_varchar2);
             ELSE
-              l_buffer_varchar2 := 'XML value skipped - larger then '
-                                   || c_vc2_max_size
-                                   || ' characters';
+              l_buffer_varchar2 := 'XML value skipped - larger then ' || c_vc2_max_size || ' characters';
               util_g_clob_append(l_buffer_varchar2);
             END IF;
 
@@ -761,9 +1059,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
               escape_varchar2_buffer_for_csv;
               util_g_clob_append(l_buffer_varchar2);
             ELSE
-              util_g_clob_append('LONG value skipped - larger then '
-                                 || c_vc2_max_size
-                                 || ' characters');
+              util_g_clob_append('LONG value skipped - larger then ' || c_vc2_max_size || ' characters');
             END IF;
 
           ELSIF l_desc_tab(i).col_type IN (
@@ -808,20 +1104,20 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 '
       ,
       '{{MAIN_FUNCTION}}',
-      upper(g_ilog.module),
+      upper(g_log.module),
       '{{START_TIME}}',
       TO_CHAR(
-        g_ilog.start_time,
+        g_log.start_time,
         'yyyy-mm-dd hh24:mi:ss'
       ),
       '{{RUN_TIME}}',
       trim(TO_CHAR(
-        g_ilog.run_time,
+        g_log.run_time,
         '999G990D000'
       )),
       '{{UNMEASURED_TIME}}',
       trim(TO_CHAR(
-        g_ilog.unmeasured_time,
+        g_log.unmeasured_time,
         '999G990D000000'
       )),
       '{{PLEX_VERSION}}',
@@ -836,7 +1132,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 '
 
     );
-    FOR i IN 1..g_ilog.data.count LOOP util_g_clob_append(util_multi_replace(
+    FOR i IN 1..g_log.data.count LOOP util_g_clob_append(util_multi_replace(
       '| {{STEP}} | {{ELAPSED}} | {{EXECUTION}} | {{ACTION}} |' || c_lf,
       '{{STEP}}',
       lpad(
@@ -846,7 +1142,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       '{{ELAPSED}}',
       lpad(
         trim(TO_CHAR(
-          g_ilog.data(i).elapsed,
+          g_log.data(i).elapsed,
           '99990D000'
         )),
         9
@@ -854,14 +1150,14 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       '{{EXECUTION}}',
       lpad(
         trim(TO_CHAR(
-          g_ilog.data(i).execution,
+          g_log.data(i).execution,
           '9990D000000'
         )),
         11
       ),
       '{{ACTION}}',
       rpad(
-        g_ilog.data(i).action,
+        g_log.data(i).action,
         64
       )
     ));
@@ -869,120 +1165,121 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   END util_g_clob_create_runtime_log;
 
-  FUNCTION util_ilog_get_runtime (
-    p_start TIMESTAMP,
-    p_stop TIMESTAMP
+  FUNCTION util_g_log_get_runtime (
+    p_start IN TIMESTAMP,
+    p_stop  IN TIMESTAMP
   ) RETURN NUMBER IS
   BEGIN
     RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
     --sysdate + (interval_difference * 86400) - sysdate
     --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
-  END util_ilog_get_runtime;
+  END util_g_log_get_runtime;
 
-  PROCEDURE util_ilog_init (
-    p_module VARCHAR2,
-    p_include_runtime_log BOOLEAN
+  PROCEDURE util_g_log_init (
+    p_module              IN VARCHAR2,
+    p_include_runtime_log IN BOOLEAN
   ) IS
   BEGIN
-    g_ilog.module            := substr(
+    g_log.module            := substr(
       p_module,
       1,
       c_app_info_length
     );
     IF p_include_runtime_log THEN
-      g_ilog.enabled := true;
+      g_log.enabled := true;
     END IF;
-    g_ilog.start_time        := systimestamp;
-    g_ilog.stop_time         := NULL;
-    g_ilog.run_time          := 0;
-    g_ilog.measured_time     := 0;
-    g_ilog.unmeasured_time   := 0;
-    g_ilog.data.DELETE;
-  END util_ilog_init;
+    g_log.start_time        := systimestamp;
+    g_log.stop_time         := NULL;
+    g_log.run_time          := 0;
+    g_log.measured_time     := 0;
+    g_log.unmeasured_time   := 0;
+    g_log.data.DELETE;
+  END util_g_log_init;
 
-  PROCEDURE util_ilog_exit IS
+  PROCEDURE util_g_log_exit IS
   BEGIN
-    IF g_ilog.enabled THEN
-      g_ilog.stop_time         := systimestamp;
-      g_ilog.run_time          := util_ilog_get_runtime(
-        g_ilog.start_time,
-        g_ilog.stop_time
+    IF g_log.enabled THEN
+      g_log.stop_time         := systimestamp;
+      g_log.run_time          := util_g_log_get_runtime(
+        g_log.start_time,
+        g_log.stop_time
       );
-      g_ilog.unmeasured_time   := g_ilog.run_time - g_ilog.measured_time;
-      g_ilog.enabled           := false;
+      g_log.unmeasured_time   := g_log.run_time - g_log.measured_time;
+      g_log.enabled           := false;
     END IF;
-  END util_ilog_exit;
+  END util_g_log_exit;
 
-  PROCEDURE util_ilog_start (
-    p_action VARCHAR2
+  PROCEDURE util_g_log_start (
+    p_action IN VARCHAR2
   ) IS
     l_index PLS_INTEGER;
   BEGIN
     dbms_application_info.set_module(
-      module_name   => g_ilog.module,
+      module_name   => g_log.module,
       action_name   => p_action
     );
-    IF g_ilog.enabled THEN
-      l_index                           := g_ilog.data.count + 1;
-      g_ilog.data(l_index).action       := substr(
+    IF g_log.enabled THEN
+      l_index                           := g_log.data.count + 1;
+      g_log.data(l_index).action       := substr(
         p_action,
         1,
         plex.c_app_info_length
       );
 
-      g_ilog.data(l_index).start_time   := systimestamp;
+      g_log.data(l_index).start_time   := systimestamp;
     END IF;
 
-  END util_ilog_start;
+  END util_g_log_start;
 
-  PROCEDURE util_ilog_append_action_text (
-    p_text VARCHAR2
+  PROCEDURE util_g_log_append_action_text (
+    p_text IN VARCHAR2
   ) IS
     l_index PLS_INTEGER;
   BEGIN
-    IF g_ilog.enabled THEN
-      l_index                       := g_ilog.data.count;
-      g_ilog.data(l_index).action   := substr(
-        g_ilog.data(l_index).action
-        || p_text,
+    IF g_log.enabled THEN
+      l_index                       := g_log.data.count;
+      g_log.data(l_index).action   := substr(
+        g_log.data(l_index).action || p_text,
         1,
         plex.c_app_info_length
       );
 
     END IF;
-  END util_ilog_append_action_text;
+  END util_g_log_append_action_text;
 
-  PROCEDURE util_ilog_stop IS
+  PROCEDURE util_g_log_stop IS
     l_index PLS_INTEGER;
   BEGIN
-    l_index := g_ilog.data.count;
+    l_index := g_log.data.count;
     dbms_application_info.set_module(
       module_name   => NULL,
       action_name   => NULL
     );
-    IF g_ilog.enabled THEN
-      g_ilog.data(l_index).stop_time   := systimestamp;
-      g_ilog.data(l_index).elapsed     := util_ilog_get_runtime(
-        g_ilog.start_time,
-        g_ilog.data(l_index).stop_time
+    IF g_log.enabled THEN
+      g_log.data(l_index).stop_time   := systimestamp;
+      g_log.data(l_index).elapsed     := util_g_log_get_runtime(
+        g_log.start_time,
+        g_log.data(l_index).stop_time
       );
 
-      g_ilog.data(l_index).execution   := util_ilog_get_runtime(
-        g_ilog.data(l_index).start_time,
-        g_ilog.data(l_index).stop_time
+      g_log.data(l_index).execution   := util_g_log_get_runtime(
+        g_log.data(l_index).start_time,
+        g_log.data(l_index).stop_time
       );
 
-      g_ilog.measured_time             := g_ilog.measured_time + g_ilog.data(l_index).execution;
+      g_log.measured_time             := g_log.measured_time + g_log.data(l_index).execution;
     END IF;
 
-  END util_ilog_stop;
+  END util_g_log_stop;
 
 
 
+  ------------------------------------------------------------------------------------------------------------------------------
   -- MAIN CODE
+  ------------------------------------------------------------------------------------------------------------------------------
 
   FUNCTION backapp (
-  $if $$apex_exists $then
+  $if $$apex_installed $then
 
     p_app_id                      IN                            NUMBER DEFAULT NULL,
     p_app_date                    IN                            BOOLEAN DEFAULT true,
@@ -1029,36 +1326,30 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
     PROCEDURE init IS
     BEGIN
-      util_ilog_init(
+      util_g_log_init(
         p_module                => 'plex.backapp'
-          $if $$apex_exists $then
-
-                    || CASE
+          $if $$apex_installed $then
+ || CASE
           WHEN p_app_id IS NOT NULL THEN
-            '('
-            || TO_CHAR(p_app_id)
-            || ')'
+            '(' || TO_CHAR(p_app_id) || ')'
         END
         $end,
         p_include_runtime_log   => p_include_runtime_log
       );
     END init;
 
-$if $$apex_exists $then
+$if $$apex_installed $then
 
     PROCEDURE check_owner IS
       CURSOR cur_owner IS
-      SELECT
-        workspace,
-        owner,
-        alias
-      FROM
-        apex_applications t
-      WHERE
-        t.application_id = p_app_id;
+      SELECT workspace,
+             owner,
+             alias
+        FROM apex_applications t
+       WHERE t.application_id = p_app_id;
 
     BEGIN
-      util_ilog_start('check_owner');
+      util_g_log_start('check_owner');
       l_current_user := sys_context(
         'USERENV',
         'CURRENT_USER'
@@ -1084,18 +1375,18 @@ $if $$apex_exists $then
         );
       END IF;
 
-      util_ilog_stop;
+      util_g_log_stop;
     END check_owner;
 $end
 
-$if $$apex_exists $then
+$if $$apex_installed $then
 
     PROCEDURE process_apex_app IS
       l_single_file tab_export_files;
     BEGIN
 
       -- save as individual files
-      util_ilog_start('app_frontend/APEX_EXPORT:individual_files');
+      util_g_log_start('app_frontend/APEX_EXPORT:individual_files');
       l_export_files := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
@@ -1120,9 +1411,7 @@ $if $$apex_exists $then
         -- relocate files to own project structure
         l_export_files(i).name       := replace(
           l_export_files(i).name,
-          'f'
-          || p_app_id
-          || '/application/',
+          'f' || p_app_id || '/application/',
           'app_frontend/'
         );
         -- correct prompts for relocation
@@ -1134,14 +1423,10 @@ $if $$apex_exists $then
         );
         -- special handling for install file
 
-        IF l_export_files(i).name = 'f'
-                                    || p_app_id
-                                    || '/install.sql' THEN
+        IF l_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
           l_export_files(i).name       := 'scripts/install_frontend_generated_by_apex.sql';
-          l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
-                                        || c_lf
-                                        || c_lf
-                                        || replace(
+          l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || c_lf || c_lf
+          || replace(
             replace(
               l_export_files(i).contents,
               '@application/',
@@ -1161,10 +1446,10 @@ $if $$apex_exists $then
 
       END LOOP;
 
-      util_ilog_stop;
+      util_g_log_stop;
       IF p_app_include_single_file THEN
       -- save as single file 
-        util_ilog_start('app_frontend/APEX_EXPORT:single_file');
+        util_g_log_start('app_frontend/APEX_EXPORT:single_file');
         l_single_file := apex_export.get_application(
           p_application_id            => p_app_id,
           p_split                     => false,
@@ -1196,7 +1481,7 @@ $if $$apex_exists $then
         );
 
         l_single_file.DELETE;
-        util_ilog_stop;
+        util_g_log_stop;
       END IF;
 
     END process_apex_app;
@@ -1214,10 +1499,8 @@ $if $$apex_exists $then
         p_like_list,
         ','
       );
-      FOR i IN 1..l_expression_table.count LOOP l_expression_table(i) := p_column_name
-                                                                         || ' like '''
-                                                                         || trim(l_expression_table(i))
-                                                                         || ''' escape ''\''';
+      FOR i IN 1..l_expression_table.count LOOP l_expression_table(i) := p_column_name || ' like ''' || trim(l_expression_table(i
+      )) || ''' escape ''\''';
       END LOOP;
 
       l_query              := replace(
@@ -1238,10 +1521,8 @@ $if $$apex_exists $then
         p_not_like_list,
         ','
       );
-      FOR i IN 1..l_expression_table.count LOOP l_expression_table(i) := p_column_name
-                                                                         || ' not like '''
-                                                                         || trim(l_expression_table(i))
-                                                                         || ''' escape ''\''';
+      FOR i IN 1..l_expression_table.count LOOP l_expression_table(i) := p_column_name || ' not like ''' || trim(l_expression_table
+      (i)) || ''' escape ''\''';
       END LOOP;
 
       l_query              := replace(
@@ -1265,10 +1546,8 @@ $if $$apex_exists $then
     BEGIN
       -- user itself
       BEGIN
-        l_file_path   := 'app_backend/_user/'
-                       || l_current_user
-                       || '.sql';
-        util_ilog_start(l_file_path);
+        l_file_path   := 'app_backend/_user/' || l_current_user || '.sql';
+        util_g_log_start(l_file_path);
         l_contents    := replace(
           q'^
 BEGIN 
@@ -1283,22 +1562,20 @@ BEGIN
         --
         util_setup_dbms_metadata(p_sqlterminator => false);
         BEGIN
-          l_contents := l_contents
-                        || dbms_metadata.get_ddl(
+          l_contents := l_contents || dbms_metadata.get_ddl(
             'USER',
             l_current_user
           );
         EXCEPTION
           WHEN OTHERS THEN
             exception_occured   := true;
-            util_ilog_append_action_text(' ' || sqlerrm);
+            util_g_log_append_action_text(' ' || sqlerrm);
             l_contents          := l_contents || sqlerrm;
         END;
 
         util_setup_dbms_metadata;
         --
-        l_contents    := l_contents
-                      || replace(
+        l_contents    := l_contents || replace(
           q'^
 --------------------------------------------------------------------------------
     ]'
@@ -1315,33 +1592,28 @@ END;
           p_name           => l_file_path,
           p_contents       => l_contents
         );
-        util_ilog_stop;
+        util_g_log_stop;
       END;
 
       -- roles
 
       BEGIN
         l_contents    := NULL;
-        l_file_path   := 'app_backend/_user/'
-                       || l_current_user
-                       || '_roles.sql';
-        util_ilog_start(l_file_path);
+        l_file_path   := 'app_backend/_user/' || l_current_user || '_roles.sql';
+        util_g_log_start(l_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no role privs exists
-          SELECT DISTINCT
-            username
-          FROM
-            user_role_privs
+          SELECT DISTINCT username
+            FROM user_role_privs
         ) LOOP BEGIN
-          l_contents := l_contents
-                        || dbms_metadata.get_granted_ddl(
+          l_contents := l_contents || dbms_metadata.get_granted_ddl(
             'ROLE_GRANT',
             l_current_user
           );
         EXCEPTION
           WHEN OTHERS THEN
             exception_occured   := true;
-            util_ilog_append_action_text(' ' || sqlerrm);
+            util_g_log_append_action_text(' ' || sqlerrm);
             l_contents          := l_contents || sqlerrm;
         END;
         END LOOP;
@@ -1351,33 +1623,28 @@ END;
           p_name           => l_file_path,
           p_contents       => l_contents
         );
-        util_ilog_stop;
+        util_g_log_stop;
       END;
 
       -- system privileges
 
       BEGIN
         l_contents    := NULL;
-        l_file_path   := 'app_backend/_user/'
-                       || l_current_user
-                       || '_system_privileges.sql';
-        util_ilog_start(l_file_path);
+        l_file_path   := 'app_backend/_user/' || l_current_user || '_system_privileges.sql';
+        util_g_log_start(l_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no sys privs exists
-          SELECT DISTINCT
-            username
-          FROM
-            user_sys_privs
+          SELECT DISTINCT username
+            FROM user_sys_privs
         ) LOOP BEGIN
-          l_contents := l_contents
-                        || dbms_metadata.get_granted_ddl(
+          l_contents := l_contents || dbms_metadata.get_granted_ddl(
             'SYSTEM_GRANT',
             l_current_user
           );
         EXCEPTION
           WHEN OTHERS THEN
             exception_occured   := true;
-            util_ilog_append_action_text(' ' || sqlerrm);
+            util_g_log_append_action_text(' ' || sqlerrm);
             l_contents          := l_contents || sqlerrm;
         END;
         END LOOP;
@@ -1387,35 +1654,29 @@ END;
           p_name           => l_file_path,
           p_contents       => l_contents
         );
-        util_ilog_stop;
+        util_g_log_stop;
       END;
 
       -- object privileges
 
       BEGIN
         l_contents    := NULL;
-        l_file_path   := 'app_backend/_user/'
-                       || l_current_user
-                       || '_object_privileges.sql';
-        util_ilog_start(l_file_path);
+        l_file_path   := 'app_backend/_user/' || l_current_user || '_object_privileges.sql';
+        util_g_log_start(l_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no object grants exists
-          SELECT DISTINCT
-            grantee
-          FROM
-            user_tab_privs
-          WHERE
-            grantee = l_current_user
+          SELECT DISTINCT grantee
+            FROM user_tab_privs
+           WHERE grantee = l_current_user
         ) LOOP BEGIN
-          l_contents := l_contents
-                        || dbms_metadata.get_granted_ddl(
+          l_contents := l_contents || dbms_metadata.get_granted_ddl(
             'OBJECT_GRANT',
             l_current_user
           );
         EXCEPTION
           WHEN OTHERS THEN
             exception_occured   := true;
-            util_ilog_append_action_text(' ' || sqlerrm);
+            util_g_log_append_action_text(' ' || sqlerrm);
             l_contents          := l_contents || sqlerrm;
         END;
         END LOOP;
@@ -1425,12 +1686,12 @@ END;
           p_name           => l_file_path,
           p_contents       => l_contents
         );
-        util_ilog_stop;
+        util_g_log_stop;
       END;
 
       IF exception_occured THEN
         l_file_path := 'app_backend/_user/_ERROR_on_DDL_creation_occured.md';
-        util_ilog_start(l_file_path);
+        util_g_log_start(l_file_path);
         util_export_files_append(
           p_export_files   => l_export_files,
           p_name           => l_file_path,
@@ -1449,7 +1710,7 @@ could happen without sufficient rights. Normally these files are created:
 Please have a look in these files and check for errors.
 '
         );
-        util_ilog_stop;
+        util_g_log_stop;
       END IF;
 
     END process_user_ddl;
@@ -1464,7 +1725,7 @@ Please have a look in these files and check for errors.
       );
       l_rec         obj_rec_typ;
     BEGIN
-      util_ilog_start('app_backend/open_objects_cursor');
+      util_g_log_start('app_backend/open_objects_cursor');
       l_query := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
@@ -1540,11 +1801,11 @@ SELECT CASE object_type
       util_setup_dbms_metadata;
       OPEN l_cur FOR l_query;
 
-      util_ilog_stop;
+      util_g_log_stop;
       LOOP
         FETCH l_cur INTO l_rec;
         EXIT WHEN l_cur%notfound;
-        util_ilog_start(l_rec.file_path);
+        util_g_log_start(l_rec.file_path);
         CASE l_rec.object_type
           WHEN 'SEQUENCE' THEN
             l_ddl_files.sequences_(l_ddl_files.sequences_.count + 1) := l_rec.file_path;
@@ -1622,13 +1883,11 @@ BEGIN
               ,
               '{{OBJECT_NAME}}',
               l_rec.object_name
-            )
-                          || dbms_metadata.get_ddl(
+            ) || dbms_metadata.get_ddl(
               object_type   => l_rec.object_type,
               name          => l_rec.object_name,
               schema        => l_current_user
-            )
-                          || replace(
+            ) || replace(
               q'^
 --------------------------------------------------------------------------------
     ]';
@@ -1666,7 +1925,7 @@ END;
 
         END CASE;
 
-        util_ilog_stop;
+        util_g_log_stop;
       END LOOP;
 
       CLOSE l_cur;
@@ -1682,7 +1941,7 @@ END;
       );
       l_rec         obj_rec_typ;
     BEGIN
-      util_ilog_start('app_backend/grants:open_cursor');
+      util_g_log_start('app_backend/grants:open_cursor');
       l_query := q'^
 SELECT DISTINCT 
        p.grantor,
@@ -1705,11 +1964,11 @@ SELECT DISTINCT
       );
       OPEN l_cur FOR l_query;
 
-      util_ilog_stop;
+      util_g_log_stop;
       LOOP
         FETCH l_cur INTO l_rec;
         EXIT WHEN l_cur%notfound;
-        util_ilog_start(l_rec.file_path);
+        util_g_log_start(l_rec.file_path);
         l_contents                                         := dbms_metadata.get_dependent_ddl(
           'OBJECT_GRANT',
           l_rec.object_name,
@@ -1722,7 +1981,7 @@ SELECT DISTINCT
           p_contents       => l_contents
         );
 
-        util_ilog_stop;
+        util_g_log_stop;
       END LOOP;
 
       CLOSE l_cur;
@@ -1737,7 +1996,7 @@ SELECT DISTINCT
       );
       l_rec             obj_rec_typ;
     BEGIN
-      util_ilog_start('app_backend/ref_constraints:open_cursor');
+      util_g_log_start('app_backend/ref_constraints:open_cursor');
       l_query := q'^
 SELECT table_name,
        constraint_name,
@@ -1758,11 +2017,11 @@ SELECT table_name,
       );
       OPEN l_cur FOR l_query;
 
-      util_ilog_stop;
+      util_g_log_stop;
       LOOP
         FETCH l_cur INTO l_rec;
         EXIT WHEN l_cur%notfound;
-        util_ilog_start(l_rec.file_path);
+        util_g_log_start(l_rec.file_path);
         util_setup_dbms_metadata(p_sqlterminator => false);
         l_contents                                                           := replace(
           q'^
@@ -1776,12 +2035,10 @@ BEGIN
           ,
           '{{CONSTRAINT_NAME}}',
           l_rec.constraint_name
-        )
-                      || dbms_metadata.get_ddl(
+        ) || dbms_metadata.get_ddl(
           'REF_CONSTRAINT',
           l_rec.constraint_name
-        )
-                      || replace(
+        ) || replace(
           q'^ 
 --------------------------------------------------------------------------------
     ]';
@@ -1802,7 +2059,7 @@ END;
           p_contents       => l_contents
         );
 
-        util_ilog_stop;
+        util_g_log_stop;
       END LOOP;
 
       CLOSE l_cur;
@@ -1814,18 +2071,11 @@ END;
         p_file_path VARCHAR2
       ) RETURN VARCHAR2 IS
       BEGIN
-        RETURN 'prompt --'
-               || replace(
+        RETURN 'prompt --' || replace(
           p_file_path,
           '.sql',
           NULL
-        )
-               || c_lf
-               || '@'
-               || '../'
-               || p_file_path
-               || c_lf
-               || c_lf;
+        ) || c_lf || '@' || '../' || p_file_path || c_lf || c_lf;
       END get_script_line;
 
     BEGIN
@@ -1833,7 +2083,7 @@ END;
       
     -- file one
       l_file_path := 'scripts/install_backend_generated_by_plex.sql';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_g_clob_createtemporary;
       util_g_clob_append('/* A T T E N T I O N
 DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_object_ddl
@@ -1898,7 +2148,7 @@ prompt --install_backend_generated_by_plex
         p_contents       => g_clob
       );
       util_g_clob_freetemporary;
-      util_ilog_stop;
+      util_g_log_stop;
     END create_backend_install_file;
 
     PROCEDURE process_data IS
@@ -1909,7 +2159,7 @@ prompt --install_backend_generated_by_plex
       );
       l_rec        obj_rec_typ;
     BEGIN
-      util_ilog_start('app_data/open_tables_cursor');
+      util_g_log_start('app_data/open_tables_cursor');
       l_query            := q'^
 SELECT table_name,
        (SELECT LISTAGG(column_name, ', ') WITHIN GROUP(ORDER BY position)
@@ -1936,28 +2186,22 @@ SELECT table_name,
       );
       OPEN l_cur FOR l_query;
 
-      util_ilog_stop;
-      util_ilog_start('app_data/get_scn');
+      util_g_log_stop;
+      util_g_log_start('app_data/get_scn');
       l_data_timestamp   := util_calc_data_timestamp(nvl(
         p_data_as_of_minutes_ago,
         0
       ));
       l_data_scn         := timestamp_to_scn(l_data_timestamp);
-      util_ilog_stop;
+      util_g_log_stop;
       LOOP
         FETCH l_cur INTO l_rec;
         EXIT WHEN l_cur%notfound;
-        l_file_path := 'app_data/'
-                       || l_rec.table_name
-                       || '.csv';
-        util_ilog_start(l_file_path);
+        l_file_path := 'app_data/' || l_rec.table_name || '.csv';
+        util_g_log_start(l_file_path);
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(
-          p_query      => 'SELECT * FROM '
-                     || l_rec.table_name
-                     || ' AS OF SCN '
-                     || l_data_scn
-                     || CASE
+          p_query      => 'SELECT * FROM ' || l_rec.table_name || ' AS OF SCN ' || l_data_scn || CASE
             WHEN l_rec.pk_columns IS NOT NULL THEN
               ' ORDER BY ' || l_rec.pk_columns
             ELSE NULL
@@ -1972,7 +2216,7 @@ SELECT table_name,
           p_contents       => g_clob
         );
         util_g_clob_freetemporary;
-        util_ilog_stop;
+        util_g_log_stop;
       END LOOP;
 
       CLOSE l_cur;
@@ -2023,7 +2267,7 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
 ^'
       ;
       l_file_path       := 'plex_README.md';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
@@ -2034,7 +2278,7 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
         )
       );
 
-      util_ilog_stop;
+      util_g_log_stop;
       l_file_template   := q'^
 rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
@@ -2083,7 +2327,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 ^'
       ;
       l_file_path       := 'scripts/templates/1_export_app_from_DEV.bat';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
@@ -2095,7 +2339,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           c_plex_url,
           '{{SYSTEMROLE}}',
           'DEV',
-        $if $$apex_exists $then
+        $if $$apex_installed $then
 
           '{{APP_ID}}',
           p_app_id,
@@ -2115,11 +2359,11 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         )
       );
 
-      util_ilog_stop;
+      util_g_log_stop;
 
       --
       l_file_path       := 'scripts/templates/2_install_app_into_TEST.bat';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
@@ -2131,7 +2375,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           c_plex_url,
           '{{SYSTEMROLE}}',
           'TEST',
-        $if $$apex_exists $then
+        $if $$apex_installed $then
 
           '{{APP_ID}}',
           p_app_id,
@@ -2151,11 +2395,11 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         )
       );
 
-      util_ilog_stop;
+      util_g_log_stop;
 
       --
       l_file_path       := 'scripts/templates/3_install_app_into_PROD.bat';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
@@ -2167,7 +2411,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           c_plex_url,
           '{{SYSTEMROLE}}',
           'PROD',
-        $if $$apex_exists $then
+        $if $$apex_installed $then
 
           '{{APP_ID}}',
           p_app_id,
@@ -2187,7 +2431,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         )
       );
 
-      util_ilog_stop;
+      util_g_log_stop;
 
       --
       l_file_template   := q'^
@@ -2242,7 +2486,7 @@ BEGIN
   l_files   := plex.backapp (
   -- These are the defaults - align it to your needs:^'
       ;
-$if $$apex_exists $then
+$if $$apex_installed $then
 
       l_file_template   := l_file_template || q'^
   p_app_id                    => :app_id,
@@ -2352,7 +2596,7 @@ prompt
 ^'
       ;
       l_file_path       := 'scripts/templates/export_app_custom_code.sql';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
@@ -2369,7 +2613,7 @@ prompt
         )
       );
 
-      util_ilog_stop;
+      util_g_log_stop;
 
       --
       l_file_template   := q'^
@@ -2461,7 +2705,7 @@ prompt
 ^'
       ;
       l_file_path       := 'scripts/templates/install_app_custom_code.sql';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
@@ -2478,7 +2722,7 @@ prompt
         )
       );
 
-      util_ilog_stop;
+      util_g_log_stop;
     END create_template_files;
 
       --
@@ -2487,38 +2731,38 @@ prompt
       l_the_point VARCHAR2(30) := '. < this is the point ;-)';
     BEGIN
       l_file_path   := 'docs/_save_your_docs_here.txt';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => l_the_point
       );
-      util_ilog_stop;
+      util_g_log_stop;
 
       --
       l_file_path   := 'scripts/logs/_spool_your_script_logs_here.txt';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => l_the_point
       );
-      util_ilog_stop;
+      util_g_log_stop;
 
       --
       l_file_path   := 'tests/_save_your_tests_here.txt';
-      util_ilog_start(l_file_path);
+      util_g_log_start(l_file_path);
       util_export_files_append(
         p_export_files   => l_export_files,
         p_name           => l_file_path,
         p_contents       => l_the_point
       );
-      util_ilog_stop;
+      util_g_log_stop;
     END create_directory_keepers;
 
     PROCEDURE finish IS
     BEGIN
-      util_ilog_exit;
+      util_g_log_exit;
     --
       IF p_include_runtime_log THEN
         util_g_clob_createtemporary;
@@ -2536,7 +2780,7 @@ prompt
 
   BEGIN
     init;
-  $if $$apex_exists $then
+  $if $$apex_installed $then
 
     check_owner;
     --
@@ -2545,7 +2789,7 @@ prompt
     ELSE
     $end
       l_export_files := NEW tab_export_files();
-    $if $$apex_exists $then
+    $if $$apex_installed $then
 
     END IF;
     $end
@@ -2605,7 +2849,7 @@ prompt
           'You need first to add queries by using plex.add_query. Calling plex.queries_to_csv clears the global queries array for subsequent processing.'
         );
       END IF;
-      util_ilog_init(
+      util_g_log_init(
         p_module                => 'plex.queries_to_csv',
         p_include_runtime_log   => p_include_runtime_log
       );
@@ -2614,10 +2858,7 @@ prompt
     PROCEDURE process_queries IS
     BEGIN
       FOR i IN g_queries.first..g_queries.last LOOP
-        util_ilog_start('process_query:'
-                        || TO_CHAR(i)
-                        || ':'
-                        || g_queries(i).file_name);
+        util_g_log_start('process_query:' || TO_CHAR(i) || ':' || g_queries(i).file_name);
 
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(
@@ -2631,20 +2872,19 @@ prompt
         util_g_clob_flush_cache;
         util_export_files_append(
           p_export_files   => l_export_files,
-          p_name           => g_queries(i).file_name
-                    || '.csv',
+          p_name           => g_queries(i).file_name || '.csv',
           p_contents       => g_clob
         );
 
         util_g_clob_freetemporary;
-        util_ilog_stop;
+        util_g_log_stop;
       END LOOP;
     END process_queries;
 
     PROCEDURE finish IS
     BEGIN
       g_queries.DELETE;
-      util_ilog_exit;
+      util_g_log_exit;
       IF p_include_runtime_log THEN
         util_g_clob_createtemporary;
         util_g_clob_create_runtime_log;
@@ -2671,18 +2911,14 @@ prompt
   ) RETURN BLOB IS
     l_zip BLOB;
   BEGIN
-    dbms_lob.createtemporary(
-      l_zip,
-      true
-    );
-    FOR i IN 1..p_file_collection.count LOOP apex_zip.add_file(
+    FOR i IN 1..p_file_collection.count LOOP util_zip_add_file(
       p_zipped_blob   => l_zip,
-      p_file_name     => p_file_collection(i).name,
+      p_name          => p_file_collection(i).name,
       p_content       => util_clob_to_blob(p_file_collection(i).contents)
     );
     END LOOP;
 
-    apex_zip.finish(l_zip);
+    util_zip_finish(l_zip);
     RETURN l_zip;
   END to_zip;
 
@@ -2691,25 +2927,25 @@ prompt
   IS
     v_return rec_runtime_log;
   BEGIN
-    v_return.overall_start_time   := g_ilog.start_time;
+    v_return.overall_start_time   := g_log.start_time;
     v_return.overall_run_time     := round(
-      g_ilog.run_time,
+      g_log.run_time,
       3
     );
-    FOR i IN 1..g_ilog.data.count LOOP
+    FOR i IN 1..g_log.data.count LOOP
       v_return.step        := i;
       v_return.elapsed     := round(
-        g_ilog.data(i).elapsed,
+        g_log.data(i).elapsed,
         3
       );
 
       v_return.execution   := round(
-        g_ilog.data(i).execution,
+        g_log.data(i).execution,
         6
       );
 
-      v_return.module      := g_ilog.module;
-      v_return.action      := g_ilog.data(i).action;
+      v_return.module      := g_log.module;
+      v_return.action      := g_log.data(i).action;
       PIPE ROW ( v_return );
     END LOOP;
 

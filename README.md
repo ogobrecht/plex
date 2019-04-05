@@ -12,9 +12,9 @@
 <h1><a id="plex"></a>Package PLEX</h1>
 <!--===============================-->
 
-PL/SQL Export Utilities
+# PL/SQL Export Utilities
 
-PLEX was created to be able to quickstart version control for existing (APEX) apps and has currently two main functions called __BackApp__ and __Queries_to_CSV__. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone. 
+PLEX was created to be able to quickstart version control for existing (APEX) apps and has currently two main functions called **BackApp** and **Queries_to_CSV**. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone.
 
 See also this resources for more information:
 
@@ -24,15 +24,37 @@ See also this resources for more information:
 [Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
 
 
-STANDARDS
-
-- All main functions returning a file collection of type apex_t_export_files
-- All main functions setting the session module and action infos while processing their work
-
-
 DEPENDENCIES
 
-- APEX 5.1.4 because we use the packages APEX_EXPORT and APEX_ZIP
+The package itself is independend, but functionality varies on the following conditions:
+
+- For APEX app export: APEX >= 5.1.4
+- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= ???
+
+
+INSTALLATION
+
+- Download the [latest version](https://github.com/ogobrecht/plex/releases/latest)
+- Unzip it, open a shell and `cd` into the root directory
+- Start SQL*Plus (or another tool which can run SQL scripts)
+- To install PLEX run the provided install script `1_install.sql` (script provides compiler flags)
+- To uninstall PLEX run the provided script `2_uninstall.sql` or drop the package manually
+
+
+CHANGELOG
+
+- 1.3.0 (2019-04-xx)
+    - Make package independend from APEX to be able to export schema object DDL and table data without an APEX installation
+- 1.2.1 (2019-03-13)
+    - Fix script templates: Change old parameters in plex.backapp call
+    - Add install and uninstall scripts for PLEX itself
+- 1.2.0 (2018-10-31)
+    - New: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
+    - Fixed: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export data to CSV functionality
+- 1.1.0 (2018-09-23)
+    - Change filter parameter from regular expression to list of like expressions for easier handling
+- 1.0.0 (2018-08-26)
+    - First public release
 
 SIGNATURE
 
@@ -57,14 +79,14 @@ Get a file collection of an APEX application (or the current user/schema only) i
 - Optional the data in CSV files (this option was implemented to track catalog tables, can be used as logical backup, has the typical CSV limitations...)
 - Everything in a (hopefully) nice directory structure
 
-EXAMPLE
+EXAMPLE BASIC USAGE
 
 ```sql
 DECLARE
-  l_file_collection apex_t_export_files;
+  l_file_collection plex.tab_export_files;
 BEGIN
   l_file_collection := plex.backapp(
-    p_app_id             => 100,
+    p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => false,
     p_include_data       => false
   );
@@ -72,20 +94,60 @@ BEGIN
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
     dbms_output.put_line(
-         i 
-      || ' | ' 
-      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB' 
+         i
       || ' | '
-      || l_file_collection(i).name 
+      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB'
+      || ' | '
+      || l_file_collection(i).name
       );
   END LOOP;
 END;
+```
+
+EXAMPLE EXPORT ZIP FILE
+
+```sql
+-- Inline function (needs Oracle 12c or higher)
+with
+  function backapp return blob is
+  begin
+    return plex.to_zip(plex.backapp(
+      p_app_id                    => null,
+      p_app_date                  => true,
+      p_app_public_reports        => true,
+      p_app_private_reports       => false,
+      p_app_notifications         => false,
+      p_app_translations          => true,
+      p_app_pkg_app_mapping       => false,
+      p_app_original_ids          => true,
+      p_app_subscriptions         => true,
+      p_app_comments              => true,
+      p_app_supporting_objects    => null,
+      p_app_include_single_file   => false,
+      p_app_build_status_run_only => false,
+      -----
+      p_include_object_ddl        => false,
+      p_object_name_like          => null,
+      p_object_name_not_like      => null,
+      -----
+      p_include_data              => false,
+      p_data_as_of_minutes_ago    => 0,
+      p_data_max_rows             => 1000,
+      p_data_table_name_like      => null,
+      p_data_table_name_not_like  => null,
+      -----
+      p_include_templates         => true,
+      p_include_runtime_log       => true
+    ));
+  end backapp;
+select backapp from dual;
 ```
 
 SIGNATURE
 
 ```sql
 FUNCTION backapp (
+  $if $$apex_installed $then
   -- App related options:
   p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
   p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
@@ -100,6 +162,7 @@ FUNCTION backapp (
   p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
+  $end
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
@@ -113,7 +176,7 @@ FUNCTION backapp (
   -- Miscellaneous options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
-) RETURN apex_t_export_files;
+) RETURN tab_export_files;
 ```
 
 
@@ -153,7 +216,7 @@ EXAMPLE
 
 ```sql
 DECLARE
-  l_file_collection apex_t_export_files;
+  l_file_collection plex.tab_export_files;
 BEGIN
 
   --fill the queries array
@@ -173,11 +236,11 @@ BEGIN
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
     dbms_output.put_line(
-         i 
-      || ' | ' 
-      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB' 
+         i
       || ' | '
-      || l_file_collection(i).name 
+      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB'
+      || ' | '
+      || l_file_collection(i).name
       );
   END LOOP;
 END;
@@ -191,7 +254,7 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_log.md with runtime statistics.
-) RETURN apex_t_export_files;
+) RETURN tab_export_files;
 ```
 
 
@@ -219,7 +282,7 @@ SIGNATURE
 
 ```sql
 FUNCTION to_zip (
-  p_file_collection IN apex_t_export_files -- The file collection to process with APEX_ZIP.
+  p_file_collection IN tab_export_files -- The file collection to process with APEX_ZIP.
 ) RETURN BLOB;
 ```
 
