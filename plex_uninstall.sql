@@ -3,7 +3,7 @@ WHENEVER SQLERROR EXIT sql.sqlcode ROLLBACK
 prompt
 prompt Uninstalling PL/SQL Export Utilities
 prompt ====================================
-prompt - Drop package plex if exists (body)
+prompt Drop package plex if exists (body)
 BEGIN
   FOR i IN (
     SELECT object_type,
@@ -15,7 +15,7 @@ BEGIN
   END LOOP;
 END;
 /
-prompt - Drop package plex if exists (spec)
+prompt Drop package plex if exists (spec)
 BEGIN
   FOR i IN (
     SELECT object_type,
@@ -28,5 +28,5 @@ BEGIN
 END;
 /
 prompt ====================================
-prompt Uninstallation Done :-)
+prompt Uninstallation Done
 prompt

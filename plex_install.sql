@@ -3,7 +3,7 @@ WHENEVER SQLERROR EXIT sql.sqlcode ROLLBACK
 prompt
 prompt Installing PL/SQL Export Utilities
 prompt ==================================
-prompt - Set compiler flags
+prompt Set compiler flags
 DECLARE
   v_utils_public     VARCHAR2(5) := 'true'; -- make utilities public available (for testing or other usages)
   v_apex_installed   VARCHAR2(5) := 'false'; -- do not change (is set dynamically)
@@ -26,10 +26,12 @@ BEGIN
   EXECUTE IMMEDIATE q'[alter session set plsql_ccflags='ords_installed:]' || v_ords_installed || q'[']';
 END;
 /
-prompt - Compile package plex (spec)
+prompt Compile package plex (spec)
 @plex.pks
-prompt - Compile package plex (body)
+show errors
+prompt Compile package plex (body)
 @plex.pkb
+show errors
 prompt ==================================
-prompt Installation Done :-)
+prompt Installation Done
 prompt

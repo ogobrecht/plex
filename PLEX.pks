@@ -1,21 +1,21 @@
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '1.2.1';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '1.3.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
 c_plex_author      CONSTANT VARCHAR2(20 CHAR) := 'Ottmar Gobrecht';
 /**
-# PL/SQL Export Utilities
+PL/SQL Export Utilities
+=======================
 
 PLEX was created to be able to quickstart version control for existing (APEX) apps and has currently two main functions called **BackApp** and **Queries_to_CSV**. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone.
 
 See also this resources for more information:
 
-- PLEX project page on [GitHub](https://github.com/ogobrecht/plex)
-- Blog post on how to [getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
-
-[Feedback is welcome](https://github.com/ogobrecht/plex/issues/new).
+- [Blog post on how to getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
+- [PLEX project page on GitHub](https://github.com/ogobrecht/plex)
+- [Give feedback on GitHub](https://github.com/ogobrecht/plex/issues/new).
 
 
 DEPENDENCIES
@@ -61,13 +61,13 @@ c_app_info_length  CONSTANT PLS_INTEGER := 64;
 SUBTYPE app_info_text IS VARCHAR2(64 CHAR);
 
 TYPE rec_runtime_log IS RECORD (
-  overall_start_time DATE,
-  overall_run_time NUMBER,
-  step INTEGER,
-  elapsed NUMBER,
-  execution NUMBER,
-  module app_info_text,
-  action app_info_text );
+  overall_start_time TIMESTAMP,
+  overall_run_time   NUMBER,
+  step               INTEGER,
+  elapsed            NUMBER,
+  execution          NUMBER,
+  module             app_info_text,
+  action             app_info_text);
 
 TYPE tab_runtime_log IS TABLE OF rec_runtime_log;
 

@@ -776,6 +776,115 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     );
   END util_setup_dbms_metadata;
 
+  FUNCTION util_g_log_get_runtime (
+    p_start   IN        TIMESTAMP,
+    p_stop    IN        TIMESTAMP
+  ) RETURN NUMBER IS
+  BEGIN
+    RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
+    --sysdate + (interval_difference * 86400) - sysdate
+    --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
+  END util_g_log_get_runtime;
+
+  PROCEDURE util_g_log_init (
+    p_module                IN                      VARCHAR2,
+    p_include_runtime_log   IN                      BOOLEAN
+  ) IS
+  BEGIN
+    g_log.module := substr(
+      p_module,
+      1,
+      c_app_info_length
+    );
+    IF p_include_runtime_log THEN
+      g_log.enabled           := true;
+      g_log.start_time        := systimestamp;
+      g_log.stop_time         := NULL;
+      g_log.run_time          := 0;
+      g_log.measured_time     := 0;
+      g_log.unmeasured_time   := 0;
+      g_log.data.DELETE;
+    ELSE
+      g_log.enabled := false;
+    END IF;
+
+  END util_g_log_init;
+
+  PROCEDURE util_g_log_calc_runtimes IS
+  BEGIN
+    IF g_log.enabled THEN
+      g_log.stop_time         := systimestamp;
+      g_log.run_time          := util_g_log_get_runtime(
+        g_log.start_time,
+        g_log.stop_time
+      );
+      g_log.unmeasured_time   := g_log.run_time - g_log.measured_time;
+    END IF;
+  END util_g_log_calc_runtimes;
+
+  PROCEDURE util_g_log_start (
+    p_action IN VARCHAR2
+  ) IS
+    l_index PLS_INTEGER;
+  BEGIN
+    dbms_application_info.set_module(
+      module_name   => g_log.module,
+      action_name   => p_action
+    );
+    IF g_log.enabled THEN
+      l_index                          := g_log.data.count + 1;
+      g_log.data(l_index).action       := substr(
+        p_action,
+        1,
+        plex.c_app_info_length
+      );
+
+      g_log.data(l_index).start_time   := systimestamp;
+    END IF;
+
+  END util_g_log_start;
+
+  PROCEDURE util_g_log_append_action_text (
+    p_text IN VARCHAR2
+  ) IS
+    l_index PLS_INTEGER;
+  BEGIN
+    IF g_log.enabled THEN
+      l_index                      := g_log.data.count;
+      g_log.data(l_index).action   := substr(
+        g_log.data(l_index).action || p_text,
+        1,
+        plex.c_app_info_length
+      );
+
+    END IF;
+  END util_g_log_append_action_text;
+
+  PROCEDURE util_g_log_stop IS
+    l_index PLS_INTEGER;
+  BEGIN
+    l_index := g_log.data.count;
+    dbms_application_info.set_module(
+      module_name   => NULL,
+      action_name   => NULL
+    );
+    IF g_log.enabled THEN
+      g_log.data(l_index).stop_time   := systimestamp;
+      g_log.data(l_index).elapsed     := util_g_log_get_runtime(
+        g_log.start_time,
+        g_log.data(l_index).stop_time
+      );
+
+      g_log.data(l_index).execution   := util_g_log_get_runtime(
+        g_log.data(l_index).start_time,
+        g_log.data(l_index).stop_time
+      );
+
+      g_log.measured_time             := g_log.measured_time + g_log.data(l_index).execution;
+    END IF;
+
+  END util_g_log_stop;
+
   PROCEDURE util_g_clob_createtemporary IS
   BEGIN
     g_clob := NULL;
@@ -1091,6 +1200,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   PROCEDURE util_g_clob_create_runtime_log IS
   BEGIN
+    util_g_log_calc_runtimes;
     util_g_clob_append(util_multi_replace(
       '
 {{MAIN_FUNCTION}} - Runtime Log
@@ -1165,112 +1275,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   END util_g_clob_create_runtime_log;
 
-  FUNCTION util_g_log_get_runtime (
-    p_start   IN        TIMESTAMP,
-    p_stop    IN        TIMESTAMP
-  ) RETURN NUMBER IS
-  BEGIN
-    RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
-    --sysdate + (interval_difference * 86400) - sysdate
-    --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
-  END util_g_log_get_runtime;
-
-  PROCEDURE util_g_log_init (
-    p_module                IN                      VARCHAR2,
-    p_include_runtime_log   IN                      BOOLEAN
-  ) IS
-  BEGIN
-    g_log.module            := substr(
-      p_module,
-      1,
-      c_app_info_length
-    );
-    IF p_include_runtime_log THEN
-      g_log.enabled := true;
-    END IF;
-    g_log.start_time        := systimestamp;
-    g_log.stop_time         := NULL;
-    g_log.run_time          := 0;
-    g_log.measured_time     := 0;
-    g_log.unmeasured_time   := 0;
-    g_log.data.DELETE;
-  END util_g_log_init;
-
-  PROCEDURE util_g_log_exit IS
-  BEGIN
-    IF g_log.enabled THEN
-      g_log.stop_time         := systimestamp;
-      g_log.run_time          := util_g_log_get_runtime(
-        g_log.start_time,
-        g_log.stop_time
-      );
-      g_log.unmeasured_time   := g_log.run_time - g_log.measured_time;
-      g_log.enabled           := false;
-    END IF;
-  END util_g_log_exit;
-
-  PROCEDURE util_g_log_start (
-    p_action IN VARCHAR2
-  ) IS
-    l_index PLS_INTEGER;
-  BEGIN
-    dbms_application_info.set_module(
-      module_name   => g_log.module,
-      action_name   => p_action
-    );
-    IF g_log.enabled THEN
-      l_index                          := g_log.data.count + 1;
-      g_log.data(l_index).action       := substr(
-        p_action,
-        1,
-        plex.c_app_info_length
-      );
-
-      g_log.data(l_index).start_time   := systimestamp;
-    END IF;
-
-  END util_g_log_start;
-
-  PROCEDURE util_g_log_append_action_text (
-    p_text IN VARCHAR2
-  ) IS
-    l_index PLS_INTEGER;
-  BEGIN
-    IF g_log.enabled THEN
-      l_index                      := g_log.data.count;
-      g_log.data(l_index).action   := substr(
-        g_log.data(l_index).action || p_text,
-        1,
-        plex.c_app_info_length
-      );
-
-    END IF;
-  END util_g_log_append_action_text;
-
-  PROCEDURE util_g_log_stop IS
-    l_index PLS_INTEGER;
-  BEGIN
-    l_index := g_log.data.count;
-    dbms_application_info.set_module(
-      module_name   => NULL,
-      action_name   => NULL
-    );
-    IF g_log.enabled THEN
-      g_log.data(l_index).stop_time   := systimestamp;
-      g_log.data(l_index).elapsed     := util_g_log_get_runtime(
-        g_log.start_time,
-        g_log.data(l_index).stop_time
-      );
-
-      g_log.data(l_index).execution   := util_g_log_get_runtime(
-        g_log.data(l_index).start_time,
-        g_log.data(l_index).stop_time
-      );
-
-      g_log.measured_time             := g_log.measured_time + g_log.data(l_index).execution;
-    END IF;
-
-  END util_g_log_stop;
 
 
 
@@ -2762,8 +2766,6 @@ prompt
 
     PROCEDURE finish IS
     BEGIN
-      util_g_log_exit;
-    --
       IF p_include_runtime_log THEN
         util_g_clob_createtemporary;
         util_g_clob_create_runtime_log;
@@ -2775,7 +2777,6 @@ prompt
         );
         util_g_clob_freetemporary;
       END IF;
-
     END;
 
   BEGIN
@@ -2884,7 +2885,6 @@ prompt
     PROCEDURE finish IS
     BEGIN
       g_queries.DELETE;
-      util_g_log_exit;
       IF p_include_runtime_log THEN
         util_g_clob_createtemporary;
         util_g_clob_create_runtime_log;
@@ -2911,6 +2911,7 @@ prompt
   ) RETURN BLOB IS
     l_zip BLOB;
   BEGIN
+    util_g_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');
     FOR i IN 1..p_file_collection.count LOOP util_zip_add_file(
       p_zipped_blob   => l_zip,
       p_name          => p_file_collection(i).name,
@@ -2919,6 +2920,8 @@ prompt
     END LOOP;
 
     util_zip_finish(l_zip);
+    util_g_log_stop;
+    util_g_log_calc_runtimes;
     RETURN l_zip;
   END to_zip;
 
