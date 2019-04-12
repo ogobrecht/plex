@@ -69,7 +69,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     TABLE OF rec_queries INDEX BY PLS_INTEGER;
   
   --
-  TYPE tab_file_list_reverse IS
+  TYPE tab_file_list_lookup IS
     TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
     
     
@@ -1282,56 +1282,91 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   END util_g_clob_create_runtime_log;
 
-  PROCEDURE util_ensure_unique_file_name (
+  PROCEDURE util_ensure_unique_file_names (
     p_export_files IN OUT tab_export_files
   ) IS
-    l_file_list_reverse   tab_file_list_reverse;
-    l_apex_install_file   PLS_INTEGER;
-    l_file_name           VARCHAR2(256);
-    l_count               PLS_INTEGER;
+
+    l_file_list_lookup       tab_file_list_lookup;
+    l_apex_install_file_id   PLS_INTEGER;
+    l_file_name              VARCHAR2(256);
+    l_extension              VARCHAR2(256);
+    l_base_name              VARCHAR2(256);
+    l_count                  PLS_INTEGER;
   BEGIN
-    
+
     -- find apex install file
-    FOR i IN 1..p_export_files.count LOOP 
-      IF p_export_files(i).name = 'scripts/install_frontend_generated_by_apex.sql' THEN
-      l_apex_install_file := i;
-      END IF;
+    FOR i IN 1..p_export_files.count LOOP IF p_export_files(i).name = 'scripts/install_frontend_generated_by_apex.sql' THEN
+      l_apex_install_file_id := i;
+    END IF;
     END LOOP;
    
     -- ensure unique file names
+
     FOR i IN 1..p_export_files.count LOOP
-      l_file_name                        := p_export_files(i).name;
-      l_count                            := 1;
-      
-      WHILE l_file_list_reverse.EXISTS(l_file_name) LOOP
+      l_file_name                       := p_export_files(i).name;
+      l_count                           := 1;
+      IF instr(
+        l_file_name,
+        '.'
+      ) > 0 THEN
+        l_base_name   := substr(
+          l_file_name,
+          1,
+          instr(
+            l_file_name,
+            '.',
+            -1
+          ) - 1
+        );
+
+        l_extension   := substr(
+          l_file_name,
+          instr(
+            l_file_name,
+            '.',
+            -1
+          )
+        );
+      ELSE
+        l_base_name   := l_file_name;
+        l_extension   := NULL;
+      END IF;
+
+      WHILE l_file_list_lookup.EXISTS(l_file_name) LOOP
         l_count       := l_count + 1;
-        l_file_name   := p_export_files(i).name || '_' || l_count;
+        l_file_name   := l_base_name || '_' || l_count || l_extension;
       END LOOP;
 
-      l_file_list_reverse(l_file_name)   := i;
+      l_file_list_lookup(l_file_name)   := i;
       
       -- correct data if needed
       IF p_export_files(i).name != l_file_name THEN
-      
+
         -- correct the prompt statement
-        p_export_files(i).contents                     := replace(
+        p_export_files(i).contents                        := replace(
           p_export_files(i).contents,
-          p_export_files(i).name,
-          l_file_name
+          l_base_name,
+          l_base_name || '_' || l_count
         );
 
         -- correct the apex install file
-        p_export_files(l_apex_install_file).contents   := replace(
-          p_export_files(i).contents,
-          p_export_files(i).name,
-          l_file_name
+        p_export_files(l_apex_install_file_id).contents   := regexp_replace(
+          p_export_files(l_apex_install_file_id).contents,
+          p_export_files(i).name || '$',
+          l_file_name,
+          1,
+          2,
+          'm'
         );
+
+        -- correct the file name itself
+        p_export_files(i).name := l_file_name;
 
       END IF;
 
     END LOOP;
 
-  END util_ensure_unique_file_name;
+  END util_ensure_unique_file_names;
 
 
 
@@ -1368,23 +1403,23 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     p_include_runtime_log         IN   BOOLEAN DEFAULT true
   ) RETURN tab_export_files IS
 
-    l_apex_version        NUMBER;
-    l_data_timestamp      TIMESTAMP;
-    l_data_scn            NUMBER;
-    l_file_path           VARCHAR2(255);
-    l_current_user        user_objects.object_name%TYPE;
-    l_app_workspace       user_objects.object_name%TYPE;
-    l_app_owner           user_objects.object_name%TYPE;
-    l_app_alias           user_objects.object_name%TYPE;
+    l_apex_version       NUMBER;
+    l_data_timestamp     TIMESTAMP;
+    l_data_scn           NUMBER;
+    l_file_path          VARCHAR2(255);
+    l_current_user       user_objects.object_name%TYPE;
+    l_app_workspace      user_objects.object_name%TYPE;
+    l_app_owner          user_objects.object_name%TYPE;
+    l_app_alias          user_objects.object_name%TYPE;
     -- 
-    l_ddl_files           rec_ddl_files;
-    l_contents            CLOB;
-    l_export_files        tab_export_files;
-    l_file_list_reverse   tab_file_list_reverse;
+    l_ddl_files          rec_ddl_files;
+    l_contents           CLOB;
+    l_export_files       tab_export_files;
+    l_file_list_lookup   tab_file_list_lookup;
     --
     TYPE obj_cur_typ IS REF CURSOR;
-    l_cur                 obj_cur_typ;
-    l_query               VARCHAR2(32767);
+    l_cur                obj_cur_typ;
+    l_query              VARCHAR2(32767);
 
     PROCEDURE init IS
     BEGIN
@@ -1398,6 +1433,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         $end,
         p_include_runtime_log   => p_include_runtime_log
       );
+
+      l_export_files := NEW tab_export_files();
     END init;
 
 $if $$apex_installed $then
@@ -1449,7 +1486,6 @@ $if $$apex_installed $then
 
       -- save as individual files
       util_g_log_start('app_frontend/APEX_EXPORT:individual_files');
-      l_export_files := NEW tab_export_files();
       l_apex_files := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
@@ -1471,7 +1507,6 @@ $if $$apex_installed $then
       );
 
       FOR i IN 1..l_apex_files.count LOOP
-
         l_export_files.extend;
 
         -- relocate files to own project structure
@@ -1481,12 +1516,14 @@ $if $$apex_installed $then
           'app_frontend/'
         );
         -- correct prompts for relocation
+
         l_export_files(i).contents   := replace(
           l_apex_files(i).contents,
           'prompt --application/',
           'prompt --app_frontend/'
         );
-        l_apex_files.delete(i);
+
+        l_apex_files.DELETE(i);
 
         -- special handling for install file
         IF l_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
@@ -1501,21 +1538,22 @@ $if $$apex_installed $then
             'prompt --install',
             'prompt --install_frontend_generated_by_apex'
           );
+
         END IF;
         
         -- handle build status RUN_ONLY
+
         IF l_export_files(i).name = 'app_frontend/create_application.sql' AND p_app_build_status_run_only THEN
           l_export_files(i).contents := util_set_build_status_run_only(l_export_files(i).contents);
         END IF;
 
       END LOOP;
-      util_g_log_stop;
 
+      util_g_log_stop;
       IF p_app_include_single_file THEN
 
         -- save as single file 
         l_apex_files.DELETE;
-
         util_g_log_start('app_frontend/APEX_EXPORT:single_file');
         l_apex_files := apex_export.get_application(
           p_application_id            => p_app_id,
@@ -1543,8 +1581,12 @@ $if $$apex_installed $then
 
         util_export_files_append(
           p_export_files   => l_export_files,
-          p_name           => 'app_frontend/' || l_apex_files(1).name,
-          p_contents       => l_apex_files(1).contents
+          p_name           => 'app_frontend/' || l_apex_files(
+            1
+          ).name,
+          p_contents       => l_apex_files(
+            1
+          ).contents
         );
 
         l_apex_files.DELETE;
@@ -2839,6 +2881,8 @@ prompt
         );
         util_g_clob_freetemporary;
       END IF;
+
+      util_ensure_unique_file_names(l_export_files);
     END;
 
   BEGIN
@@ -2848,14 +2892,9 @@ prompt
     --
     IF p_app_id IS NOT NULL THEN
       process_apex_app;
-    ELSE
-    $end
-      l_export_files := NEW tab_export_files();
-    $if $$apex_installed $then
     END IF;
-    $end
+  $end
     --
-
     IF p_include_object_ddl THEN
       process_user_ddl;
       process_object_ddl;
@@ -2873,7 +2912,6 @@ prompt
     END IF;
     --
     create_directory_keepers;
-    util_ensure_unique_file_name(l_export_files);
     --
     finish;
     --
