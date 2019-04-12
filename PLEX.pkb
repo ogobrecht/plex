@@ -16,64 +16,69 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   
   --
   TYPE rec_ilog_step IS RECORD ( --
-    action                           app_info_text,
-    start_time                       TIMESTAMP(6),
-    stop_time                        TIMESTAMP(6),
-    elapsed                          NUMBER,
-    execution                        NUMBER
+    action       app_info_text,
+    start_time   TIMESTAMP(6),
+    stop_time    TIMESTAMP(6),
+    elapsed      NUMBER,
+    execution    NUMBER
   );
   TYPE tab_ilog_step IS
     TABLE OF rec_ilog_step INDEX BY BINARY_INTEGER;
     
- --
+  --
   TYPE rec_ilog IS RECORD ( --
-    module                           app_info_text,
-    enabled                          BOOLEAN,
-    start_time                       TIMESTAMP(6),
-    stop_time                        TIMESTAMP(6),
-    run_time                         NUMBER,
-    measured_time                    NUMBER,
-    unmeasured_time                  NUMBER,
-    data                             tab_ilog_step
+    module            app_info_text,
+    enabled           BOOLEAN,
+    start_time        TIMESTAMP(6),
+    stop_time         TIMESTAMP(6),
+    run_time          NUMBER,
+    measured_time     NUMBER,
+    unmeasured_time   NUMBER,
+    data              tab_ilog_step
   );
   
   --
   TYPE tab_vc1000 IS
     TABLE OF VARCHAR2(1000) INDEX BY BINARY_INTEGER;
     
-    --
+  --
   TYPE rec_ddl_files IS RECORD ( --
-    sequences_                       tab_vc1000,
-    tables_                          tab_vc1000,
-    ref_constraints_                 tab_vc1000,
-    indices_                         tab_vc1000,
-    views_                           tab_vc1000,
-    types_                           tab_vc1000,
-    type_bodies_                     tab_vc1000,
-    triggers_                        tab_vc1000,
-    functions_                       tab_vc1000,
-    procedures_                      tab_vc1000,
-    packages_                        tab_vc1000,
-    package_bodies_                  tab_vc1000,
-    grants_                          tab_vc1000,
-    other_objects_                   tab_vc1000
+    sequences_         tab_vc1000,
+    tables_            tab_vc1000,
+    ref_constraints_   tab_vc1000,
+    indices_           tab_vc1000,
+    views_             tab_vc1000,
+    types_             tab_vc1000,
+    type_bodies_       tab_vc1000,
+    triggers_          tab_vc1000,
+    functions_         tab_vc1000,
+    procedures_        tab_vc1000,
+    packages_          tab_vc1000,
+    package_bodies_    tab_vc1000,
+    grants_            tab_vc1000,
+    other_objects_     tab_vc1000
   );
   
-    --
+  --
   TYPE rec_queries IS RECORD (--
-    query                            VARCHAR2(32767 CHAR),
-    file_name                        VARCHAR2(256 CHAR),
-    max_rows                         NUMBER DEFAULT 100000
+    query       VARCHAR2(32767 CHAR),
+    file_name   VARCHAR2(256 CHAR),
+    max_rows    NUMBER DEFAULT 100000
   );
   TYPE tab_queries IS
     TABLE OF rec_queries INDEX BY PLS_INTEGER;
   
+  --
+  TYPE tab_file_list_reverse IS
+    TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
+    
+    
   -- GLOBAL VARIABLES
   g_clob                           CLOB;
   g_clob_varchar_cache             VARCHAR2(32767char);
   g_log                            rec_ilog;
   g_queries                        tab_queries;
-
+  
 
   ------------------------------------------------------------------------------------------------------------------------------
   -- UTILITIES
@@ -92,8 +97,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_bool_to_string;
 
   FUNCTION util_string_to_bool (
-    p_bool_string   IN              VARCHAR2,
-    p_default       IN              BOOLEAN
+    p_bool_string   IN   VARCHAR2,
+    p_default       IN   BOOLEAN
   ) RETURN BOOLEAN IS
     l_bool_string   VARCHAR2(1 CHAR);
     l_return        BOOLEAN;
@@ -124,8 +129,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_string_to_bool;
 
   FUNCTION util_split (
-    p_string      IN            VARCHAR2,
-    p_delimiter   IN            VARCHAR2 DEFAULT ','
+    p_string      IN   VARCHAR2,
+    p_delimiter   IN   VARCHAR2 DEFAULT ','
   ) RETURN tab_varchar2 IS
 
     v_return             tab_varchar2 := tab_varchar2();
@@ -176,8 +181,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_split;
 
   FUNCTION util_join (
-    p_array       IN            tab_varchar2,
-    p_delimiter   IN            VARCHAR2 DEFAULT ','
+    p_array       IN   tab_varchar2,
+    p_delimiter   IN   VARCHAR2 DEFAULT ','
   ) RETURN VARCHAR2 IS
     v_return VARCHAR2(32767);
   BEGIN
@@ -195,9 +200,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_join;
 
   FUNCTION util_zip_blob_to_num (
-    p_blob   IN       BLOB,
-    p_len    IN       INTEGER,
-    p_pos    IN       INTEGER
+    p_blob   IN   BLOB,
+    p_len    IN   INTEGER,
+    p_pos    IN   INTEGER
   ) RETURN NUMBER IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     rv NUMBER;
   BEGIN
@@ -217,8 +222,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END;
 
   FUNCTION util_zip_little_endian (
-    p_big     IN        NUMBER,
-    p_bytes   IN        PLS_INTEGER := 4
+    p_big     IN   NUMBER,
+    p_bytes   IN   PLS_INTEGER := 4
   ) RETURN RAW IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     t_big NUMBER := p_big;
   BEGIN
@@ -237,9 +242,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END;
 
   PROCEDURE util_zip_add_file (
-    p_zipped_blob   IN OUT          BLOB,
-    p_name          IN              VARCHAR2,
-    p_content       IN              BLOB
+    p_zipped_blob   IN OUT  BLOB,
+    p_name          IN      VARCHAR2,
+    p_content       IN      BLOB
   ) IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
 
     t_now          DATE;
@@ -514,7 +519,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
         amount         => dbms_lob.lobmaxsize,
         dest_offset    => l_dest_offset,
         src_offset     => l_src_offset,
-        blob_csid      => nls_charset_id('AL32UTF8'),
+        blob_csid      => nls_charset_id(
+          'AL32UTF8'
+        ),
         lang_context   => l_lang_context,
         warning        => l_warning
       );
@@ -525,8 +532,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_clob_to_blob;
 
   FUNCTION util_multireplace (
-    p_source_string VARCHAR2,
-    p_replacements tab_varchar2
+    p_source_string   VARCHAR2,
+    p_replacements    tab_varchar2
   ) RETURN VARCHAR2 IS
   BEGIN
     NULL;
@@ -683,8 +690,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   PROCEDURE util_export_files_append (
     p_export_files IN OUT NOCOPY tab_export_files,
-    p_name       IN           VARCHAR2,
-    p_contents   IN           CLOB
+    p_name       IN   VARCHAR2,
+    p_contents   IN   CLOB
   ) IS
     l_index PLS_INTEGER;
   BEGIN
@@ -712,16 +719,16 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_calc_data_timestamp;
 
   PROCEDURE util_setup_dbms_metadata (
-    p_pretty                 IN                       BOOLEAN DEFAULT true,
-    p_constraints            IN                       BOOLEAN DEFAULT true,
-    p_ref_constraints        IN                       BOOLEAN DEFAULT false,
-    p_partitioning           IN                       BOOLEAN DEFAULT true,
-    p_tablespace             IN                       BOOLEAN DEFAULT false,
-    p_storage                IN                       BOOLEAN DEFAULT false,
-    p_segment_attributes     IN                       BOOLEAN DEFAULT false,
-    p_sqlterminator          IN                       BOOLEAN DEFAULT true,
-    p_constraints_as_alter   IN                       BOOLEAN DEFAULT false,
-    p_emit_schema            IN                       BOOLEAN DEFAULT false
+    p_pretty                 IN   BOOLEAN DEFAULT true,
+    p_constraints            IN   BOOLEAN DEFAULT true,
+    p_ref_constraints        IN   BOOLEAN DEFAULT false,
+    p_partitioning           IN   BOOLEAN DEFAULT true,
+    p_tablespace             IN   BOOLEAN DEFAULT false,
+    p_storage                IN   BOOLEAN DEFAULT false,
+    p_segment_attributes     IN   BOOLEAN DEFAULT false,
+    p_sqlterminator          IN   BOOLEAN DEFAULT true,
+    p_constraints_as_alter   IN   BOOLEAN DEFAULT false,
+    p_emit_schema            IN   BOOLEAN DEFAULT false
   ) IS
   BEGIN
     dbms_metadata.set_transform_param(
@@ -777,8 +784,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_setup_dbms_metadata;
 
   FUNCTION util_g_log_get_runtime (
-    p_start   IN        TIMESTAMP,
-    p_stop    IN        TIMESTAMP
+    p_start   IN   TIMESTAMP,
+    p_stop    IN   TIMESTAMP
   ) RETURN NUMBER IS
   BEGIN
     RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
@@ -787,8 +794,8 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_g_log_get_runtime;
 
   PROCEDURE util_g_log_init (
-    p_module                IN                      VARCHAR2,
-    p_include_runtime_log   IN                      BOOLEAN
+    p_module                IN   VARCHAR2,
+    p_include_runtime_log   IN   BOOLEAN
   ) IS
   BEGIN
     g_log.module := substr(
@@ -951,11 +958,11 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   END util_g_clob_append;
 
   PROCEDURE util_g_clob_query_to_csv (
-    p_query           IN                VARCHAR2,
-    p_max_rows        IN                NUMBER DEFAULT 1000,
-    p_delimiter       IN                VARCHAR2 DEFAULT ',',
-    p_quote_mark      IN                VARCHAR2 DEFAULT '"',
-    p_header_prefix   IN                VARCHAR2 DEFAULT NULL
+    p_query           IN   VARCHAR2,
+    p_max_rows        IN   NUMBER DEFAULT 1000,
+    p_delimiter       IN   VARCHAR2 DEFAULT ',',
+    p_quote_mark      IN   VARCHAR2 DEFAULT '"',
+    p_header_prefix   IN   VARCHAR2 DEFAULT NULL
   ) IS 
     -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
 
@@ -1275,6 +1282,57 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   END util_g_clob_create_runtime_log;
 
+  PROCEDURE util_ensure_unique_file_name (
+    p_export_files IN OUT tab_export_files
+  ) IS
+    l_file_list_reverse   tab_file_list_reverse;
+    l_apex_install_file   PLS_INTEGER;
+    l_file_name           VARCHAR2(256);
+    l_count               PLS_INTEGER;
+  BEGIN
+    
+    -- find apex install file
+    FOR i IN 1..p_export_files.count LOOP 
+      IF p_export_files(i).name = 'scripts/install_frontend_generated_by_apex.sql' THEN
+      l_apex_install_file := i;
+      END IF;
+    END LOOP;
+   
+    -- ensure unique file names
+    FOR i IN 1..p_export_files.count LOOP
+      l_file_name                        := p_export_files(i).name;
+      l_count                            := 1;
+      
+      WHILE l_file_list_reverse.EXISTS(l_file_name) LOOP
+        l_count       := l_count + 1;
+        l_file_name   := p_export_files(i).name || '_' || l_count;
+      END LOOP;
+
+      l_file_list_reverse(l_file_name)   := i;
+      
+      -- correct data if needed
+      IF p_export_files(i).name != l_file_name THEN
+      
+        -- correct the prompt statement
+        p_export_files(i).contents                     := replace(
+          p_export_files(i).contents,
+          p_export_files(i).name,
+          l_file_name
+        );
+
+        -- correct the apex install file
+        p_export_files(l_apex_install_file).contents   := replace(
+          p_export_files(i).contents,
+          p_export_files(i).name,
+          l_file_name
+        );
+
+      END IF;
+
+    END LOOP;
+
+  END util_ensure_unique_file_name;
+
 
 
 
@@ -1284,59 +1342,59 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   FUNCTION backapp (
   $if $$apex_installed $then
-
-    p_app_id                      IN                            NUMBER DEFAULT NULL,
-    p_app_date                    IN                            BOOLEAN DEFAULT true,
-    p_app_public_reports          IN                            BOOLEAN DEFAULT true,
-    p_app_private_reports         IN                            BOOLEAN DEFAULT false,
-    p_app_notifications           IN                            BOOLEAN DEFAULT false,
-    p_app_translations            IN                            BOOLEAN DEFAULT true,
-    p_app_pkg_app_mapping         IN                            BOOLEAN DEFAULT false,
-    p_app_original_ids            IN                            BOOLEAN DEFAULT false,
-    p_app_subscriptions           IN                            BOOLEAN DEFAULT true,
-    p_app_comments                IN                            BOOLEAN DEFAULT true,
-    p_app_supporting_objects      IN                            VARCHAR2 DEFAULT NULL,
-    p_app_include_single_file     IN                            BOOLEAN DEFAULT false,
-    p_app_build_status_run_only   IN                            BOOLEAN DEFAULT false,
+    p_app_id                      IN   NUMBER DEFAULT NULL,
+    p_app_date                    IN   BOOLEAN DEFAULT true,
+    p_app_public_reports          IN   BOOLEAN DEFAULT true,
+    p_app_private_reports         IN   BOOLEAN DEFAULT false,
+    p_app_notifications           IN   BOOLEAN DEFAULT false,
+    p_app_translations            IN   BOOLEAN DEFAULT true,
+    p_app_pkg_app_mapping         IN   BOOLEAN DEFAULT false,
+    p_app_original_ids            IN   BOOLEAN DEFAULT false,
+    p_app_subscriptions           IN   BOOLEAN DEFAULT true,
+    p_app_comments                IN   BOOLEAN DEFAULT true,
+    p_app_supporting_objects      IN   VARCHAR2 DEFAULT NULL,
+    p_app_include_single_file     IN   BOOLEAN DEFAULT false,
+    p_app_build_status_run_only   IN   BOOLEAN DEFAULT false,
   $end
-    p_include_object_ddl          IN                            BOOLEAN DEFAULT false,
-    p_object_name_like            IN                            VARCHAR2 DEFAULT NULL,
-    p_object_name_not_like        IN                            VARCHAR2 DEFAULT NULL,
-    p_include_data                IN                            BOOLEAN DEFAULT false,
-    p_data_as_of_minutes_ago      IN                            NUMBER DEFAULT 0,
-    p_data_max_rows               IN                            NUMBER DEFAULT 1000,
-    p_data_table_name_like        IN                            VARCHAR2 DEFAULT NULL,
-    p_data_table_name_not_like    IN                            VARCHAR2 DEFAULT NULL,
-    p_include_templates           IN                            BOOLEAN DEFAULT true,
-    p_include_runtime_log         IN                            BOOLEAN DEFAULT true
+    p_include_object_ddl          IN   BOOLEAN DEFAULT false,
+    p_object_name_like            IN   VARCHAR2 DEFAULT NULL,
+    p_object_name_not_like        IN   VARCHAR2 DEFAULT NULL,
+    p_include_data                IN   BOOLEAN DEFAULT false,
+    p_data_as_of_minutes_ago      IN   NUMBER DEFAULT 0,
+    p_data_max_rows               IN   NUMBER DEFAULT 1000,
+    p_data_table_name_like        IN   VARCHAR2 DEFAULT NULL,
+    p_data_table_name_not_like    IN   VARCHAR2 DEFAULT NULL,
+    p_include_templates           IN   BOOLEAN DEFAULT true,
+    p_include_runtime_log         IN   BOOLEAN DEFAULT true
   ) RETURN tab_export_files IS
 
-    l_apex_version     NUMBER;
-    l_data_timestamp   TIMESTAMP;
-    l_data_scn         NUMBER;
-    l_file_path        VARCHAR2(255);
-    l_current_user     user_objects.object_name%TYPE;
-    l_app_workspace    user_objects.object_name%TYPE;
-    l_app_owner        user_objects.object_name%TYPE;
-    l_app_alias        user_objects.object_name%TYPE;
+    l_apex_version        NUMBER;
+    l_data_timestamp      TIMESTAMP;
+    l_data_scn            NUMBER;
+    l_file_path           VARCHAR2(255);
+    l_current_user        user_objects.object_name%TYPE;
+    l_app_workspace       user_objects.object_name%TYPE;
+    l_app_owner           user_objects.object_name%TYPE;
+    l_app_alias           user_objects.object_name%TYPE;
     -- 
-    l_ddl_files        rec_ddl_files;
-    l_contents         CLOB;
-    l_export_files     tab_export_files;
+    l_ddl_files           rec_ddl_files;
+    l_contents            CLOB;
+    l_export_files        tab_export_files;
+    l_file_list_reverse   tab_file_list_reverse;
     --
     TYPE obj_cur_typ IS REF CURSOR;
-    l_cur              obj_cur_typ;
-    l_query            VARCHAR2(32767);
+    l_cur                 obj_cur_typ;
+    l_query               VARCHAR2(32767);
 
     PROCEDURE init IS
     BEGIN
       util_g_log_init(
         p_module                => 'plex.backapp'
-          $if $$apex_installed $then
- || CASE
-          WHEN p_app_id IS NOT NULL THEN
-            '(' || TO_CHAR(p_app_id) || ')'
-        END
+          $if $$apex_installed $then ||
+          CASE
+            WHEN p_app_id IS NOT NULL THEN
+              '(' || TO_CHAR(p_app_id) || ')'
+          END
         $end,
         p_include_runtime_log   => p_include_runtime_log
       );
@@ -1386,12 +1444,13 @@ $end
 $if $$apex_installed $then
 
     PROCEDURE process_apex_app IS
-      l_single_file tab_export_files;
+      l_apex_files apex_t_export_files;
     BEGIN
 
       -- save as individual files
       util_g_log_start('app_frontend/APEX_EXPORT:individual_files');
-      l_export_files := apex_export.get_application(
+      l_export_files := NEW tab_export_files();
+      l_apex_files := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
         p_with_date                 => p_app_date,
@@ -1411,22 +1470,25 @@ $if $$apex_installed $then
         p_with_supporting_objects   => p_app_supporting_objects
       );
 
-      FOR i IN 1..l_export_files.count LOOP
+      FOR i IN 1..l_apex_files.count LOOP
+
+        l_export_files.extend;
+
         -- relocate files to own project structure
         l_export_files(i).name       := replace(
-          l_export_files(i).name,
+          l_apex_files(i).name,
           'f' || p_app_id || '/application/',
           'app_frontend/'
         );
         -- correct prompts for relocation
-
         l_export_files(i).contents   := replace(
-          l_export_files(i).contents,
+          l_apex_files(i).contents,
           'prompt --application/',
           'prompt --app_frontend/'
         );
-        -- special handling for install file
+        l_apex_files.delete(i);
 
+        -- special handling for install file
         IF l_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
           l_export_files(i).name       := 'scripts/install_frontend_generated_by_apex.sql';
           l_export_files(i).contents   := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL' || c_lf || c_lf
@@ -1439,22 +1501,23 @@ $if $$apex_installed $then
             'prompt --install',
             'prompt --install_frontend_generated_by_apex'
           );
-
         END IF;
         
         -- handle build status RUN_ONLY
-
         IF l_export_files(i).name = 'app_frontend/create_application.sql' AND p_app_build_status_run_only THEN
           l_export_files(i).contents := util_set_build_status_run_only(l_export_files(i).contents);
         END IF;
 
       END LOOP;
-
       util_g_log_stop;
+
       IF p_app_include_single_file THEN
-      -- save as single file 
+
+        -- save as single file 
+        l_apex_files.DELETE;
+
         util_g_log_start('app_frontend/APEX_EXPORT:single_file');
-        l_single_file := apex_export.get_application(
+        l_apex_files := apex_export.get_application(
           p_application_id            => p_app_id,
           p_split                     => false,
           p_with_date                 => p_app_date,
@@ -1475,16 +1538,16 @@ $if $$apex_installed $then
         );
 
         IF p_app_build_status_run_only THEN
-          l_single_file(1).contents := util_set_build_status_run_only(l_single_file(1).contents);
+          l_apex_files(1).contents := util_set_build_status_run_only(l_apex_files(1).contents);
         END IF;
 
         util_export_files_append(
           p_export_files   => l_export_files,
-          p_name           => 'app_frontend/' || l_single_file(1).name,
-          p_contents       => l_single_file(1).contents
+          p_name           => 'app_frontend/' || l_apex_files(1).name,
+          p_contents       => l_apex_files(1).contents
         );
 
-        l_single_file.DELETE;
+        l_apex_files.DELETE;
         util_g_log_stop;
       END IF;
 
@@ -1498,7 +1561,8 @@ $if $$apex_installed $then
     ) IS
       l_expression_table tab_varchar2;
     BEGIN
-        -- process filter "like"
+
+       -- process filter "like"
       l_expression_table   := util_split(
         p_like_list,
         ','
@@ -1721,13 +1785,13 @@ Please have a look in these files and check for errors.
 
     PROCEDURE process_object_ddl IS
 
-      l_contents    CLOB;
+      l_contents   CLOB;
       TYPE obj_rec_typ IS RECORD (
         object_type   VARCHAR2(128),
         object_name   VARCHAR2(256),
         file_path     VARCHAR2(512)
       );
-      l_rec         obj_rec_typ;
+      l_rec        obj_rec_typ;
     BEGIN
       util_g_log_start('app_backend/open_objects_cursor');
       l_query := q'^
@@ -1943,7 +2007,7 @@ END;
         object_name   VARCHAR2(256),
         file_path     VARCHAR2(512)
       );
-      l_rec         obj_rec_typ;
+      l_rec obj_rec_typ;
     BEGIN
       util_g_log_start('app_backend/grants:open_cursor');
       l_query := q'^
@@ -1998,7 +2062,7 @@ SELECT DISTINCT
         constraint_name   VARCHAR2(256),
         file_path         VARCHAR2(512)
       );
-      l_rec             obj_rec_typ;
+      l_rec obj_rec_typ;
     BEGIN
       util_g_log_start('app_backend/ref_constraints:open_cursor');
       l_query := q'^
@@ -2161,7 +2225,7 @@ prompt --install_backend_generated_by_plex
         table_name   VARCHAR2(256),
         pk_columns   VARCHAR2(4000)
       );
-      l_rec        obj_rec_typ;
+      l_rec obj_rec_typ;
     BEGIN
       util_g_log_start('app_data/open_tables_cursor');
       l_query            := q'^
@@ -2205,11 +2269,13 @@ SELECT table_name,
         util_g_log_start(l_file_path);
         util_g_clob_createtemporary;
         util_g_clob_query_to_csv(
-          p_query      => 'SELECT * FROM ' || l_rec.table_name || ' AS OF SCN ' || l_data_scn || CASE
-            WHEN l_rec.pk_columns IS NOT NULL THEN
-              ' ORDER BY ' || l_rec.pk_columns
-            ELSE NULL
-          END,
+          p_query      => 'SELECT * FROM ' || l_rec.table_name || ' AS OF SCN ' || l_data_scn ||
+            CASE
+              WHEN l_rec.pk_columns IS NOT NULL THEN
+                ' ORDER BY ' || l_rec.pk_columns
+              ELSE
+                NULL
+            END,
           p_max_rows   => p_data_max_rows
         );
 
@@ -2344,7 +2410,6 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           '{{SYSTEMROLE}}',
           'DEV',
         $if $$apex_installed $then
-
           '{{APP_ID}}',
           p_app_id,
           '{{APP_ALIAS}}',
@@ -2380,7 +2445,6 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           '{{SYSTEMROLE}}',
           'TEST',
         $if $$apex_installed $then
-
           '{{APP_ID}}',
           p_app_id,
           '{{APP_ALIAS}}',
@@ -2416,7 +2480,6 @@ if %errorlevel% neq 0 exit /b %errorlevel%
           '{{SYSTEMROLE}}',
           'PROD',
         $if $$apex_installed $then
-
           '{{APP_ID}}',
           p_app_id,
           '{{APP_ALIAS}}',
@@ -2491,7 +2554,6 @@ BEGIN
   -- These are the defaults - align it to your needs:^'
       ;
 $if $$apex_installed $then
-
       l_file_template   := l_file_template || q'^
   p_app_id                    => :app_id,
   p_app_date                  => true,
@@ -2782,7 +2844,6 @@ prompt
   BEGIN
     init;
   $if $$apex_installed $then
-
     check_owner;
     --
     IF p_app_id IS NOT NULL THEN
@@ -2791,7 +2852,6 @@ prompt
     $end
       l_export_files := NEW tab_export_files();
     $if $$apex_installed $then
-
     END IF;
     $end
     --
@@ -2813,6 +2873,7 @@ prompt
     END IF;
     --
     create_directory_keepers;
+    util_ensure_unique_file_name(l_export_files);
     --
     finish;
     --
@@ -2833,10 +2894,10 @@ prompt
   END add_query;
 
   FUNCTION queries_to_csv (
-    p_delimiter             IN                      VARCHAR2 DEFAULT ',',
-    p_quote_mark            IN                      VARCHAR2 DEFAULT '"',
-    p_header_prefix         IN                      VARCHAR2 DEFAULT NULL,
-    p_include_runtime_log   IN                      BOOLEAN DEFAULT true
+    p_delimiter             IN   VARCHAR2 DEFAULT ',',
+    p_quote_mark            IN   VARCHAR2 DEFAULT '"',
+    p_header_prefix         IN   VARCHAR2 DEFAULT NULL,
+    p_include_runtime_log   IN   BOOLEAN DEFAULT true
   ) RETURN tab_export_files IS
 
     l_export_files tab_export_files;
@@ -2915,7 +2976,9 @@ prompt
     FOR i IN 1..p_file_collection.count LOOP util_zip_add_file(
       p_zipped_blob   => l_zip,
       p_name          => p_file_collection(i).name,
-      p_content       => util_clob_to_blob(p_file_collection(i).contents)
+      p_content       => util_clob_to_blob(
+        p_file_collection(i).contents
+      )
     );
     END LOOP;
 

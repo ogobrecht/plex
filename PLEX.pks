@@ -421,8 +421,6 @@ PROCEDURE util_g_log_init (
   p_include_runtime_log IN BOOLEAN
 );
 
-PROCEDURE util_g_log_exit;
-
 PROCEDURE util_g_log_start (
   p_action IN VARCHAR2
 );
