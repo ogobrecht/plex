@@ -26,8 +26,8 @@ BEGIN
   END LOOP;
   
   EXECUTE IMMEDIATE 'alter session set plsql_ccflags = ''' || 
-    'utils_public:'   || v_utils_public   || ', ' || 
-    'apex_installed:' || v_apex_installed || ', ' || 
+    'utils_public:'   || v_utils_public   || ',' || 
+    'apex_installed:' || v_apex_installed || ',' || 
     'ords_installed:' || v_ords_installed || '''';
 END;
 /

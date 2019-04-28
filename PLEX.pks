@@ -387,18 +387,29 @@ PROCEDURE util_setup_dbms_metadata (
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_log and g_queries
 --------------------------------------------------------------------------------------------------------------------------------
-PROCEDURE util_g_clob_createtemporary;
-
-PROCEDURE util_g_clob_freetemporary;
-
-PROCEDURE util_g_clob_flush_cache;
-
-PROCEDURE util_g_clob_append (
-  p_content IN VARCHAR2
+PROCEDURE util_clob_createtemporary (
+  p_clob  IN OUT NOCOPY CLOB
 );
 
-PROCEDURE util_g_clob_append (
-  p_content IN CLOB
+PROCEDURE util_clob_freetemporary (
+  p_clob  IN OUT NOCOPY CLOB
+);
+
+PROCEDURE util_clob_flush_cache (
+  p_clob  IN OUT NOCOPY CLOB,
+  p_cache IN OUT NOCOPY VARCHAR
+);
+
+PROCEDURE util_clob_append (
+  p_clob     IN OUT NOCOPY CLOB,
+  p_cache    IN OUT NOCOPY VARCHAR,
+  p_content  IN            VARCHAR2
+);
+
+PROCEDURE util_clob_append (
+  p_clob     IN OUT NOCOPY CLOB,
+  p_cache    IN OUT NOCOPY VARCHAR,  
+  p_content  IN            CLOB
 );
 
 PROCEDURE util_g_clob_query_to_csv (
@@ -425,9 +436,7 @@ PROCEDURE util_g_log_start (
   p_action IN VARCHAR2
 );
 
-PROCEDURE util_g_log_append_action_text (
-  p_text IN VARCHAR2
-);
+PROCEDURE util_g_log_prepend_error;
 
 PROCEDURE util_g_log_stop;
 
