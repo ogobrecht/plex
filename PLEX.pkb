@@ -786,7 +786,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     );
   END util_setup_dbms_metadata;
 
-  FUNCTION util_g_log_get_runtime (
+  FUNCTION util_log_get_runtime (
     p_start   IN   TIMESTAMP,
     p_stop    IN   TIMESTAMP
   ) RETURN NUMBER IS
@@ -794,9 +794,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
     --sysdate + (interval_difference * 86400) - sysdate
     --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
-  END util_g_log_get_runtime;
+  END util_log_get_runtime;
 
-  PROCEDURE util_g_log_init (
+  PROCEDURE util_log_init (
     p_module                IN   VARCHAR2,
     p_include_runtime_log   IN   BOOLEAN
   ) IS
@@ -818,13 +818,13 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       g_log.enabled := false;
     END IF;
 
-  END util_g_log_init;
+  END util_log_init;
 
   PROCEDURE util_g_log_calc_runtimes IS
   BEGIN
     IF g_log.enabled THEN
       g_log.stop_time         := systimestamp;
-      g_log.run_time          := util_g_log_get_runtime(
+      g_log.run_time          := util_log_get_runtime(
         g_log.start_time,
         g_log.stop_time
       );
@@ -832,7 +832,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     END IF;
   END util_g_log_calc_runtimes;
 
-  PROCEDURE util_g_log_start (
+  PROCEDURE util_log_start (
     p_action IN VARCHAR2
   ) IS
     v_index PLS_INTEGER;
@@ -852,9 +852,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       g_log.data(v_index).start_time   := systimestamp;
     END IF;
 
-  END util_g_log_start;
+  END util_log_start;
 
-  PROCEDURE util_g_log_prepend_error IS
+  PROCEDURE util_log_add_error_to_action IS
     v_index PLS_INTEGER;
   BEGIN
     IF g_log.enabled THEN
@@ -866,9 +866,30 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       );
 
     END IF;
-  END util_g_log_prepend_error;
+  END util_log_add_error_to_action;
 
-  PROCEDURE util_g_log_stop IS
+  PROCEDURE util_log_error (
+    p_header VARCHAR2
+  ) IS
+  BEGIN
+    g_error_count := g_error_count + 1;
+    util_clob_append(
+      g_errlog,
+      g_errlog_vc_cache,
+      '## ' || p_header || c_crlf || c_crlf || sqlerrm || c_crlf || c_crlf
+    );
+
+    util_clob_append(
+      g_errlog,
+      g_errlog_vc_cache,
+      '```sql' || c_crlf || dbms_utility.format_error_backtrace || c_crlf || '```' || c_crlf || c_crlf || c_crlf
+    );
+
+    util_log_add_error_to_action;
+    util_log_stop;
+  END util_log_error;
+
+  PROCEDURE util_log_stop IS
     v_index PLS_INTEGER;
   BEGIN
     v_index := g_log.data.count;
@@ -878,12 +899,12 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     );
     IF g_log.enabled THEN
       g_log.data(v_index).stop_time   := systimestamp;
-      g_log.data(v_index).elapsed     := util_g_log_get_runtime(
+      g_log.data(v_index).elapsed     := util_log_get_runtime(
         g_log.start_time,
         g_log.data(v_index).stop_time
       );
 
-      g_log.data(v_index).execution   := util_g_log_get_runtime(
+      g_log.data(v_index).execution   := util_log_get_runtime(
         g_log.data(v_index).start_time,
         g_log.data(v_index).stop_time
       );
@@ -891,7 +912,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
       g_log.measured_time             := g_log.measured_time + g_log.data(v_index).execution;
     END IF;
 
-  END util_g_log_stop;
+  END util_log_stop;
 
   PROCEDURE util_clob_createtemporary (
     p_clob IN OUT NOCOPY CLOB
@@ -1363,25 +1384,6 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
   END util_g_clob_create_runtime_log;
 
-  PROCEDURE util_log_error (
-    p_header VARCHAR2
-  ) IS
-  BEGIN
-    g_error_count := g_error_count + 1;
-    util_clob_append(
-      g_errlog,
-      g_errlog_vc_cache,
-      '## ' || p_header || c_crlf || c_crlf || sqlerrm || c_crlf || c_crlf
-    );
-
-    util_clob_append(
-      g_errlog,
-      g_errlog_vc_cache,
-      '```sql' || c_crlf || dbms_utility.format_error_backtrace || c_crlf || '```' || c_crlf || c_crlf || c_crlf
-    );
-
-  END util_log_error;
-
   PROCEDURE util_ensure_unique_file_names (
     p_export_files IN OUT tab_export_files
   ) IS
@@ -1524,7 +1526,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
 
     PROCEDURE init IS
     BEGIN
-      util_g_log_init(
+      util_log_init(
         p_module                => 'plex.backapp'
           $if $$apex_installed $then ||
           CASE
@@ -1559,7 +1561,7 @@ $if $$apex_installed $then
        WHERE t.application_id = p_app_id;
 
     BEGIN
-      util_g_log_start('check_owner');
+      util_log_start('check_owner');
       IF p_app_id IS NOT NULL THEN
         OPEN cur_owner;
         FETCH cur_owner INTO
@@ -1581,7 +1583,7 @@ $if $$apex_installed $then
         );
       END IF;
 
-      util_g_log_stop;
+      util_log_stop;
     END check_owner;
 $end
 
@@ -1592,7 +1594,7 @@ $if $$apex_installed $then
     BEGIN
 
       -- save as individual files
-      util_g_log_start('app_frontend/APEX_EXPORT:individual_files');
+      util_log_start('app_frontend/APEX_EXPORT:individual_files');
       v_apex_files := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
@@ -1656,12 +1658,12 @@ $if $$apex_installed $then
 
       END LOOP;
 
-      util_g_log_stop;
+      util_log_stop;
       IF p_app_include_single_file THEN
 
         -- save as single file 
         v_apex_files.DELETE;
-        util_g_log_start('app_frontend/APEX_EXPORT:single_file');
+        util_log_start('app_frontend/APEX_EXPORT:single_file');
         v_apex_files := apex_export.get_application(
           p_application_id            => p_app_id,
           p_split                     => false,
@@ -1697,7 +1699,7 @@ $if $$apex_installed $then
         );
 
         v_apex_files.DELETE;
-        util_g_log_stop;
+        util_log_stop;
       END IF;
 
     END process_apex_app;
@@ -1763,14 +1765,16 @@ $if $$apex_installed $then
       -- user itself
       BEGIN
         v_file_path   := 'app_backend/_user/' || v_current_user || '.sql';
-        util_g_log_start(v_file_path);
+        util_log_start(v_file_path);
         util_setup_dbms_metadata(p_sqlterminator => false);
         v_contents    := replace(
           replace(
             replace(
               q'^
 BEGIN 
-  FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual MINUS SELECT username FROM dba_users) LOOP
+  FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual 
+            MINUS 
+            SELECT username FROM dba_users) LOOP
     EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
 {{DDL}}
@@ -1800,12 +1804,11 @@ END;
           p_contents       => v_contents
         );
         util_setup_dbms_metadata;
-        util_g_log_stop;
+        util_log_stop;
       EXCEPTION
         WHEN OTHERS THEN
-          util_g_log_prepend_error;
-          util_log_error(v_file_path);
           util_setup_dbms_metadata;
+          util_log_error(v_file_path);
       END;
 
       -- roles
@@ -1813,21 +1816,15 @@ END;
       BEGIN
         v_contents    := NULL;
         v_file_path   := 'app_backend/_user/' || v_current_user || '_roles.sql';
-        util_g_log_start(v_file_path);
+        util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no role privs exists
           SELECT DISTINCT username
             FROM user_role_privs
-        ) LOOP BEGIN
-          v_contents := v_contents || dbms_metadata.get_granted_ddl(
-            'ROLE_GRANT',
-            v_current_user
-          );
-        EXCEPTION
-          WHEN OTHERS THEN
-            util_g_log_prepend_error;
-            v_contents := v_contents || sqlerrm;
-        END;
+        ) LOOP v_contents := v_contents || dbms_metadata.get_granted_ddl(
+          'ROLE_GRANT',
+          v_current_user
+        );
         END LOOP;
 
         util_export_files_append(
@@ -1835,7 +1832,10 @@ END;
           p_name           => v_file_path,
           p_contents       => v_contents
         );
-        util_g_log_stop;
+        util_log_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          util_log_error(v_file_path);
       END;
 
       -- system privileges
@@ -1843,21 +1843,15 @@ END;
       BEGIN
         v_contents    := NULL;
         v_file_path   := 'app_backend/_user/' || v_current_user || '_system_privileges.sql';
-        util_g_log_start(v_file_path);
+        util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no sys privs exists
           SELECT DISTINCT username
             FROM user_sys_privs
-        ) LOOP BEGIN
-          v_contents := v_contents || dbms_metadata.get_granted_ddl(
-            'SYSTEM_GRANT',
-            v_current_user
-          );
-        EXCEPTION
-          WHEN OTHERS THEN
-            util_g_log_prepend_error;
-            v_contents := v_contents || sqlerrm;
-        END;
+        ) LOOP v_contents := v_contents || dbms_metadata.get_granted_ddl(
+          'SYSTEM_GRANT',
+          v_current_user
+        );
         END LOOP;
 
         util_export_files_append(
@@ -1865,7 +1859,10 @@ END;
           p_name           => v_file_path,
           p_contents       => v_contents
         );
-        util_g_log_stop;
+        util_log_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          util_log_error(v_file_path);
       END;
 
       -- object privileges
@@ -1873,22 +1870,16 @@ END;
       BEGIN
         v_contents    := NULL;
         v_file_path   := 'app_backend/_user/' || v_current_user || '_object_privileges.sql';
-        util_g_log_start(v_file_path);
+        util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no object grants exists
           SELECT DISTINCT grantee
             FROM user_tab_privs
            WHERE grantee = v_current_user
-        ) LOOP BEGIN
-          v_contents := v_contents || dbms_metadata.get_granted_ddl(
-            'OBJECT_GRANT',
-            v_current_user
-          );
-        EXCEPTION
-          WHEN OTHERS THEN
-            util_g_log_prepend_error;
-            v_contents := v_contents || sqlerrm;
-        END;
+        ) LOOP v_contents := v_contents || dbms_metadata.get_granted_ddl(
+          'OBJECT_GRANT',
+          v_current_user
+        );
         END LOOP;
 
         util_export_files_append(
@@ -1896,7 +1887,10 @@ END;
           p_name           => v_file_path,
           p_contents       => v_contents
         );
-        util_g_log_stop;
+        util_log_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          util_log_error(v_file_path);
       END;
 
     END process_user_ddl;
@@ -1911,7 +1905,7 @@ END;
       );
       v_rec        obj_rec_typ;
     BEGIN
-      util_g_log_start('app_backend/open_objects_cursor');
+      util_log_start('app_backend/open_objects_cursor');
       v_query := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
@@ -1987,11 +1981,11 @@ SELECT CASE object_type
       util_setup_dbms_metadata;
       OPEN v_cur FOR v_query;
 
-      util_g_log_stop;
+      util_log_stop;
       LOOP
         FETCH v_cur INTO v_rec;
         EXIT WHEN v_cur%notfound;
-        util_g_log_start(v_rec.file_path);
+        util_log_start(v_rec.file_path);
         CASE v_rec.object_type
           WHEN 'SEQUENCE' THEN
             v_ddl_files.sequences_(v_ddl_files.sequences_.count + 1) := v_rec.file_path;
@@ -2111,7 +2105,7 @@ END;
 
         END CASE;
 
-        util_g_log_stop;
+        util_log_stop;
       END LOOP;
 
       CLOSE v_cur;
@@ -2127,7 +2121,7 @@ END;
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_g_log_start('app_backend/grants:open_cursor');
+      util_log_start('app_backend/grants:open_cursor');
       v_query := q'^
 SELECT DISTINCT 
        p.grantor,
@@ -2141,7 +2135,8 @@ SELECT DISTINCT
  ORDER BY 
        privilege,
        object_name
-^';
+^'
+      ;
       replace_query_like_expressions(
         p_like_list       => p_object_name_like,
         p_not_like_list   => p_object_name_not_like,
@@ -2149,11 +2144,11 @@ SELECT DISTINCT
       );
       OPEN v_cur FOR v_query;
 
-      util_g_log_stop;
+      util_log_stop;
       LOOP
         FETCH v_cur INTO v_rec;
         EXIT WHEN v_cur%notfound;
-        util_g_log_start(v_rec.file_path);
+        util_log_start(v_rec.file_path);
         v_contents                                         := dbms_metadata.get_dependent_ddl(
           'OBJECT_GRANT',
           v_rec.object_name,
@@ -2166,7 +2161,7 @@ SELECT DISTINCT
           p_contents       => v_contents
         );
 
-        util_g_log_stop;
+        util_log_stop;
       END LOOP;
 
       CLOSE v_cur;
@@ -2181,7 +2176,7 @@ SELECT DISTINCT
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_g_log_start('app_backend/ref_constraints:open_cursor');
+      util_log_start('app_backend/ref_constraints:open_cursor');
       v_query := q'^
 SELECT table_name,
        constraint_name,
@@ -2202,11 +2197,11 @@ SELECT table_name,
       );
       OPEN v_cur FOR v_query;
 
-      util_g_log_stop;
+      util_log_stop;
       LOOP
         FETCH v_cur INTO v_rec;
         EXIT WHEN v_cur%notfound;
-        util_g_log_start(v_rec.file_path);
+        util_log_start(v_rec.file_path);
         util_setup_dbms_metadata(p_sqlterminator => false);
         v_contents                                                           := replace(
           q'^
@@ -2244,7 +2239,7 @@ END;
           p_contents       => v_contents
         );
 
-        util_g_log_stop;
+        util_log_stop;
       END LOOP;
 
       CLOSE v_cur;
@@ -2268,7 +2263,7 @@ END;
       
     -- file one
       v_file_path := 'scripts/install_backend_generated_by_plex.sql';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_clob_createtemporary(g_clob);
       util_clob_append(
         g_clob,
@@ -2395,7 +2390,7 @@ prompt --install_backend_generated_by_plex
         p_contents       => g_clob
       );
       util_clob_freetemporary(g_clob);
-      util_g_log_stop;
+      util_log_stop;
     END create_backend_install_file;
 
     PROCEDURE process_data IS
@@ -2406,7 +2401,7 @@ prompt --install_backend_generated_by_plex
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_g_log_start('app_data/open_tables_cursor');
+      util_log_start('app_data/open_tables_cursor');
       v_query            := q'^
 SELECT table_name,
        (SELECT LISTAGG(column_name, ', ') WITHIN GROUP(ORDER BY position)
@@ -2433,19 +2428,19 @@ SELECT table_name,
       );
       OPEN v_cur FOR v_query;
 
-      util_g_log_stop;
-      util_g_log_start('app_data/get_scn');
+      util_log_stop;
+      util_log_start('app_data/get_scn');
       v_data_timestamp   := util_calc_data_timestamp(nvl(
         p_data_as_of_minutes_ago,
         0
       ));
       v_data_scn         := timestamp_to_scn(v_data_timestamp);
-      util_g_log_stop;
+      util_log_stop;
       LOOP
         FETCH v_cur INTO v_rec;
         EXIT WHEN v_cur%notfound;
         v_file_path := 'app_data/' || v_rec.table_name || '.csv';
-        util_g_log_start(v_file_path);
+        util_log_start(v_file_path);
         util_clob_createtemporary(g_clob);
         util_g_clob_query_to_csv(
           p_query      => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
@@ -2468,7 +2463,7 @@ SELECT table_name,
           p_contents       => g_clob
         );
         util_clob_freetemporary(g_clob);
-        util_g_log_stop;
+        util_log_stop;
       END LOOP;
 
       CLOSE v_cur;
@@ -2519,7 +2514,7 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
 ^'
       ;
       v_file_path       := 'plex_README.md';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
@@ -2530,7 +2525,7 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
         )
       );
 
-      util_g_log_stop;
+      util_log_stop;
       v_file_template   := q'^
 rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
@@ -2579,7 +2574,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 ^'
       ;
       v_file_path       := 'scripts/templates/1_export_app_from_DEV.bat';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
@@ -2610,11 +2605,11 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         )
       );
 
-      util_g_log_stop;
+      util_log_stop;
 
       --
       v_file_path       := 'scripts/templates/2_install_app_into_TEST.bat';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
@@ -2645,11 +2640,11 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         )
       );
 
-      util_g_log_stop;
+      util_log_stop;
 
       --
       v_file_path       := 'scripts/templates/3_install_app_into_PROD.bat';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
@@ -2680,7 +2675,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         )
       );
 
-      util_g_log_stop;
+      util_log_stop;
 
       --
       v_file_template   := q'^
@@ -2844,7 +2839,7 @@ prompt
 ^'
       ;
       v_file_path       := 'scripts/templates/export_app_custom_code.sql';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
@@ -2861,7 +2856,7 @@ prompt
         )
       );
 
-      util_g_log_stop;
+      util_log_stop;
 
       --
       v_file_template   := q'^
@@ -2953,7 +2948,7 @@ prompt
 ^'
       ;
       v_file_path       := 'scripts/templates/install_app_custom_code.sql';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
@@ -2970,7 +2965,7 @@ prompt
         )
       );
 
-      util_g_log_stop;
+      util_log_stop;
     END create_template_files;
 
       --
@@ -2979,33 +2974,33 @@ prompt
       v_the_point VARCHAR2(30) := '. < this is the point ;-)';
     BEGIN
       v_file_path   := 'docs/_save_your_docs_here.txt';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
         p_contents       => v_the_point
       );
-      util_g_log_stop;
+      util_log_stop;
 
       --
       v_file_path   := 'scripts/logs/_spool_your_script_logs_here.txt';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
         p_contents       => v_the_point
       );
-      util_g_log_stop;
+      util_log_stop;
 
       --
       v_file_path   := 'tests/_save_your_tests_here.txt';
-      util_g_log_start(v_file_path);
+      util_log_start(v_file_path);
       util_export_files_append(
         p_export_files   => v_export_files,
         p_name           => v_file_path,
         p_contents       => v_the_point
       );
-      util_g_log_stop;
+      util_log_stop;
     END create_directory_keepers;
 
     PROCEDURE finish IS
@@ -3108,7 +3103,7 @@ prompt
           'You need first to add queries by using plex.add_query. Calling plex.queries_to_csv clears the global queries array for subsequent processing.'
         );
       END IF;
-      util_g_log_init(
+      util_log_init(
         p_module                => 'plex.queries_to_csv',
         p_include_runtime_log   => p_include_runtime_log
       );
@@ -3117,7 +3112,7 @@ prompt
     PROCEDURE process_queries IS
     BEGIN
       FOR i IN g_queries.first..g_queries.last LOOP
-        util_g_log_start('process_query:' || TO_CHAR(i) || ':' || g_queries(i).file_name);
+        util_log_start('process_query:' || TO_CHAR(i) || ':' || g_queries(i).file_name);
 
         util_clob_createtemporary(g_clob);
         util_g_clob_query_to_csv(
@@ -3139,7 +3134,7 @@ prompt
         );
 
         util_clob_freetemporary(g_clob);
-        util_g_log_stop;
+        util_log_stop;
       END LOOP;
     END process_queries;
 
@@ -3175,7 +3170,7 @@ prompt
   ) RETURN BLOB IS
     v_zip BLOB;
   BEGIN
-    util_g_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');
+    util_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');
     FOR i IN 1..p_file_collection.count LOOP util_zip_add_file(
       p_zipped_blob   => v_zip,
       p_name          => p_file_collection(i).name,
@@ -3186,7 +3181,7 @@ prompt
     END LOOP;
 
     util_zip_finish(v_zip);
-    util_g_log_stop;
+    util_log_stop;
     util_g_log_calc_runtimes;
     RETURN v_zip;
   END to_zip;

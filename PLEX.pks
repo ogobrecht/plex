@@ -422,23 +422,23 @@ PROCEDURE util_g_clob_query_to_csv (
 
 PROCEDURE util_g_clob_create_runtime_log;
 
-FUNCTION util_g_log_get_runtime (
+FUNCTION util_log_get_runtime (
   p_start IN TIMESTAMP,
   p_stop  IN TIMESTAMP
 ) RETURN NUMBER;
 
-PROCEDURE util_g_log_init (
+PROCEDURE util_log_init (
   p_module              IN VARCHAR2,
   p_include_runtime_log IN BOOLEAN
 );
 
-PROCEDURE util_g_log_start (
+PROCEDURE util_log_start (
   p_action IN VARCHAR2
 );
 
-PROCEDURE util_g_log_prepend_error;
+PROCEDURE util_log_add_error_to_action;
 
-PROCEDURE util_g_log_stop;
+PROCEDURE util_log_stop;
 
 $end
 
