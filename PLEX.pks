@@ -361,10 +361,9 @@ FUNCTION util_set_build_status_run_only (
   p_app_export_sql IN CLOB
 ) RETURN CLOB;
 
-PROCEDURE util_export_files_append (
+PROCEDURE util_clob_add_to_export_files (
   p_export_files IN OUT NOCOPY tab_export_files,
-  p_name         IN     VARCHAR2,
-  p_contents     IN     CLOB
+  p_name         IN            VARCHAR2
 );
 
 FUNCTION util_calc_data_timestamp (
@@ -387,32 +386,18 @@ PROCEDURE util_setup_dbms_metadata (
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_log and g_queries
 --------------------------------------------------------------------------------------------------------------------------------
-PROCEDURE util_clob_createtemporary (
-  p_clob  IN OUT NOCOPY CLOB
-);
 
-PROCEDURE util_clob_freetemporary (
-  p_clob  IN OUT NOCOPY CLOB
-);
+PROCEDURE util_clob_flush_cache;
 
-PROCEDURE util_clob_flush_cache (
-  p_clob  IN OUT NOCOPY CLOB,
-  p_cache IN OUT NOCOPY VARCHAR
+PROCEDURE util_clob_append (
+  p_content IN VARCHAR2
 );
 
 PROCEDURE util_clob_append (
-  p_clob     IN OUT NOCOPY CLOB,
-  p_cache    IN OUT NOCOPY VARCHAR,
-  p_content  IN            VARCHAR2
+  p_content IN CLOB
 );
 
-PROCEDURE util_clob_append (
-  p_clob     IN OUT NOCOPY CLOB,
-  p_cache    IN OUT NOCOPY VARCHAR,  
-  p_content  IN            CLOB
-);
-
-PROCEDURE util_g_clob_query_to_csv (
+PROCEDURE util_clob_query_to_csv (
   p_query         IN VARCHAR2,
   p_max_rows      IN NUMBER DEFAULT 1000,
   p_delimiter     IN VARCHAR2 DEFAULT ',',
@@ -420,7 +405,13 @@ PROCEDURE util_g_clob_query_to_csv (
   p_header_prefix IN VARCHAR2 DEFAULT NULL
 );
 
-PROCEDURE util_g_clob_create_runtime_log;
+PROCEDURE util_clob_create_runtime_log;
+
+PROCEDURE util_errlog_append (
+    p_message IN VARCHAR2
+  );
+  
+PROCEDURE util_errlog_flush_cache;
 
 FUNCTION util_log_get_runtime (
   p_start IN TIMESTAMP,
