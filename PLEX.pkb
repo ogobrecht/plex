@@ -8,8 +8,9 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   c_cr                             CONSTANT VARCHAR2(1) := chr(13);
   c_lf                             CONSTANT VARCHAR2(1) := chr(10);
   c_crlf                           CONSTANT VARCHAR2(2) := chr(13) || chr(10);
-  c_slash                          CONSTANT VARCHAR2(1) := '/';
   c_at                             CONSTANT VARCHAR2(1) := '@';
+  c_hash                           CONSTANT VARCHAR2(1) := '#';
+  c_slash                          CONSTANT VARCHAR2(1) := '/';
   c_vc2_max_size                   CONSTANT PLS_INTEGER := 32767;
   c_zip_local_file_header          CONSTANT RAW(4) := hextoraw('504B0304'); -- local file header signature
   c_zip_end_of_central_directory   CONSTANT RAW(4) := hextoraw('504B0506'); -- end of central directory signature
@@ -208,7 +209,8 @@ ZIP UTILS
 
   PROCEDURE util_log_init (
     p_module                IN   VARCHAR2,
-    p_include_runtime_log   IN   BOOLEAN
+    p_include_runtime_log   IN   BOOLEAN DEFAULT true,
+    p_include_error_log     IN   BOOLEAN DEFAULT true
   );
 
   PROCEDURE util_log_start (
@@ -917,7 +919,6 @@ $end
     g_errlog_vc_cache := g_errlog_vc_cache || p_message;
   EXCEPTION
     WHEN value_error THEN
-
       IF g_errlog IS NULL THEN
         g_errlog := g_errlog_vc_cache;
       ELSE
@@ -934,7 +935,6 @@ $end
   PROCEDURE util_errlog_flush_cache IS
   BEGIN
     IF g_error_count > 0 AND length(g_errlog_vc_cache) > 0 THEN
-
       IF g_errlog IS NULL THEN
         g_errlog := g_errlog_vc_cache;
       ELSE
@@ -945,15 +945,13 @@ $end
         );
       END IF;
 
-      g_errlog_vc_cache := NULL;
+      g_errlog_vc_cache   := NULL;
 
       -- copy final errorlog to global clob for appending to export files collection
       util_clob_append(g_errlog);
-
-      g_errlog := null;
-      g_error_count := 0;
+      g_errlog            := NULL;
+      g_error_count       := 0;
     END IF;
-
   END util_errlog_flush_cache;
 
   FUNCTION util_log_get_runtime (
@@ -968,7 +966,8 @@ $end
 
   PROCEDURE util_log_init (
     p_module                IN   VARCHAR2,
-    p_include_runtime_log   IN   BOOLEAN
+    p_include_runtime_log   IN   BOOLEAN DEFAULT true,
+    p_include_error_log     IN   BOOLEAN DEFAULT true
   ) IS
   BEGIN
     g_log.module := substr(
@@ -986,6 +985,16 @@ $end
       g_log.data.DELETE;
     ELSE
       g_log.enabled := false;
+    END IF;
+
+    IF p_include_error_log THEN
+      g_errlog := util_multi_replace(
+        '{{HASH}} {{MAIN_FUNCTION}} - Error Log',
+        '{{HASH}}',
+        c_hash,
+        '{{MAIN_FUNCTION}}',
+        upper(g_log.module)
+      ) || c_crlf || c_crlf || c_crlf;
     END IF;
 
   END util_log_init;
@@ -1080,7 +1089,7 @@ $end
 
   PROCEDURE util_clob_flush_cache IS
   BEGIN
-    IF g_clob_vc_cache is not null THEN
+    IF g_clob_vc_cache IS NOT NULL THEN
       IF g_clob IS NULL THEN
         g_clob := g_clob_vc_cache;
       ELSE
@@ -1102,7 +1111,6 @@ $end
     g_clob_vc_cache := g_clob_vc_cache || p_content;
   EXCEPTION
     WHEN value_error THEN
-
       IF g_clob IS NULL THEN
         g_clob := g_clob_vc_cache;
       ELSE
@@ -1120,10 +1128,8 @@ $end
     p_content IN CLOB
   ) IS
   BEGIN
-    IF p_content is not null THEN
-
+    IF p_content IS NOT NULL THEN
       util_clob_flush_cache;
-
       IF g_clob IS NULL THEN
         g_clob := p_content;
       ELSE
@@ -1406,9 +1412,7 @@ $end
   BEGIN
     util_log_calc_runtimes;
     util_clob_append(util_multi_replace(
-      '
-{{MAIN_FUNCTION}} - Runtime Log
-============================================================
+      '{{HASH}} {{MAIN_FUNCTION}} - Runtime Log
 
 - Export started at {{START_TIME}} and took {{RUN_TIME}} seconds to finish
 - Unmeasured execution time because of system waits, missing log calls or log overhead was {{UNMEASURED_TIME}} seconds
@@ -1417,6 +1421,8 @@ $end
 
 '
       ,
+      '{{HASH}}',
+      c_hash,
       '{{MAIN_FUNCTION}}',
       upper(g_log.module),
       '{{START_TIME}}',
@@ -1441,8 +1447,8 @@ $end
     ));
 
     util_clob_append('
-| Step |   Elapsed |   Execution | Action                                                           |
-|-----:|----------:|------------:|:-----------------------------------------------------------------|
+|  Step |   Elapsed |   Execution | Action                                                           |
+|------:|----------:|------------:|:-----------------------------------------------------------------|
 '
 
     );
@@ -1451,7 +1457,7 @@ $end
       '{{STEP}}',
       lpad(
         TO_CHAR(i),
-        4
+        5
       ),
       '{{ELAPSED}}',
       lpad(
@@ -1590,6 +1596,8 @@ $end
     p_app_build_status_run_only   IN   BOOLEAN DEFAULT false,
   $end
     p_include_object_ddl          IN   BOOLEAN DEFAULT false,
+    p_object_type_like            IN   VARCHAR2 DEFAULT NULL,
+    p_object_type_not_like        IN   VARCHAR2 DEFAULT NULL,
     p_object_name_like            IN   VARCHAR2 DEFAULT NULL,
     p_object_name_not_like        IN   VARCHAR2 DEFAULT NULL,
     p_include_data                IN   BOOLEAN DEFAULT false,
@@ -1598,7 +1606,11 @@ $end
     p_data_table_name_like        IN   VARCHAR2 DEFAULT NULL,
     p_data_table_name_not_like    IN   VARCHAR2 DEFAULT NULL,
     p_include_templates           IN   BOOLEAN DEFAULT true,
-    p_include_runtime_log         IN   BOOLEAN DEFAULT true
+    p_include_runtime_log         IN   BOOLEAN DEFAULT true,
+    p_include_error_log           IN   BOOLEAN DEFAULT true,
+    p_base_path_app_backend       IN VARCHAR2 DEFAULT 'app_backend',
+    p_base_path_app_frontend      IN VARCHAR2 DEFAULT 'app_frontend',
+    p_base_path_app_data          IN VARCHAR2 DEFAULT 'app_data'
   ) RETURN tab_export_files IS
 
     v_apex_version       NUMBER;
@@ -1629,7 +1641,8 @@ $end
               '(' || TO_CHAR(p_app_id) || ')'
           END
         $end,
-        p_include_runtime_log   => p_include_runtime_log
+        p_include_runtime_log   => p_include_runtime_log,
+        p_include_error_log     => p_include_error_log
       );
 
       v_export_files   := NEW tab_export_files();
@@ -1639,7 +1652,6 @@ $end
         'USERENV',
         'CURRENT_USER'
       );
-
       IF dbms_lob.istemporary(g_clob) = 0 THEN
         dbms_lob.createtemporary(
           g_clob,
@@ -1657,6 +1669,7 @@ $end
       END IF;
       
       -- init error log
+
       g_error_count    := 0;
     END init;
 
@@ -1704,7 +1717,7 @@ $if $$apex_installed $then
     BEGIN
 
       -- save as individual files
-      util_log_start('app_frontend/APEX_EXPORT:individual_files');
+      util_log_start(p_base_path_app_frontend || '/APEX_EXPORT:individual_files');
       v_apex_files := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
@@ -1732,14 +1745,14 @@ $if $$apex_installed $then
         v_export_files(i).name       := replace(
           v_apex_files(i).name,
           'f' || p_app_id || '/application/',
-          'app_frontend/'
+          p_base_path_app_frontend || '/'
         );
         -- correct prompts for relocation
 
         v_export_files(i).contents   := replace(
           v_apex_files(i).contents,
           'prompt --application/',
-          'prompt --app_frontend/'
+          'prompt --' || p_base_path_app_frontend || '/'
         );
 
         v_apex_files.DELETE(i);
@@ -1752,7 +1765,7 @@ $if $$apex_installed $then
             replace(
               v_export_files(i).contents,
               '@application/',
-              '@../app_frontend/'
+              '@../' || p_base_path_app_frontend || '/'
             ),
             'prompt --install',
             'prompt --install_frontend_generated_by_apex'
@@ -1762,7 +1775,7 @@ $if $$apex_installed $then
         
         -- handle build status RUN_ONLY
 
-        IF v_export_files(i).name = 'app_frontend/create_application.sql' AND p_app_build_status_run_only THEN
+        IF v_export_files(i).name = p_base_path_app_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
           v_export_files(i).contents := util_set_build_status_run_only(v_export_files(i).contents);
         END IF;
 
@@ -1773,7 +1786,7 @@ $if $$apex_installed $then
 
         -- save as single file 
         v_apex_files.DELETE;
-        util_log_start('app_frontend/APEX_EXPORT:single_file');
+        util_log_start(p_base_path_app_frontend || '/APEX_EXPORT:single_file');
         v_apex_files := apex_export.get_application(
           p_application_id            => p_app_id,
           p_split                     => false,
@@ -1801,7 +1814,7 @@ $if $$apex_installed $then
         util_clob_append(v_apex_files(1).contents);
         util_clob_add_to_export_files(
           p_export_files   => v_export_files,
-          p_name           => 'app_frontend/' || v_apex_files(
+          p_name           => p_base_path_app_frontend || '/' || v_apex_files(
             1
           ).name
         );
@@ -1814,9 +1827,10 @@ $if $$apex_installed $then
   $end
 
     PROCEDURE replace_query_like_expressions (
-      p_like_list       VARCHAR2,
-      p_not_like_list   VARCHAR2,
-      p_column_name     VARCHAR2
+      p_like_list            VARCHAR2,
+      p_not_like_list        VARCHAR2,
+      p_placeholder_prefix   VARCHAR2,
+      p_column_name          VARCHAR2
     ) IS
       v_expression_table tab_varchar2;
     BEGIN
@@ -1826,13 +1840,13 @@ $if $$apex_installed $then
         p_like_list,
         ','
       );
-      FOR i IN 1..v_expression_table.count LOOP v_expression_table(i) := p_column_name || ' like ''' || trim(v_expression_table(i))
-      || ''' escape ''\''';
+      FOR i IN 1..v_expression_table.count LOOP v_expression_table(i) := p_column_name || ' like ''' || trim(v_expression_table(i
+      )) || ''' escape ''\''';
       END LOOP;
 
       v_query              := replace(
         v_query,
-        '#LIKE_EXPRESSIONS#',
+        '#' || p_placeholder_prefix || '_LIKE_EXPRESSIONS#',
         nvl(
           util_join(
             v_expression_table,
@@ -1843,7 +1857,6 @@ $if $$apex_installed $then
       );
 
     -- process filter "not like"
-
       v_expression_table   := util_split(
         p_not_like_list,
         ','
@@ -1854,7 +1867,7 @@ $if $$apex_installed $then
 
       v_query              := replace(
         v_query,
-        '#NOT_LIKE_EXPRESSIONS#',
+        '#' || p_placeholder_prefix || '_NOT_LIKE_EXPRESSIONS#',
         nvl(
           util_join(
             v_expression_table,
@@ -1864,15 +1877,16 @@ $if $$apex_installed $then
         )
       );
 
-      --dbms_output.put_line(v_query);
-
+      $if $$debug_on $then
+      dbms_output.put_line(v_query);
+      $end
     END replace_query_like_expressions;
 
     PROCEDURE process_user_ddl IS
     BEGIN
       -- user itself
       BEGIN
-        v_file_path := 'app_backend/_user/' || v_current_user || '.sql';
+        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '.sql';
         util_log_start(v_file_path);
         util_setup_dbms_metadata(p_sqlterminator => false);
         util_clob_append(replace(
@@ -1921,7 +1935,7 @@ END;
       -- roles
 
       BEGIN
-        v_file_path := 'app_backend/_user/' || v_current_user || '_roles.sql';
+        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '_roles.sql';
         util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no role privs exists
@@ -1946,7 +1960,7 @@ END;
       -- system privileges
 
       BEGIN
-        v_file_path := 'app_backend/_user/' || v_current_user || '_system_privileges.sql';
+        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '_system_privileges.sql';
         util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no sys privs exists
@@ -1971,7 +1985,7 @@ END;
       -- object privileges
 
       BEGIN
-        v_file_path := 'app_backend/_user/' || v_current_user || '_object_privileges.sql';
+        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '_object_privileges.sql';
         util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no object grants exists
@@ -2005,7 +2019,7 @@ END;
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start('app_backend/open_objects_cursor');
+      util_log_start(p_base_path_app_backend || '/open_objects_cursor');
       v_query := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
@@ -2036,7 +2050,7 @@ SELECT CASE object_type
          ELSE object_type
        END AS object_type,
        object_name,
-       'app_backend/' || 
+       '{{BASE_PATH_APP_BACKEND}}/' || 
          replace(
            lower(
              CASE
@@ -2059,10 +2073,10 @@ SELECT CASE object_type
          WHEN 'TYPE'           THEN '.tps'
          ELSE '.sql'
        END AS file_path
-  FROM ^' || 
+  FROM ^' 
 $if NOT $$debug_on 
-  $then 'user_objects'
-  $else '(SELECT MIN(object_name) AS object_name, object_type FROM user_objects GROUP BY object_type)' 
+  $then || 'user_objects'
+  $else || '(SELECT MIN(object_name) AS object_name, object_type FROM user_objects GROUP BY object_type)'
 $end || q'^
  WHERE -- ignore invalid object types
        object_type NOT IN ('UNDEFINED','DESTINATION','EDITION','JAVA DATA','WINDOW')
@@ -2077,18 +2091,30 @@ $end || q'^
        --Ignore nested tables, their DDL is part of their parent table:
    AND object_name NOT IN (SELECT table_name FROM user_nested_tables)
        --Set user specific like filters:
-   AND (#LIKE_EXPRESSIONS#)
-   AND (#NOT_LIKE_EXPRESSIONS#)
+   AND (#TYPE_LIKE_EXPRESSIONS#)
+   AND (#TYPE_NOT_LIKE_EXPRESSIONS#)
+   AND (#NAME_LIKE_EXPRESSIONS#)
+   AND (#NAME_NOT_LIKE_EXPRESSIONS#)
  ORDER BY
        object_type,
        object_name
 ^'
       ;
+      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_app_backend);
       replace_query_like_expressions(
-        p_like_list       => p_object_name_like,
-        p_not_like_list   => p_object_name_not_like,
-        p_column_name     => 'object_name'
+        p_like_list            => p_object_type_like,
+        p_not_like_list        => p_object_type_not_like,
+        p_placeholder_prefix   => 'TYPE',
+        p_column_name          => 'object_type'
       );
+
+      replace_query_like_expressions(
+        p_like_list            => p_object_name_like,
+        p_not_like_list        => p_object_name_not_like,
+        p_placeholder_prefix   => 'NAME',
+        p_column_name          => 'object_name'
+      );
+
       util_setup_dbms_metadata;
       OPEN v_cur FOR v_query;
 
@@ -2228,27 +2254,30 @@ END;
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start('app_backend/grants:open_cursor');
+      util_log_start(p_base_path_app_backend || '/grants:open_cursor');
       v_query := q'^
 SELECT DISTINCT 
        p.grantor,
        p.privilege,
        p.table_name as object_name,
-       'app_backend/grants/' || p.privilege || '_on_' || p.table_name || '.sql' AS file_path
+       '{{BASE_PATH_APP_BACKEND}}/grants/' || p.privilege || '_on_' || p.table_name || '.sql' AS file_path
   FROM user_tab_privs p
   JOIN user_objects o ON p.table_name = o.object_name
- WHERE (#LIKE_EXPRESSIONS#)
-   AND (#NOT_LIKE_EXPRESSIONS#)
+ WHERE (#NAME_LIKE_EXPRESSIONS#)
+   AND (#NAME_NOT_LIKE_EXPRESSIONS#)
  ORDER BY 
        privilege,
        object_name
 ^'
       ;
+      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_app_backend);
       replace_query_like_expressions(
-        p_like_list       => p_object_name_like,
-        p_not_like_list   => p_object_name_not_like,
-        p_column_name     => 'o.object_name'
+        p_like_list            => p_object_name_like,
+        p_not_like_list        => p_object_name_not_like,
+        p_placeholder_prefix   => 'NAME',
+        p_column_name          => 'o.object_name'
       );
+
       OPEN v_cur FOR v_query;
 
       util_log_stop;
@@ -2287,25 +2316,28 @@ SELECT DISTINCT
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start('app_backend/ref_constraints:open_cursor');
+      util_log_start(p_base_path_app_backend || '/ref_constraints:open_cursor');
       v_query := q'^
 SELECT table_name,
        constraint_name,
-       'app_backend/ref_constraints/' || constraint_name || '.sql' AS file_path
+       '{{BASE_PATH_APP_BACKEND}}/ref_constraints/' || constraint_name || '.sql' AS file_path
   FROM user_constraints
  WHERE constraint_type = 'R'
-   AND (#LIKE_EXPRESSIONS#)
-   AND (#NOT_LIKE_EXPRESSIONS#)
+   AND (#NAME_LIKE_EXPRESSIONS#)
+   AND (#NAME_NOT_LIKE_EXPRESSIONS#)
  ORDER BY 
        table_name,
        constraint_name
 ^'
       ;
+      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_app_backend);
       replace_query_like_expressions(
-        p_like_list       => p_object_name_like,
-        p_not_like_list   => p_object_name_not_like,
-        p_column_name     => 'table_name'
+        p_like_list            => p_object_name_like,
+        p_not_like_list        => p_object_name_not_like,
+        p_placeholder_prefix   => 'NAME',
+        p_column_name          => 'table_name'
       );
+
       OPEN v_cur FOR v_query;
 
       util_log_stop;
@@ -2451,7 +2483,7 @@ prompt --install_backend_generated_by_plex
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start('app_data/open_tables_cursor');
+      util_log_start(p_base_path_app_data || '/open_tables_cursor');
       v_query            := q'^
 SELECT table_name,
        (SELECT LISTAGG(column_name, ', ') WITHIN GROUP(ORDER BY position)
@@ -2465,21 +2497,23 @@ SELECT table_name,
  WHERE table_name IN (SELECT table_name FROM user_tables
                        MINUS
                       SELECT table_name FROM user_external_tables)
-   AND (#LIKE_EXPRESSIONS#)
-   AND (#NOT_LIKE_EXPRESSIONS#)
+   AND (#NAME_LIKE_EXPRESSIONS#)
+   AND (#NAME_NOT_LIKE_EXPRESSIONS#)
  ORDER BY 
        table_name
 ^'
       ;
       replace_query_like_expressions(
-        p_like_list       => p_data_table_name_like,
-        p_not_like_list   => p_data_table_name_not_like,
-        p_column_name     => 'table_name'
+        p_like_list            => p_data_table_name_like,
+        p_not_like_list        => p_data_table_name_not_like,
+        p_placeholder_prefix   => 'NAME',
+        p_column_name          => 'table_name'
       );
+
       OPEN v_cur FOR v_query;
 
       util_log_stop;
-      util_log_start('app_data/get_scn');
+      util_log_start(p_base_path_app_data || '/get_scn');
       v_data_timestamp   := util_calc_data_timestamp(nvl(
         p_data_as_of_minutes_ago,
         0
@@ -2490,7 +2524,7 @@ SELECT table_name,
         FETCH v_cur INTO v_rec;
         EXIT WHEN v_cur%notfound;
         BEGIN
-          v_file_path := 'app_data/' || v_rec.table_name || '.csv';
+          v_file_path := p_base_path_app_data || '/' || v_rec.table_name || '.csv';
           util_log_start(v_file_path);
           util_clob_query_to_csv(
             p_query      => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
@@ -2787,7 +2821,7 @@ $if $$apex_installed $then
   p_app_notifications         => false,
   p_app_translations          => true,
   p_app_pkg_app_mapping       => false,
-  p_app_original_ids          => true,
+  p_app_original_ids          => false,
   p_app_subscriptions         => true,
   p_app_comments              => true,
   p_app_supporting_objects    => null,
@@ -2797,6 +2831,8 @@ $if $$apex_installed $then
 $end
       v_file_template   := v_file_template || q'^
   p_include_object_ddl        => true,
+  p_object_type_like          => null,
+  p_object_type_not_like      => null,
   p_object_name_like          => null,
   p_object_name_not_like      => null,
 
@@ -2807,7 +2843,8 @@ $end
   p_data_table_name_not_like  => null,
 
   p_include_templates         => true,
-  p_include_runtime_log       => true );
+  p_include_runtime_log       => true,
+  p_include_error_log         => true);
 
   -- relocate files to own project structure, we are inside the scripts folder
   FOR i IN 1..v_files.count LOOP
@@ -3058,18 +3095,21 @@ prompt
         util_clob_create_runtime_log;
         util_clob_add_to_export_files(
           p_export_files   => v_export_files,
-          p_name           => 'plex_backapp_log.md'
+          p_name           => 'plex_backapp_runtime_log.md'
         );
       END IF;
 
       -- write error log     
+
       util_errlog_flush_cache;
-      util_clob_add_to_export_files(
-        p_export_files   => v_export_files,
-        p_name           => 'ERROR_LOG.md'
-      );
+      IF p_include_error_log THEN
+        util_clob_add_to_export_files(
+          p_export_files   => v_export_files,
+          p_name           => 'plex_backapp_error_log.md'
+        );
+      END IF;
+
       util_ensure_unique_file_names(v_export_files);
-      
       IF dbms_lob.istemporary(g_clob) = 1 THEN
         dbms_lob.freetemporary(g_clob);
       END IF;
@@ -3094,7 +3134,7 @@ prompt
       process_user_ddl;
       process_object_ddl;
     -- exclude working (and potential long running) object types for debug mode
-    $if NOT $$debug_on $then 
+    $if NOT $$debug_on $then
       process_object_grants;
       process_ref_constraints;
     $end

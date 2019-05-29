@@ -28,8 +28,8 @@ DEPENDENCIES
 
 The package itself is independend, but functionality varies on the following conditions:
 
-- For APEX app export: APEX >= 5.1.4
-- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= ???
+- For APEX app export: APEX >= 5.1.4 installed
+- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= ??? installed
 
 
 INSTALLATION
@@ -43,8 +43,10 @@ INSTALLATION
 
 CHANGELOG
 
-- 1.3.0 (2019-04-xx)
+- 1.3.0 (2019-06-xx)
     - Make package independend from APEX to be able to export schema object DDL and table data without an APEX installation
+    - New parameters to filter for object types
+    - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
     - Fix script templates: Change old parameters in plex.backapp call
     - Add install and uninstall scripts for PLEX itself
@@ -165,8 +167,10 @@ FUNCTION backapp (
   $end
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
-  p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
-  p_object_name_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: where ... and (object_name not like 'EMP%' escape '\' and object_name not like 'DEPT%' escape '\').
+  p_object_type_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
+  p_object_type_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type not like '%BODY' escape '\' and object_type not like 'JAVA%' escape '\').
+  p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
+  p_object_name_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name not like 'EMP%' escape '\' and object_name not like 'DEPT%' escape '\').
   -- Data related options:
   p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
   p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
@@ -175,7 +179,11 @@ FUNCTION backapp (
   p_data_table_name_not_like  IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
   -- Miscellaneous options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_backapp_log.md with runtime statistics.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_runtime_log.md with detailed runtime infos.
+  p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_error_log.md with detailed error messages.
+  p_base_path_app_backend     IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
+  p_base_path_app_frontend    IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
+  p_base_path_app_data        IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
 ) RETURN tab_export_files;
 ```
 
@@ -282,7 +290,7 @@ SIGNATURE
 
 ```sql
 FUNCTION to_zip (
-  p_file_collection IN tab_export_files -- The file collection to process with APEX_ZIP.
+  p_file_collection IN tab_export_files -- The file collection to zip.
 ) RETURN BLOB;
 ```
 
@@ -290,7 +298,7 @@ FUNCTION to_zip (
 <h2><a id="view_runtime_log"></a>Function view_runtime_log</h2>
 <!------------------------------------------------------------>
 
-View the log from the last plex run. The internal array for the runtime log is cleared after each call of  BackApp or Queries_to_CSV.
+View the log from the last plex run. The internal array for the runtime log is cleared after each call of BackApp or Queries_to_CSV.
 
 EXAMPLE
 
