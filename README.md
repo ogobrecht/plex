@@ -181,9 +181,9 @@ FUNCTION backapp (
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_runtime_log.md with detailed runtime infos.
   p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_error_log.md with detailed error messages.
-  p_base_path_app_backend     IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
-  p_base_path_app_frontend    IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
-  p_base_path_app_data        IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
+  p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
+  p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
+  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
 ) RETURN tab_export_files;
 ```
 

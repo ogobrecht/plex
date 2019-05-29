@@ -1608,9 +1608,9 @@ $end
     p_include_templates           IN   BOOLEAN DEFAULT true,
     p_include_runtime_log         IN   BOOLEAN DEFAULT true,
     p_include_error_log           IN   BOOLEAN DEFAULT true,
-    p_base_path_app_backend       IN VARCHAR2 DEFAULT 'app_backend',
-    p_base_path_app_frontend      IN VARCHAR2 DEFAULT 'app_frontend',
-    p_base_path_app_data          IN VARCHAR2 DEFAULT 'app_data'
+    p_base_path_backend           IN   VARCHAR2 DEFAULT 'app_backend',
+    p_base_path_frontend          IN   VARCHAR2 DEFAULT 'app_frontend',
+    p_base_path_data              IN   VARCHAR2 DEFAULT 'app_data'
   ) RETURN tab_export_files IS
 
     v_apex_version       NUMBER;
@@ -1717,7 +1717,7 @@ $if $$apex_installed $then
     BEGIN
 
       -- save as individual files
-      util_log_start(p_base_path_app_frontend || '/APEX_EXPORT:individual_files');
+      util_log_start(p_base_path_frontend || '/APEX_EXPORT:individual_files');
       v_apex_files := apex_export.get_application(
         p_application_id            => p_app_id,
         p_split                     => true,
@@ -1745,14 +1745,14 @@ $if $$apex_installed $then
         v_export_files(i).name       := replace(
           v_apex_files(i).name,
           'f' || p_app_id || '/application/',
-          p_base_path_app_frontend || '/'
+          p_base_path_frontend || '/'
         );
         -- correct prompts for relocation
 
         v_export_files(i).contents   := replace(
           v_apex_files(i).contents,
           'prompt --application/',
-          'prompt --' || p_base_path_app_frontend || '/'
+          'prompt --' || p_base_path_frontend || '/'
         );
 
         v_apex_files.DELETE(i);
@@ -1765,7 +1765,7 @@ $if $$apex_installed $then
             replace(
               v_export_files(i).contents,
               '@application/',
-              '@../' || p_base_path_app_frontend || '/'
+              '@../' || p_base_path_frontend || '/'
             ),
             'prompt --install',
             'prompt --install_frontend_generated_by_apex'
@@ -1775,7 +1775,7 @@ $if $$apex_installed $then
         
         -- handle build status RUN_ONLY
 
-        IF v_export_files(i).name = p_base_path_app_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
+        IF v_export_files(i).name = p_base_path_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
           v_export_files(i).contents := util_set_build_status_run_only(v_export_files(i).contents);
         END IF;
 
@@ -1786,7 +1786,7 @@ $if $$apex_installed $then
 
         -- save as single file 
         v_apex_files.DELETE;
-        util_log_start(p_base_path_app_frontend || '/APEX_EXPORT:single_file');
+        util_log_start(p_base_path_frontend || '/APEX_EXPORT:single_file');
         v_apex_files := apex_export.get_application(
           p_application_id            => p_app_id,
           p_split                     => false,
@@ -1814,7 +1814,7 @@ $if $$apex_installed $then
         util_clob_append(v_apex_files(1).contents);
         util_clob_add_to_export_files(
           p_export_files   => v_export_files,
-          p_name           => p_base_path_app_frontend || '/' || v_apex_files(
+          p_name           => p_base_path_frontend || '/' || v_apex_files(
             1
           ).name
         );
@@ -1886,7 +1886,7 @@ $if $$apex_installed $then
     BEGIN
       -- user itself
       BEGIN
-        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '.sql';
+        v_file_path := p_base_path_backend || '/_user/' || v_current_user || '.sql';
         util_log_start(v_file_path);
         util_setup_dbms_metadata(p_sqlterminator => false);
         util_clob_append(replace(
@@ -1935,7 +1935,7 @@ END;
       -- roles
 
       BEGIN
-        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '_roles.sql';
+        v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_roles.sql';
         util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no role privs exists
@@ -1960,7 +1960,7 @@ END;
       -- system privileges
 
       BEGIN
-        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '_system_privileges.sql';
+        v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_system_privileges.sql';
         util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no sys privs exists
@@ -1985,7 +1985,7 @@ END;
       -- object privileges
 
       BEGIN
-        v_file_path := p_base_path_app_backend || '/_user/' || v_current_user || '_object_privileges.sql';
+        v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_object_privileges.sql';
         util_log_start(v_file_path);
         FOR i IN (
      -- ensure we get no dbms_metadata error when no object grants exists
@@ -2019,7 +2019,7 @@ END;
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start(p_base_path_app_backend || '/open_objects_cursor');
+      util_log_start(p_base_path_backend || '/open_objects_cursor');
       v_query := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
@@ -2100,7 +2100,7 @@ $end || q'^
        object_name
 ^'
       ;
-      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_app_backend);
+      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_backend);
       replace_query_like_expressions(
         p_like_list            => p_object_type_like,
         p_not_like_list        => p_object_type_not_like,
@@ -2254,7 +2254,7 @@ END;
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start(p_base_path_app_backend || '/grants:open_cursor');
+      util_log_start(p_base_path_backend || '/grants:open_cursor');
       v_query := q'^
 SELECT DISTINCT 
        p.grantor,
@@ -2270,7 +2270,7 @@ SELECT DISTINCT
        object_name
 ^'
       ;
-      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_app_backend);
+      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_backend);
       replace_query_like_expressions(
         p_like_list            => p_object_name_like,
         p_not_like_list        => p_object_name_not_like,
@@ -2316,7 +2316,7 @@ SELECT DISTINCT
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start(p_base_path_app_backend || '/ref_constraints:open_cursor');
+      util_log_start(p_base_path_backend || '/ref_constraints:open_cursor');
       v_query := q'^
 SELECT table_name,
        constraint_name,
@@ -2330,7 +2330,7 @@ SELECT table_name,
        constraint_name
 ^'
       ;
-      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_app_backend);
+      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_backend);
       replace_query_like_expressions(
         p_like_list            => p_object_name_like,
         p_not_like_list        => p_object_name_not_like,
@@ -2483,7 +2483,7 @@ prompt --install_backend_generated_by_plex
       );
       v_rec obj_rec_typ;
     BEGIN
-      util_log_start(p_base_path_app_data || '/open_tables_cursor');
+      util_log_start(p_base_path_data || '/open_tables_cursor');
       v_query            := q'^
 SELECT table_name,
        (SELECT LISTAGG(column_name, ', ') WITHIN GROUP(ORDER BY position)
@@ -2513,7 +2513,7 @@ SELECT table_name,
       OPEN v_cur FOR v_query;
 
       util_log_stop;
-      util_log_start(p_base_path_app_data || '/get_scn');
+      util_log_start(p_base_path_data || '/get_scn');
       v_data_timestamp   := util_calc_data_timestamp(nvl(
         p_data_as_of_minutes_ago,
         0
@@ -2524,7 +2524,7 @@ SELECT table_name,
         FETCH v_cur INTO v_rec;
         EXIT WHEN v_cur%notfound;
         BEGIN
-          v_file_path := p_base_path_app_data || '/' || v_rec.table_name || '.csv';
+          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.csv';
           util_log_start(v_file_path);
           util_clob_query_to_csv(
             p_query      => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
@@ -2814,37 +2814,41 @@ BEGIN
       ;
 $if $$apex_installed $then
       v_file_template   := v_file_template || q'^
-  p_app_id                    => :app_id,
-  p_app_date                  => true,
-  p_app_public_reports        => true,
-  p_app_private_reports       => false,
-  p_app_notifications         => false,
-  p_app_translations          => true,
-  p_app_pkg_app_mapping       => false,
-  p_app_original_ids          => false,
-  p_app_subscriptions         => true,
-  p_app_comments              => true,
-  p_app_supporting_objects    => null,
-  p_app_include_single_file   => false,
-  p_app_build_status_run_only => false,^'
-      ;
+    p_app_id                    => :app_id,
+    p_app_date                  => true,
+    p_app_public_reports        => true,
+    p_app_private_reports       => false,
+    p_app_notifications         => false,
+    p_app_translations          => true,
+    p_app_pkg_app_mapping       => false,
+    p_app_original_ids          => false,
+    p_app_subscriptions         => true,
+    p_app_comments              => true,
+    p_app_supporting_objects    => null,
+    p_app_include_single_file   => false,
+    p_app_build_status_run_only => false,^'
+        ;
 $end
-      v_file_template   := v_file_template || q'^
-  p_include_object_ddl        => true,
-  p_object_type_like          => null,
-  p_object_type_not_like      => null,
-  p_object_name_like          => null,
-  p_object_name_not_like      => null,
+        v_file_template   := v_file_template || q'^
+    p_include_object_ddl        => true,
+    p_object_type_like          => null,
+    p_object_type_not_like      => null,
+    p_object_name_like          => null,
+    p_object_name_not_like      => null,
 
-  p_include_data              => false,
-  p_data_as_of_minutes_ago    => 0,
-  p_data_max_rows             => 1000,
-  p_data_table_name_like      => null,
-  p_data_table_name_not_like  => null,
+    p_include_data              => false,
+    p_data_as_of_minutes_ago    => 0,
+    p_data_max_rows             => 1000,
+    p_data_table_name_like      => null,
+    p_data_table_name_not_like  => null,
 
-  p_include_templates         => true,
-  p_include_runtime_log       => true,
-  p_include_error_log         => true);
+    p_include_templates         => true,
+    p_include_runtime_log       => true,
+    p_include_error_log         => true,
+    p_base_path_backend         => 'app_backend',
+    p_base_path_frontend        => 'app_frontend',
+    p_base_path_data            => 'app_data'
+  );
 
   -- relocate files to own project structure, we are inside the scripts folder
   FOR i IN 1..v_files.count LOOP
