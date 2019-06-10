@@ -14,7 +14,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   c_vc2_max_size                   CONSTANT PLS_INTEGER := 32767;
   c_zip_local_file_header          CONSTANT RAW(4) := hextoraw('504B0304'); -- local file header signature
   c_zip_end_of_central_directory   CONSTANT RAW(4) := hextoraw('504B0506'); -- end of central directory signature
-  
+
   --
   TYPE rec_log_step IS RECORD ( --
     action       app_info_text,
@@ -25,7 +25,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   );
   TYPE tab_log_step IS
     TABLE OF rec_log_step INDEX BY BINARY_INTEGER;
-    
+
   --
   TYPE rec_log IS RECORD ( --
     module            app_info_text,
@@ -37,11 +37,11 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     unmeasured_time   NUMBER,
     data              tab_log_step
   );
-  
+
   --
   TYPE tab_vc1000 IS
     TABLE OF VARCHAR2(1000) INDEX BY BINARY_INTEGER;
-    
+
   --
   TYPE rec_ddl_files IS RECORD ( --
     sequences_         tab_vc1000,
@@ -59,7 +59,7 @@ CREATE OR REPLACE PACKAGE BODY plex IS
     grants_            tab_vc1000,
     other_objects_     tab_vc1000
   );
-  
+
   --
   TYPE rec_queries IS RECORD (--
     query       VARCHAR2(32767 CHAR),
@@ -68,12 +68,12 @@ CREATE OR REPLACE PACKAGE BODY plex IS
   );
   TYPE tab_queries IS
     TABLE OF rec_queries INDEX BY PLS_INTEGER;
-  
+
   --
   TYPE tab_file_list_lookup IS
     TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
-    
-    
+
+
   -- GLOBAL VARIABLES
   g_clob                           CLOB;
   g_clob_vc_cache                  VARCHAR2(32767char);
@@ -111,7 +111,7 @@ $if not $$utils_public $then
     p_clob CLOB
   ) RETURN BLOB;
 
-/* 
+/*
 ZIP UTILS
 - The following four zip utilities are copied from this article:
     - Blog: https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/
@@ -141,10 +141,12 @@ ZIP UTILS
     p_zipped_blob IN OUT BLOB
   );
 
+  /* FIXME: implement this
   FUNCTION util_multireplace (
     p_source_string   IN   VARCHAR2,
     p_replacements    IN   tab_varchar2
   ) RETURN VARCHAR2;
+  */
 
   FUNCTION util_set_build_status_run_only (
     p_app_export_sql IN CLOB
@@ -200,7 +202,7 @@ ZIP UTILS
     p_message IN VARCHAR2
   );
 
-  PROCEDURE util_errlog_flush_cache;
+  PROCEDURE util_clob_create_error_log;
 
   FUNCTION util_log_get_runtime (
     p_start   IN   TIMESTAMP,
@@ -332,7 +334,7 @@ $end
   BEGIN
     IF p_array IS NOT NULL AND p_array.count > 0 THEN
       v_return := p_array(1);
-      FOR i IN 2..p_array.count LOOP v_return := v_return || p_delimiter || p_array(i);
+      FOR i IN 2 ..p_array.count LOOP v_return := v_return || p_delimiter || p_array(i);
       END LOOP;
 
     END IF;
@@ -343,11 +345,11 @@ $end
       RETURN v_return;
   END util_join;
 
-  FUNCTION util_zip_blob_to_num (
+  FUNCTION util_zip_blob_to_num (-- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     p_blob   IN   BLOB,
     p_len    IN   INTEGER,
     p_pos    IN   INTEGER
-  ) RETURN NUMBER IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+  ) RETURN NUMBER IS
     rv NUMBER;
   BEGIN
     rv := utl_raw.cast_to_binary_integer(
@@ -363,12 +365,12 @@ $end
       rv := rv + 4294967296;
     END IF;
     RETURN rv;
-  END;
+  END util_zip_blob_to_num;
 
-  FUNCTION util_zip_little_endian (
+  FUNCTION util_zip_little_endian (-- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     p_big     IN   NUMBER,
     p_bytes   IN   PLS_INTEGER := 4
-  ) RETURN RAW IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+  ) RETURN RAW IS
     t_big NUMBER := p_big;
   BEGIN
     IF t_big > 2147483647 THEN
@@ -383,13 +385,13 @@ $end
       p_bytes
     );
 
-  END;
+  END util_zip_little_endian;
 
-  PROCEDURE util_zip_add_file (
+  PROCEDURE util_zip_add_file (-- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     p_zipped_blob   IN OUT  BLOB,
     p_name          IN      VARCHAR2,
     p_content       IN      BLOB
-  ) IS -- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
+  ) IS
 
     t_now          DATE;
     t_blob         BLOB;
@@ -433,10 +435,8 @@ $end
     dbms_lob.append(
       p_zipped_blob,
       utl_raw.concat(
-        c_zip_local_file_header -- local file header signature
-        ,
-        hextoraw('1400') -- version 2.0
-        ,
+        c_zip_local_file_header, -- local file header signature
+        hextoraw('1400'), -- version 2.0
           CASE
             WHEN t_name = utl_i18n.string_to_raw(
               p_name,
@@ -510,12 +510,11 @@ $end
       dbms_lob.freetemporary(t_blob);
     END IF;
 
-  END;
+  END util_zip_add_file;
 
-  PROCEDURE util_zip_finish (
+  PROCEDURE util_zip_finish (-- copyright by Anton Scheffer (MIT license, see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
     p_zipped_blob IN OUT BLOB
   ) IS
-    -- copyright by Anton Scheffer (MIT license, also see https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/)
 
     t_cnt               PLS_INTEGER := 0;
     t_offs              INTEGER;
@@ -534,23 +533,18 @@ $end
       dbms_lob.append(
         p_zipped_blob,
         utl_raw.concat(
-          hextoraw('504B0102')      -- Central directory file header signature
-          ,
-          hextoraw('1400')          -- version 2.0
-          ,
+          hextoraw('504B0102'), -- Central directory file header signature
+          hextoraw('1400'), -- version 2.0
           dbms_lob.substr(
             p_zipped_blob,
             26,
             t_offs + 4
           ),
-          hextoraw('0000')          -- File comment length
-          ,
-          hextoraw('0000')          -- Disk number where file starts
-          ,
-          hextoraw('0000')          -- Internal file attributes =>
-                                                                   --     0000 binary file
-                                                                   --     0100 (ascii)text file
-          ,
+          hextoraw('0000'), -- File comment length
+          hextoraw('0000'), -- Disk number where file starts
+          hextoraw('0000'), -- Internal file attributes =>
+                            --     0000 binary file
+                            --     0100 (ascii)text file
             CASE
               WHEN dbms_lob.substr(
                 p_zipped_blob,
@@ -558,23 +552,18 @@ $end
                 t_offs + 30 + util_zip_blob_to_num(
                   p_zipped_blob,
                   2,
-                  t_offs + 26
-                ) - 1
-              ) IN(
-                hextoraw(
+                  t_offs + 26) - 1
+              ) IN(hextoraw(
                   '2F'
-                ) -- /
-                ,
+                ), -- /
                 hextoraw(
                   '5C'
                 ) -- \
               ) THEN
                 hextoraw('10000000') -- a directory/folder
               ELSE hextoraw('2000B681') -- a file
-            END                         -- External file attributes
-            ,
-          util_zip_little_endian(t_offs - 1) -- Relative offset of local file header
-          ,
+            END, -- External file attributes
+          util_zip_little_endian(t_offs - 1), -- Relative offset of local file header
           dbms_lob.substr(
             p_zipped_blob,
             util_zip_blob_to_num(
@@ -583,20 +572,18 @@ $end
               t_offs + 26
             ),
             t_offs + 30
-          )            -- File name
-        )
-      );
+          ) -- File name
+        ));
 
       t_offs   := t_offs + 30 + util_zip_blob_to_num(
         p_zipped_blob,
         4,
-        t_offs + 18
-      )  -- compressed size
-       + util_zip_blob_to_num(
+        t_offs + 18) -- compressed size
+         + util_zip_blob_to_num(
         p_zipped_blob,
         2,
         t_offs + 26
-      )  -- File name length
+      ) -- File name length
        + util_zip_blob_to_num(
         p_zipped_blob,
         2,
@@ -609,39 +596,31 @@ $end
     dbms_lob.append(
       p_zipped_blob,
       utl_raw.concat(
-        c_zip_end_of_central_directory                                -- End of central directory signature
-        ,
-        hextoraw('0000')                                        -- Number of this disk
-        ,
-        hextoraw('0000')                                        -- Disk where central directory starts
-        ,
+        c_zip_end_of_central_directory, -- End of central directory signature
+        hextoraw('0000'), -- Number of this disk
+        hextoraw('0000'), -- Disk where central directory starts
         util_zip_little_endian(
           t_cnt,
           2
-        )                                 -- Number of central directory records on this disk
-        ,
+        ), -- Number of central directory records on this disk
         util_zip_little_endian(
           t_cnt,
           2
-        )                                 -- Total number of central directory records
-        ,
-        util_zip_little_endian(t_offs_end_header - t_offs_dir_header)    -- Size of central directory
-        ,
-        util_zip_little_endian(t_offs_dir_header)                        -- Offset of start of central directory, relative to start of archive
-        ,
+        ), -- Total number of central directory records
+        util_zip_little_endian(t_offs_end_header - t_offs_dir_header), -- Size of central directory
+        util_zip_little_endian(t_offs_dir_header), -- Offset of start of central directory, relative to start of archive
         util_zip_little_endian(
           nvl(
             utl_raw.length(t_comment),
             0
           ),
           2
-        ) -- ZIP file comment length
-        ,
+        ), -- ZIP file comment length
         t_comment
       )
     );
 
-  END;
+  END util_zip_finish;
 
   FUNCTION util_clob_to_blob (
     p_clob CLOB
@@ -676,6 +655,7 @@ $end
     RETURN v_blob;
   END util_clob_to_blob;
 
+/* FIXME: implement this
   FUNCTION util_multireplace (
     p_source_string   VARCHAR2,
     p_replacements    tab_varchar2
@@ -683,6 +663,7 @@ $end
   BEGIN
     NULL;
   END;
+*/
 
   FUNCTION util_multi_replace (
     p_source_string   VARCHAR2,
@@ -928,31 +909,8 @@ $end
           g_errlog_vc_cache
         );
       END IF;
-
       g_errlog_vc_cache := p_message;
   END util_errlog_append;
-
-  PROCEDURE util_errlog_flush_cache IS
-  BEGIN
-    IF g_error_count > 0 AND length(g_errlog_vc_cache) > 0 THEN
-      IF g_errlog IS NULL THEN
-        g_errlog := g_errlog_vc_cache;
-      ELSE
-        dbms_lob.writeappend(
-          g_errlog,
-          length(g_errlog_vc_cache),
-          g_errlog_vc_cache
-        );
-      END IF;
-
-      g_errlog_vc_cache   := NULL;
-
-      -- copy final errorlog to global clob for appending to export files collection
-      util_clob_append(g_errlog);
-      g_errlog            := NULL;
-      g_error_count       := 0;
-    END IF;
-  END util_errlog_flush_cache;
 
   FUNCTION util_log_get_runtime (
     p_start   IN   TIMESTAMP,
@@ -961,7 +919,7 @@ $end
   BEGIN
     RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
     --sysdate + (interval_difference * 86400) - sysdate
-    --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type  
+    --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type
   END util_log_get_runtime;
 
   PROCEDURE util_log_init (
@@ -970,11 +928,7 @@ $end
     p_include_error_log     IN   BOOLEAN DEFAULT true
   ) IS
   BEGIN
-    g_log.module := substr(
-      p_module,
-      1,
-      c_app_info_length
-    );
+    g_log.module := substr(p_module, 1, c_app_info_length);
     IF p_include_runtime_log THEN
       g_log.enabled           := true;
       g_log.start_time        := systimestamp;
@@ -986,30 +940,30 @@ $end
     ELSE
       g_log.enabled := false;
     END IF;
-
     IF p_include_error_log THEN
-      g_errlog := util_multi_replace(
+      g_error_count := 0;
+      IF dbms_lob.istemporary(g_errlog) = 0 THEN
+        dbms_lob.createtemporary(g_errlog, true, dbms_lob.call);
+      END IF;
+      util_errlog_append(util_multi_replace(
         '{{HASH}} {{MAIN_FUNCTION}} - Error Log',
         '{{HASH}}',
         c_hash,
         '{{MAIN_FUNCTION}}',
         upper(g_log.module)
-      ) || c_crlf || c_crlf || c_crlf;
+        ) || c_crlf || c_crlf || c_crlf
+      );
     END IF;
-
   END util_log_init;
 
   PROCEDURE util_log_calc_runtimes IS
   BEGIN
     IF g_log.enabled THEN
-      g_log.stop_time         := systimestamp;
-      g_log.run_time          := util_log_get_runtime(
-        g_log.start_time,
-        g_log.stop_time
-      );
-      g_log.unmeasured_time   := g_log.run_time - g_log.measured_time;
+      g_log.stop_time := systimestamp;
+      g_log.run_time := util_log_get_runtime(g_log.start_time, g_log.stop_time);
+      g_log.unmeasured_time := g_log.run_time - g_log.measured_time;
     END IF;
-  END util_log_calc_runtimes;
+  END util_log_calc_runtimes;  
 
   PROCEDURE util_log_start (
     p_action IN VARCHAR2
@@ -1021,29 +975,18 @@ $end
       action_name   => p_action
     );
     IF g_log.enabled THEN
-      v_index                          := g_log.data.count + 1;
-      g_log.data(v_index).action       := substr(
-        p_action,
-        1,
-        plex.c_app_info_length
-      );
-
-      g_log.data(v_index).start_time   := systimestamp;
+      v_index := g_log.data.count + 1;
+      g_log.data(v_index).action := substr(p_action, 1, plex.c_app_info_length);
+      g_log.data(v_index).start_time := systimestamp;
     END IF;
-
   END util_log_start;
 
   PROCEDURE util_log_add_error_to_action IS
     v_index PLS_INTEGER;
   BEGIN
     IF g_log.enabled THEN
-      v_index                      := g_log.data.count;
-      g_log.data(v_index).action   := substr(
-        'ERROR: ' || g_log.data(v_index).action,
-        1,
-        plex.c_app_info_length
-      );
-
+      v_index := g_log.data.count;
+      g_log.data(v_index).action := substr('ERROR: ' || g_log.data(v_index).action, 1, plex.c_app_info_length);
     END IF;
   END util_log_add_error_to_action;
 
@@ -1053,11 +996,7 @@ $end
   BEGIN
     g_error_count := g_error_count + 1;
     util_errlog_append('## ' || p_header || c_crlf || c_crlf || sqlerrm || c_crlf || c_crlf);
-
-    util_errlog_append('```sql' || c_crlf || dbms_utility.format_error_backtrace || c_crlf || '```' || c_crlf || c_crlf || c_crlf
-
-    );
-
+    util_errlog_append('```sql' || c_crlf || dbms_utility.format_error_backtrace || c_crlf || '```' || c_crlf || c_crlf || c_crlf);
     util_log_add_error_to_action;
     util_log_stop;
   END util_log_error;
@@ -1071,20 +1010,11 @@ $end
       action_name   => NULL
     );
     IF g_log.enabled THEN
-      g_log.data(v_index).stop_time   := systimestamp;
-      g_log.data(v_index).elapsed     := util_log_get_runtime(
-        g_log.start_time,
-        g_log.data(v_index).stop_time
-      );
-
-      g_log.data(v_index).execution   := util_log_get_runtime(
-        g_log.data(v_index).start_time,
-        g_log.data(v_index).stop_time
-      );
-
-      g_log.measured_time             := g_log.measured_time + g_log.data(v_index).execution;
+      g_log.data(v_index).stop_time := systimestamp;
+      g_log.data(v_index).elapsed   := util_log_get_runtime(g_log.start_time, g_log.data(v_index).stop_time);
+      g_log.data(v_index).execution := util_log_get_runtime(g_log.data(v_index).start_time, g_log.data(v_index).stop_time);
+      g_log.measured_time           := g_log.measured_time + g_log.data(v_index).execution;
     END IF;
-
   END util_log_stop;
 
   PROCEDURE util_clob_flush_cache IS
@@ -1093,13 +1023,8 @@ $end
       IF g_clob IS NULL THEN
         g_clob := g_clob_vc_cache;
       ELSE
-        dbms_lob.writeappend(
-          g_clob,
-          length(g_clob_vc_cache),
-          g_clob_vc_cache
-        );
+        dbms_lob.writeappend(g_clob, length(g_clob_vc_cache), g_clob_vc_cache);
       END IF;
-
       g_clob_vc_cache := NULL;
     END IF;
   END util_clob_flush_cache;
@@ -1114,13 +1039,8 @@ $end
       IF g_clob IS NULL THEN
         g_clob := g_clob_vc_cache;
       ELSE
-        dbms_lob.writeappend(
-          g_clob,
-          length(g_clob_vc_cache),
-          g_clob_vc_cache
-        );
+        dbms_lob.writeappend(g_clob, length(g_clob_vc_cache), g_clob_vc_cache);
       END IF;
-
       g_clob_vc_cache := p_content;
   END util_clob_append;
 
@@ -1133,13 +1053,8 @@ $end
       IF g_clob IS NULL THEN
         g_clob := p_content;
       ELSE
-        dbms_lob.writeappend(
-          g_clob,
-          length(p_content),
-          p_content
-        );
+        dbms_lob.writeappend(g_clob, length(p_content), p_content);
       END IF;
-
     END IF;
   END util_clob_append;
 
@@ -1150,14 +1065,13 @@ $end
     v_index PLS_INTEGER;
   BEGIN
     util_clob_flush_cache;
-    v_index                   := p_export_files.count + 1;
+    v_index := p_export_files.count + 1;
     p_export_files.extend;
-    p_export_files(v_index)   := rec_export_file(
-      name       => p_name,
-      contents   => g_clob
+    p_export_files(v_index) := rec_export_file(
+      name     => p_name,
+      contents => g_clob
     );
-
-    g_clob                    := NULL;
+    g_clob := NULL;
   END util_clob_add_to_export_files;
 
   PROCEDURE util_clob_query_to_csv (
@@ -1166,9 +1080,8 @@ $end
     p_delimiter       IN   VARCHAR2 DEFAULT ',',
     p_quote_mark      IN   VARCHAR2 DEFAULT '"',
     p_header_prefix   IN   VARCHAR2 DEFAULT NULL
-  ) IS 
+  ) IS
     -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
-
     v_line_terminator            VARCHAR2(2) := c_crlf; -- to be compatible with Excel we need to use crlf here (multiline text uses lf and is wrapped in quotes)
     v_cursor                     PLS_INTEGER;
     v_ignore                     PLS_INTEGER;
@@ -1180,7 +1093,6 @@ $end
     v_buffer_xmltype             XMLTYPE;
     v_buffer_long                LONG;
     v_buffer_long_length         PLS_INTEGER;
-
     -- numeric type identfiers
     c_number                     CONSTANT PLS_INTEGER := 2; -- FLOAT
     c_binary_float               CONSTANT PLS_INTEGER := 100;
@@ -1224,8 +1136,8 @@ $end
           c_lf
         );
 
-        -- if we have the parameter p_force_quotes set to true or the delimiter character or 
-        -- line feeds in the string then we have to wrap the text in quotes marks and escape 
+        -- if we have the parameter p_force_quotes set to true or the delimiter character or
+        -- line feeds in the string then we have to wrap the text in quotes marks and escape
         -- the quote marks inside the text by double them
 
         IF instr(
@@ -1304,7 +1216,7 @@ $end
       END LOOP;
 
       v_ignore   := dbms_sql.execute(v_cursor);
-    
+
       -- create header
       util_clob_append(p_header_prefix);
       FOR i IN 1..v_col_cnt LOOP
@@ -1317,7 +1229,7 @@ $end
       END LOOP;
 
       util_clob_append(v_line_terminator);
-    
+
       -- create data
       LOOP
         EXIT WHEN dbms_sql.fetch_rows(v_cursor) = 0 OR v_data_count = p_max_rows;
@@ -1484,11 +1396,26 @@ $end
     END LOOP;
 
   END util_clob_create_runtime_log;
+  
+  PROCEDURE util_clob_create_error_log IS
+  BEGIN
+    IF g_errlog IS NULL THEN
+      g_errlog := g_errlog_vc_cache;
+    ELSE
+      dbms_lob.writeappend(
+        g_errlog,
+        length(g_errlog_vc_cache),
+        g_errlog_vc_cache
+      );
+    END IF;
+    g_errlog_vc_cache := NULL;
+    -- copy final errorlog to global clob for appending to export files collection
+    util_clob_append(g_errlog);
+  END util_clob_create_error_log;
 
   PROCEDURE util_ensure_unique_file_names (
     p_export_files IN OUT tab_export_files
   ) IS
-
     v_file_list_lookup       tab_file_list_lookup;
     v_apex_install_file_id   PLS_INTEGER;
     v_file_name              VARCHAR2(256);
@@ -1496,81 +1423,75 @@ $end
     v_base_name              VARCHAR2(256);
     v_count                  PLS_INTEGER;
   BEGIN
-
+$if $$apex_installed $then
     -- find apex install file
-    FOR i IN 1..p_export_files.count LOOP IF p_export_files(i).name = 'scripts/install_frontend_generated_by_apex.sql' THEN
-      v_apex_install_file_id := i;
-    END IF;
-    END LOOP;
-   
-    -- ensure unique file names
-
     FOR i IN 1..p_export_files.count LOOP
-      v_file_name                       := p_export_files(i).name;
-      v_count                           := 1;
-      IF instr(
-        v_file_name,
-        '.'
-      ) > 0 THEN
-        v_base_name   := substr(
-          v_file_name,
-          1,
-          instr(
-            v_file_name,
-            '.',
-            -1
-          ) - 1
-        );
-
-        v_extension   := substr(
-          v_file_name,
-          instr(
-            v_file_name,
-            '.',
-            -1
-          )
-        );
-      ELSE
-        v_base_name   := v_file_name;
-        v_extension   := NULL;
+      IF p_export_files(i).name = 'scripts/install_frontend_generated_by_apex.sql' THEN
+        v_apex_install_file_id := i;
       END IF;
-
+    END LOOP;
+$end
+    -- ensure unique file names
+    FOR i IN 1..p_export_files.count LOOP
+    
+      v_file_name := p_export_files(i).name;
+      v_count := 1;
+      
+      IF instr(v_file_name, '.') > 0 THEN
+        v_base_name := substr(v_file_name, 1, instr(v_file_name, '.', -1) - 1);
+        v_extension := substr(v_file_name, instr(v_file_name, '.', -1));
+      ELSE
+        v_base_name := v_file_name;
+        v_extension := NULL;
+      END IF;
+      
       WHILE v_file_list_lookup.EXISTS(v_file_name) LOOP
         v_count       := v_count + 1;
         v_file_name   := v_base_name || '_' || v_count || v_extension;
       END LOOP;
-
-      v_file_list_lookup(v_file_name)   := i;
       
+      v_file_list_lookup(v_file_name) := i;
+
       -- correct data if needed
       IF p_export_files(i).name != v_file_name THEN
 
         -- correct the prompt statement
-        p_export_files(i).contents                        := replace(
+        p_export_files(i).contents := replace(
           p_export_files(i).contents,
           v_base_name,
           v_base_name || '_' || v_count
         );
 
         -- correct the apex install file
-
-        p_export_files(v_apex_install_file_id).contents   := regexp_replace(
-          p_export_files(v_apex_install_file_id).contents,
-          p_export_files(i).name || '$',
-          v_file_name,
-          1,
-          2,
-          'm'
-        );
+        IF v_apex_install_file_id IS NOT NULL THEN
+          p_export_files(v_apex_install_file_id).contents := regexp_replace(
+            p_export_files(v_apex_install_file_id).contents,
+            p_export_files(i).name || '$',
+            v_file_name,
+            1,
+            2,
+            'm'
+          );
+        END IF;
 
         -- correct the file name itself
-
-        p_export_files(i).name                            := v_file_name;
+        p_export_files(i).name := v_file_name;
+        
       END IF;
 
     END LOOP;
 
   END util_ensure_unique_file_names;
+  
+  PROCEDURE util_free_temporary_lobs IS
+  BEGIN  
+    IF dbms_lob.istemporary(g_clob) = 1 THEN
+      dbms_lob.freetemporary(g_clob);
+    END IF;
+    IF dbms_lob.istemporary(g_errlog) = 1 THEN
+      dbms_lob.freetemporary(g_errlog);
+    END IF;
+  END util_free_temporary_lobs;
 
 
 
@@ -1621,7 +1542,7 @@ $end
     v_app_workspace      user_objects.object_name%TYPE;
     v_app_owner          user_objects.object_name%TYPE;
     v_app_alias          user_objects.object_name%TYPE;
-    -- 
+    --
     v_ddl_files          rec_ddl_files;
     v_contents           CLOB;
     v_export_files       tab_export_files;
@@ -1635,12 +1556,7 @@ $end
     BEGIN
       util_log_init(
         p_module                => 'plex.backapp'
-          $if $$apex_installed $then ||
-          CASE
-            WHEN p_app_id IS NOT NULL THEN
-              '(' || TO_CHAR(p_app_id) || ')'
-          END
-        $end,
+        $if $$apex_installed $then || CASE WHEN p_app_id IS NOT NULL THEN '(' || TO_CHAR(p_app_id) || ')' END $end,
         p_include_runtime_log   => p_include_runtime_log,
         p_include_error_log     => p_include_error_log
       );
@@ -1660,6 +1576,7 @@ $end
         );
       END IF;
 
+      -- init error log
       IF dbms_lob.istemporary(g_errlog) = 0 THEN
         dbms_lob.createtemporary(
           g_errlog,
@@ -1667,14 +1584,11 @@ $end
           dbms_lob.call
         );
       END IF;
-      
-      -- init error log
+      g_error_count := 0;
 
-      g_error_count    := 0;
     END init;
 
 $if $$apex_installed $then
-
     PROCEDURE check_owner IS
       CURSOR cur_owner IS
       SELECT workspace,
@@ -1711,7 +1625,6 @@ $if $$apex_installed $then
 $end
 
 $if $$apex_installed $then
-
     PROCEDURE process_apex_app IS
       v_apex_files apex_t_export_files;
     BEGIN
@@ -1740,15 +1653,15 @@ $if $$apex_installed $then
 
       FOR i IN 1..v_apex_files.count LOOP
         v_export_files.extend;
-
+        
         -- relocate files to own project structure
         v_export_files(i).name       := replace(
           v_apex_files(i).name,
           'f' || p_app_id || '/application/',
           p_base_path_frontend || '/'
         );
-        -- correct prompts for relocation
 
+        -- correct prompts for relocation
         v_export_files(i).contents   := replace(
           v_apex_files(i).contents,
           'prompt --application/',
@@ -1770,21 +1683,18 @@ $if $$apex_installed $then
             'prompt --install',
             'prompt --install_frontend_generated_by_apex'
           );
-
         END IF;
-        
-        -- handle build status RUN_ONLY
 
+        -- handle build status RUN_ONLY
         IF v_export_files(i).name = p_base_path_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
           v_export_files(i).contents := util_set_build_status_run_only(v_export_files(i).contents);
         END IF;
 
       END LOOP;
-
       util_log_stop;
-      IF p_app_include_single_file THEN
 
-        -- save as single file 
+      IF p_app_include_single_file THEN
+        -- save as single file
         v_apex_files.DELETE;
         util_log_start(p_base_path_frontend || '/APEX_EXPORT:single_file');
         v_apex_files := apex_export.get_application(
@@ -1797,34 +1707,23 @@ $if $$apex_installed $then
           p_with_translations         => p_app_translations,
           p_with_pkg_app_mapping      => p_app_pkg_app_mapping,
           p_with_original_ids         => p_app_original_ids,
-          p_with_no_subscriptions     =>
-            CASE
-              WHEN p_app_subscriptions THEN
-                false
-              ELSE true
-            END,
+          p_with_no_subscriptions     => CASE WHEN p_app_subscriptions THEN false ELSE true END,
           p_with_comments             => p_app_comments,
           p_with_supporting_objects   => p_app_supporting_objects
         );
-
         IF p_app_build_status_run_only THEN
           v_apex_files(1).contents := util_set_build_status_run_only(v_apex_files(1).contents);
         END IF;
-
         util_clob_append(v_apex_files(1).contents);
         util_clob_add_to_export_files(
-          p_export_files   => v_export_files,
-          p_name           => p_base_path_frontend || '/' || v_apex_files(
-            1
-          ).name
+          p_export_files => v_export_files,
+          p_name         => p_base_path_frontend || '/' || v_apex_files(1).name
         );
-
         v_apex_files.DELETE;
         util_log_stop;
       END IF;
-
     END process_apex_app;
-  $end
+$end
 
     PROCEDURE replace_query_like_expressions (
       p_like_list            VARCHAR2,
@@ -1836,7 +1735,7 @@ $if $$apex_installed $then
     BEGIN
 
        -- process filter "like"
-      v_expression_table   := util_split(
+      v_expression_table := util_split(
         p_like_list,
         ','
       );
@@ -1844,7 +1743,7 @@ $if $$apex_installed $then
       )) || ''' escape ''\''';
       END LOOP;
 
-      v_query              := replace(
+      v_query := replace(
         v_query,
         '#' || p_placeholder_prefix || '_LIKE_EXPRESSIONS#',
         nvl(
@@ -1857,7 +1756,7 @@ $if $$apex_installed $then
       );
 
     -- process filter "not like"
-      v_expression_table   := util_split(
+      v_expression_table := util_split(
         p_not_like_list,
         ','
       );
@@ -1865,7 +1764,7 @@ $if $$apex_installed $then
       (i)) || ''' escape ''\''';
       END LOOP;
 
-      v_query              := replace(
+      v_query := replace(
         v_query,
         '#' || p_placeholder_prefix || '_NOT_LIKE_EXPRESSIONS#',
         nvl(
@@ -1880,6 +1779,7 @@ $if $$apex_installed $then
       $if $$debug_on $then
       dbms_output.put_line(v_query);
       $end
+
     END replace_query_like_expressions;
 
     PROCEDURE process_user_ddl IS
@@ -1893,9 +1793,9 @@ $if $$apex_installed $then
           replace(
             replace(
               q'^
-BEGIN 
-  FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual 
-            MINUS 
+BEGIN
+  FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual
+            MINUS
             SELECT username FROM dba_users) LOOP
     EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
@@ -2020,7 +1920,7 @@ END;
       v_rec obj_rec_typ;
     BEGIN
       util_log_start(p_base_path_backend || '/open_objects_cursor');
-      v_query := q'^
+      v_query   := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
 SELECT CASE object_type
@@ -2050,7 +1950,7 @@ SELECT CASE object_type
          ELSE object_type
        END AS object_type,
        object_name,
-       '{{BASE_PATH_APP_BACKEND}}/' || 
+       '{{BASE_PATH_APP_BACKEND}}/' ||
          replace(
            lower(
              CASE
@@ -2073,8 +1973,8 @@ SELECT CASE object_type
          WHEN 'TYPE'           THEN '.tps'
          ELSE '.sql'
        END AS file_path
-  FROM ^' 
-$if NOT $$debug_on 
+  FROM ^'
+$if NOT $$debug_on
   $then || 'user_objects'
   $else || '(SELECT MIN(object_name) AS object_name, object_type FROM user_objects GROUP BY object_type)'
 $end || q'^
@@ -2085,7 +1985,7 @@ $end || q'^
        --Ignore system-generated types for collection processing:
    AND NOT (object_type = 'TYPE' AND object_name LIKE 'SYS_PLSQL_%')
        --Ignore system-generated sequences for identity columns:
-   AND NOT (object_type = 'SEQUENCE' AND object_name LIKE 'ISEQ$$_%')                      
+   AND NOT (object_type = 'SEQUENCE' AND object_name LIKE 'ISEQ$$_%')
        --Ignore LOB indices, their DDL is part of the table:
    AND object_name NOT IN (SELECT index_name FROM user_lobs)
        --Ignore nested tables, their DDL is part of their parent table:
@@ -2100,7 +2000,11 @@ $end || q'^
        object_name
 ^'
       ;
-      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_backend);
+      v_query   := replace(
+        v_query,
+        '{{BASE_PATH_APP_BACKEND}}',
+        p_base_path_backend
+      );
       replace_query_like_expressions(
         p_like_list            => p_object_type_like,
         p_not_like_list        => p_object_type_not_like,
@@ -2190,7 +2094,7 @@ $end || q'^
               util_clob_append(replace(
                 q'^
 BEGIN
-  FOR i IN (SELECT '{{OBJECT_NAME}}' AS object_name FROM dual 
+  FOR i IN (SELECT '{{OBJECT_NAME}}' AS object_name FROM dual
             MINUS
             SELECT object_name FROM user_objects) LOOP
     EXECUTE IMMEDIATE q'[
@@ -2255,8 +2159,8 @@ END;
       v_rec obj_rec_typ;
     BEGIN
       util_log_start(p_base_path_backend || '/grants:open_cursor');
-      v_query := q'^
-SELECT DISTINCT 
+      v_query   := q'^
+SELECT DISTINCT
        p.grantor,
        p.privilege,
        p.table_name as object_name,
@@ -2265,12 +2169,16 @@ SELECT DISTINCT
   JOIN user_objects o ON p.table_name = o.object_name
  WHERE (#NAME_LIKE_EXPRESSIONS#)
    AND (#NAME_NOT_LIKE_EXPRESSIONS#)
- ORDER BY 
+ ORDER BY
        privilege,
        object_name
 ^'
       ;
-      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_backend);
+      v_query   := replace(
+        v_query,
+        '{{BASE_PATH_APP_BACKEND}}',
+        p_base_path_backend
+      );
       replace_query_like_expressions(
         p_like_list            => p_object_name_like,
         p_not_like_list        => p_object_name_not_like,
@@ -2317,7 +2225,7 @@ SELECT DISTINCT
       v_rec obj_rec_typ;
     BEGIN
       util_log_start(p_base_path_backend || '/ref_constraints:open_cursor');
-      v_query := q'^
+      v_query   := q'^
 SELECT table_name,
        constraint_name,
        '{{BASE_PATH_APP_BACKEND}}/ref_constraints/' || constraint_name || '.sql' AS file_path
@@ -2325,12 +2233,16 @@ SELECT table_name,
  WHERE constraint_type = 'R'
    AND (#NAME_LIKE_EXPRESSIONS#)
    AND (#NAME_NOT_LIKE_EXPRESSIONS#)
- ORDER BY 
+ ORDER BY
        table_name,
        constraint_name
 ^'
       ;
-      v_query := REPLACE(v_query, '{{BASE_PATH_APP_BACKEND}}', p_base_path_backend);
+      v_query   := replace(
+        v_query,
+        '{{BASE_PATH_APP_BACKEND}}',
+        p_base_path_backend
+      );
       replace_query_like_expressions(
         p_like_list            => p_object_name_like,
         p_not_like_list        => p_object_name_not_like,
@@ -2363,7 +2275,7 @@ BEGIN
             'REF_CONSTRAINT',
             v_rec.constraint_name
           ) || replace(
-            q'^ 
+            q'^
 --------------------------------------------------------------------------------
     ]';
   END LOOP;
@@ -2408,7 +2320,7 @@ END;
 
     BEGIN
 
-      
+
     -- file one
       v_file_path := 'scripts/install_backend_generated_by_plex.sql';
       util_log_start(v_file_path);
@@ -2499,7 +2411,7 @@ SELECT table_name,
                       SELECT table_name FROM user_external_tables)
    AND (#NAME_LIKE_EXPRESSIONS#)
    AND (#NAME_NOT_LIKE_EXPRESSIONS#)
- ORDER BY 
+ ORDER BY
        table_name
 ^'
       ;
@@ -2558,9 +2470,9 @@ SELECT table_name,
       v_file_template   := q'^
 Your Global README File
 =======================
-      
+
 It is a good practice to have a README file in the root of your project with
-a high level overview of your application. Put the more detailed docs in the 
+a high level overview of your application. Put the more detailed docs in the
 docs folder.
 
 You can start with a copy of this file. Rename it to README.md and try to use
@@ -2574,9 +2486,9 @@ for you:
 - scripts/install_backend_generated_by_plex.sql
 - scripts/install_frontend_generated_by_apex.sql
 
-Do not touch these generated install files. They will be overwritten on each 
+Do not touch these generated install files. They will be overwritten on each
 plex call. Depending on your call parameters it would be ok to modify the file
-install_backend_generated_by_plex - especially when you follow the files first 
+install_backend_generated_by_plex - especially when you follow the files first
 approach and export your schema DDL only ones to have a starting point for you
 repository.
 
@@ -2764,7 +2676,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 -- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
-set verify off feedback off heading off 
+set verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 -- whenever oserror exit failure rollback
@@ -2788,7 +2700,7 @@ prompt Start Export
 prompt =========================================================================
 prompt Create global temporary table temp_export_files if not exist
 BEGIN
-  FOR i IN (SELECT 'TEMP_EXPORT_FILES' AS object_name FROM dual 
+  FOR i IN (SELECT 'TEMP_EXPORT_FILES' AS object_name FROM dual
             MINUS
             SELECT object_name FROM user_objects) LOOP
     EXECUTE IMMEDIATE '
@@ -2810,8 +2722,7 @@ DECLARE
   v_files   tab_export_files;
 BEGIN
   v_files   := plex.backapp (
-  -- These are the defaults - align it to your needs:^'
-      ;
+  -- These are the defaults - align it to your needs:^';
 $if $$apex_installed $then
       v_file_template   := v_file_template || q'^
     p_app_id                    => :app_id,
@@ -2826,10 +2737,9 @@ $if $$apex_installed $then
     p_app_comments              => true,
     p_app_supporting_objects    => null,
     p_app_include_single_file   => false,
-    p_app_build_status_run_only => false,^'
-        ;
+    p_app_build_status_run_only => false,^';
 $end
-        v_file_template   := v_file_template || q'^
+      v_file_template := v_file_template || q'^
     p_include_object_ddl        => true,
     p_object_type_like          => null,
     p_object_type_not_like      => null,
@@ -2852,9 +2762,9 @@ $end
 
   -- relocate files to own project structure, we are inside the scripts folder
   FOR i IN 1..v_files.count LOOP
-    v_files(i).name := '../' || v_files(i).name; 
+    v_files(i).name := '../' || v_files(i).name;
   END LOOP;
-  
+
   FORALL i IN 1..v_files.count
     INSERT INTO temp_export_files VALUES (
       v_files(i).name,
@@ -2881,7 +2791,7 @@ BEGIN
           -- Align the command to your operating system:
           'host mkdir "' || replace(dir,'/','\') || '" 2>NUL' AS mkdir
       FROM t
-     WHERE dir IS NOT NULL 
+     WHERE dir IS NOT NULL
   ) LOOP
     dbms_output.put_line('set termout on');
     dbms_output.put_line('spool "&logfile." append');
@@ -2904,7 +2814,7 @@ BEGIN
     dbms_output.put_line('spool off');
     dbms_output.put_line('-----');
   END LOOP;
- 
+
 END;
 {{SLASH}}
 spool off
@@ -2923,11 +2833,10 @@ COMMIT;
 
 
 prompt =========================================================================
-prompt Export DONE :-) 
+prompt Export DONE :-)
 prompt
-^'
-      ;
-      v_file_path       := 'scripts/templates/export_app_custom_code.sql';
+^'    ;
+      v_file_path := 'scripts/templates/export_app_custom_code.sql';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
         v_file_template,
@@ -2942,13 +2851,13 @@ prompt
       ));
 
       util_clob_add_to_export_files(
-        p_export_files   => v_export_files,
-        p_name           => v_file_path
+        p_export_files => v_export_files,
+        p_name         => v_file_path
       );
       util_log_stop;
 
       --
-      v_file_template   := q'^
+      v_file_template := q'^
 -- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
@@ -2971,7 +2880,7 @@ end;
 set define off
 
 
-prompt 
+prompt
 prompt Start Installation
 prompt =========================================================================
 prompt Start backend installation
@@ -2998,8 +2907,7 @@ DECLARE
   v_objects VARCHAR2(4000);
 BEGIN
   SELECT COUNT(*),
-         listagg(object_name,
-                 ', ') within GROUP(ORDER BY object_name)
+         listagg(object_name, ', ') within GROUP(ORDER BY object_name)
     INTO v_count,
          v_objects
     FROM user_objects
@@ -3007,10 +2915,9 @@ BEGIN
   IF v_count > 0
   THEN
     raise_application_error(-20000,
-                            'Found ' || v_count || ' invalid object' || CASE
-                              WHEN v_count > 1 THEN
-                               's'
-                            END || ' :-( ' || v_objects);
+                            'Found ' || v_count || ' invalid object' 
+                              || CASE WHEN v_count > 1 THEN 's' END 
+                              || ' :-( ' || v_objects);
   END IF;
 END;
 {{SLASH}}
@@ -3034,8 +2941,7 @@ prompt Call APEX frontend install script
 prompt =========================================================================
 prompt Installation DONE :-)
 prompt
-^'
-      ;
+^'    ;
       v_file_path       := 'scripts/templates/install_app_custom_code.sql';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
@@ -3093,8 +2999,8 @@ prompt
     END create_directory_keepers;
 
     PROCEDURE finish IS
-    BEGIN
-      -- write runtime log
+    BEGIN    
+      util_ensure_unique_file_names(v_export_files);
       IF p_include_runtime_log THEN
         util_clob_create_runtime_log;
         util_clob_add_to_export_files(
@@ -3102,46 +3008,35 @@ prompt
           p_name           => 'plex_backapp_runtime_log.md'
         );
       END IF;
-
-      -- write error log     
-
-      util_errlog_flush_cache;
       IF p_include_error_log THEN
+        util_clob_create_error_log;
         util_clob_add_to_export_files(
           p_export_files   => v_export_files,
           p_name           => 'plex_backapp_error_log.md'
         );
       END IF;
-
-      util_ensure_unique_file_names(v_export_files);
-      IF dbms_lob.istemporary(g_clob) = 1 THEN
-        dbms_lob.freetemporary(g_clob);
-      END IF;
-
-      IF dbms_lob.istemporary(g_errlog) = 1 THEN
-        dbms_lob.freetemporary(g_errlog);
-      END IF;
-
-    END;
+      util_free_temporary_lobs;
+    END finish;
 
   BEGIN
-    init;
-  $if $$apex_installed $then
+    init; 
+$if $$apex_installed $then
     check_owner;
-    --
+
     IF p_app_id IS NOT NULL THEN
       process_apex_app;
-    END IF;
-  $end
-    --
+    END IF; 
+$end
+
     IF p_include_object_ddl THEN
       process_user_ddl;
       process_object_ddl;
-    -- exclude working (and potential long running) object types for debug mode
-    $if NOT $$debug_on $then
+$if NOT $$debug_on $then 
+      --> conditional compilation begin: excluded in debug mode (potential long running object types)
       process_object_grants;
       process_ref_constraints;
-    $end
+      --< conditional compilation end 
+$end
       create_backend_install_file;
     END IF;
     --
@@ -3151,9 +3046,8 @@ prompt
     --
     IF p_include_templates THEN
       create_template_files;
+      create_directory_keepers;
     END IF;
-    --
-    create_directory_keepers;
     --
     finish;
     --
@@ -3177,59 +3071,70 @@ prompt
     p_delimiter             IN   VARCHAR2 DEFAULT ',',
     p_quote_mark            IN   VARCHAR2 DEFAULT '"',
     p_header_prefix         IN   VARCHAR2 DEFAULT NULL,
-    p_include_runtime_log   IN   BOOLEAN DEFAULT true
+    p_include_runtime_log   IN   BOOLEAN DEFAULT true,
+    p_include_error_log     IN   BOOLEAN DEFAULT true
   ) RETURN tab_export_files IS
-
     v_export_files tab_export_files;
-
+    
     PROCEDURE init IS
     BEGIN
-      v_export_files := NEW tab_export_files();
+      v_export_files := NEW tab_export_files();      
       IF g_queries.count = 0 THEN
         raise_application_error(
           -20201,
           'You need first to add queries by using plex.add_query. Calling plex.queries_to_csv clears the global queries array for subsequent processing.'
         );
-      END IF;
+      END IF;      
       util_log_init(
-        p_module                => 'plex.queries_to_csv',
-        p_include_runtime_log   => p_include_runtime_log
-      );
+        p_module              => 'plex.queries_to_csv',
+        p_include_runtime_log => p_include_runtime_log,
+        p_include_error_log   => p_include_error_log
+      );     
     END init;
 
     PROCEDURE process_queries IS
     BEGIN
       FOR i IN g_queries.first..g_queries.last LOOP
-        util_log_start('process_query:' || TO_CHAR(i) || ':' || g_queries(i).file_name);
-
-        util_clob_query_to_csv(
-          p_query           => g_queries(i).query,
-          p_max_rows        => g_queries(i).max_rows,
-          p_delimiter       => p_delimiter,
-          p_quote_mark      => p_quote_mark,
-          p_header_prefix   => p_header_prefix
-        );
-
-        util_clob_add_to_export_files(
-          p_export_files   => v_export_files,
-          p_name           => g_queries(i).file_name || '.csv'
-        );
-
-        util_log_stop;
+        BEGIN
+          util_log_start('process_query:' || TO_CHAR(i) || ':' || g_queries(i).file_name);
+          util_clob_query_to_csv(
+            p_query           => g_queries(i).query,
+            p_max_rows        => g_queries(i).max_rows,
+            p_delimiter       => p_delimiter,
+            p_quote_mark      => p_quote_mark,
+            p_header_prefix   => p_header_prefix
+          );
+          util_clob_add_to_export_files(
+            p_export_files   => v_export_files,
+            p_name           => g_queries(i).file_name || '.csv'
+          );
+          util_log_stop;
+        EXCEPTION        
+          WHEN OTHERS THEN
+            util_log_error(g_queries(i).file_name);
+        END;
       END LOOP;
     END process_queries;
 
     PROCEDURE finish IS
     BEGIN
-      g_queries.DELETE;
+      g_queries.DELETE;      
+      util_ensure_unique_file_names(v_export_files);
       IF p_include_runtime_log THEN
         util_clob_create_runtime_log;
         util_clob_add_to_export_files(
           p_export_files   => v_export_files,
-          p_name           => 'plex_queries_to_csv_log.md'
+          p_name           => 'plex_queries_to_csv_runtime_log.md'
         );
       END IF;
-
+      IF p_include_error_log THEN
+        util_clob_create_error_log;
+        util_clob_add_to_export_files(
+          p_export_files   => v_export_files,
+          p_name           => 'plex_queries_to_csv_error_log.md'
+        );
+      END IF;
+      util_free_temporary_lobs;
     END finish;
 
   BEGIN
@@ -3244,50 +3149,33 @@ prompt
   ) RETURN BLOB IS
     v_zip BLOB;
   BEGIN
-    util_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');
-    FOR i IN 1..p_file_collection.count LOOP util_zip_add_file(
-      p_zipped_blob   => v_zip,
-      p_name          => p_file_collection(i).name,
-      p_content       => util_clob_to_blob(
-        p_file_collection(i).contents
-      )
-    );
+    util_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');    
+    FOR i IN 1..p_file_collection.count LOOP 
+      util_zip_add_file(
+        p_zipped_blob   => v_zip,
+        p_name          => p_file_collection(i).name,
+        p_content       => util_clob_to_blob(p_file_collection(i).contents)
+      );
     END LOOP;
-
     util_zip_finish(v_zip);
     util_log_stop;
     util_log_calc_runtimes;
     RETURN v_zip;
   END to_zip;
 
-  FUNCTION view_runtime_log RETURN tab_runtime_log
-    PIPELINED
-  IS
+  FUNCTION view_runtime_log RETURN tab_runtime_log PIPELINED IS
     v_return rec_runtime_log;
   BEGIN
     v_return.overall_start_time   := g_log.start_time;
-    v_return.overall_run_time     := round(
-      g_log.run_time,
-      3
-    );
+    v_return.overall_run_time     := round(g_log.run_time, 3);
     FOR i IN 1..g_log.data.count LOOP
       v_return.step        := i;
-      v_return.elapsed     := round(
-        g_log.data(i).elapsed,
-        3
-      );
-
-      v_return.execution   := round(
-        g_log.data(i).execution,
-        6
-      );
-
+      v_return.elapsed     := round(g_log.data(i).elapsed, 3);
+      v_return.execution   := round(g_log.data(i).execution, 6);
       v_return.module      := g_log.module;
       v_return.action      := g_log.data(i).action;
-      PIPE ROW ( v_return );
+      PIPE ROW (v_return);
     END LOOP;
-
   END view_runtime_log;
-
 END plex;
 /

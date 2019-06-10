@@ -43,8 +43,9 @@ INSTALLATION
 
 CHANGELOG
 
-- 1.3.0 (2019-06-xx)
-    - Make package independend from APEX to be able to export schema object DDL and table data without an APEX installation
+- 2.0.0 (2019-06-xx)
+    - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
+      - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
     - New parameters to filter for object types
     - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
@@ -63,7 +64,7 @@ SIGNATURE
 ```sql
 PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '1.3.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.0.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -110,46 +111,55 @@ EXAMPLE EXPORT ZIP FILE
 
 ```sql
 -- Inline function (needs Oracle 12c or higher)
-with
-  function backapp return blob is
-  begin
-    return plex.to_zip(plex.backapp(
-      p_app_id                    => null,
+WITH
+  FUNCTION backapp RETURN BLOB IS
+  BEGIN
+    RETURN plex.to_zip(plex.backapp(
+      -- All parameters are optional and shown with their defaults
+      -- App related options (only available, when APEX is installed):
+      p_app_id                    => NULL,
       p_app_date                  => true,
       p_app_public_reports        => true,
       p_app_private_reports       => false,
       p_app_notifications         => false,
       p_app_translations          => true,
       p_app_pkg_app_mapping       => false,
-      p_app_original_ids          => true,
+      p_app_original_ids          => false,
       p_app_subscriptions         => true,
       p_app_comments              => true,
-      p_app_supporting_objects    => null,
+      p_app_supporting_objects    => NULL,
       p_app_include_single_file   => false,
       p_app_build_status_run_only => false,
-      -----
+      -- Object related options:
       p_include_object_ddl        => false,
-      p_object_name_like          => null,
-      p_object_name_not_like      => null,
-      -----
+      p_object_type_like          => NULL,
+      p_object_type_not_like      => NULL,
+      p_object_name_like          => NULL,
+      p_object_name_not_like      => NULL,
+      -- Data related options:
       p_include_data              => false,
       p_data_as_of_minutes_ago    => 0,
       p_data_max_rows             => 1000,
-      p_data_table_name_like      => null,
-      p_data_table_name_not_like  => null,
-      -----
+      p_data_table_name_like      => NULL,
+      p_data_table_name_not_like  => NULL,
+      -- Miscellaneous options:
       p_include_templates         => true,
-      p_include_runtime_log       => true
+      p_include_runtime_log       => true,
+      p_include_error_log         => true,
+      p_base_path_backend         => 'app_backend',
+      p_base_path_frontend        => 'app_frontend',
+      p_base_path_data            => 'app_data' 
     ));
-  end backapp;
-select backapp from dual;
+  END backapp;
+SELECT backapp FROM dual;
+{{SLASH}}
 ```
 
 SIGNATURE
 
 ```sql
 FUNCTION backapp (
-  $if $$apex_installed $then
+$if $$apex_installed $then
   -- App related options:
   p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
   p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
@@ -164,7 +174,7 @@ FUNCTION backapp (
   p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
-  $end
+$end
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_type_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
@@ -202,6 +212,7 @@ BEGIN
     p_file_name => 'user_tables'
   );
 END;
+{{SLASH}}
 ```
 
 SIGNATURE
@@ -209,7 +220,7 @@ SIGNATURE
 ```sql
 PROCEDURE add_query (
   p_query     IN VARCHAR2,             -- The query itself
-  p_file_name IN VARCHAR2,             -- File name like 'Path/to/your/file-name-without-extension'.
+  p_file_name IN VARCHAR2,             -- File name like 'Path/to/your/file-without-extension'.
   p_max_rows  IN NUMBER   DEFAULT 1000 -- The maximum number of rows to be included in your file.
 );
 ```
@@ -220,7 +231,7 @@ PROCEDURE add_query (
 
 Export one or more queries as CSV data within a file collection.
 
-EXAMPLE
+EXAMPLE BASIC USAGE
 
 ```sql
 DECLARE
@@ -252,7 +263,30 @@ BEGIN
       );
   END LOOP;
 END;
+{{SLASH}}
 ```
+
+EXAMPLE EXPORT ZIP FILE
+
+```sql
+WITH
+  FUNCTION queries_to_csv_zip RETURN BLOB IS  
+    v_return BLOB;
+  BEGIN
+    plex.add_query(
+      p_query     => 'select * from user_tables',
+      p_file_name => 'user_tables'
+    );
+    plex.add_query(
+      p_query     => 'select * from user_tab_columns',
+      p_file_name => 'user_tab_columns',
+      p_max_rows  => 10000
+    );
+    v_return := plex.to_zip(plex.queries_to_csv);
+    RETURN v_return;
+  END queries_to_csv_zip;
+SELECT queries_to_csv_zip FROM dual;
+{{SLASH}}
 
 SIGNATURE
 
@@ -261,7 +295,8 @@ FUNCTION queries_to_csv (
   p_delimiter                 IN VARCHAR2 DEFAULT ',',   -- The column delimiter.
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_log.md with runtime statistics.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_queries_to_csv_runtime_log.md with runtime statistics.
+  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_error_log.md with detailed error messages.
 ) RETURN tab_export_files;
 ```
 
