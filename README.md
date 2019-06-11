@@ -189,8 +189,8 @@ $end
   p_data_table_name_not_like  IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
   -- Miscellaneous options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_runtime_log.md with detailed runtime infos.
-  p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_error_log.md with detailed error messages.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
+  p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
   p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
   p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
   p_base_path_data            IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
@@ -295,8 +295,8 @@ FUNCTION queries_to_csv (
   p_delimiter                 IN VARCHAR2 DEFAULT ',',   -- The column delimiter.
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_queries_to_csv_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_error_log.md with detailed error messages.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
+  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_error_log.md with detailed error messages.
 ) RETURN tab_export_files;
 ```
 

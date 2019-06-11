@@ -63,6 +63,14 @@ c_app_info_length  CONSTANT PLS_INTEGER := 64;
 
 SUBTYPE app_info_text IS VARCHAR2(64 CHAR);
 
+TYPE rec_error_log IS RECORD (
+  name      VARCHAR2(255),
+  error     VARCHAR2(100),
+  callstack VARCHAR2(500)
+);
+
+TYPE tab_error_log IS TABLE OF rec_error_log;
+
 TYPE rec_runtime_log IS RECORD (
   overall_start_time TIMESTAMP,
   overall_run_time   NUMBER,
@@ -70,7 +78,8 @@ TYPE rec_runtime_log IS RECORD (
   elapsed            NUMBER,
   execution          NUMBER,
   module             app_info_text,
-  action             app_info_text);
+  action             app_info_text
+);
 
 TYPE tab_runtime_log IS TABLE OF rec_runtime_log;
 
@@ -119,8 +128,8 @@ $end
   p_data_table_name_not_like  IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
   -- Miscellaneous options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_runtime_log.md with detailed runtime infos.
-  p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_backapp_error_log.md with detailed error messages.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
+  p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
   p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
   p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
   p_base_path_data            IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
@@ -236,8 +245,8 @@ FUNCTION queries_to_csv (
   p_delimiter                 IN VARCHAR2 DEFAULT ',',   -- The column delimiter.
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_queries_to_csv_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_queries_to_csv_error_log.md with detailed error messages.
+  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
+  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_error_log.md with detailed error messages.
 ) RETURN tab_export_files;
 /**
 Export one or more queries as CSV data within a file collection.
@@ -324,11 +333,20 @@ END;
 ```
 ***/
 
+FUNCTION view_error_log RETURN tab_error_log PIPELINED;
+/**
+View the error log from the last plex run. The internal array for the error log is cleared on each call of BackApp or Queries_to_CSV.
 
+EXAMPLE
+
+```sql
+SELECT * FROM TABLE(plex.view_error_log);
+```
+**/
 
 FUNCTION view_runtime_log RETURN tab_runtime_log PIPELINED;
 /**
-View the log from the last plex run. The internal array for the runtime log is cleared after each call of BackApp or Queries_to_CSV.
+View the runtime log from the last plex run. The internal array for the runtime log is cleared on each call of BackApp or Queries_to_CSV.
 
 EXAMPLE
 
@@ -341,6 +359,7 @@ SELECT * FROM TABLE(plex.view_runtime_log);
 --------------------------------------------------------------------------------------------------------------------------------
 -- UTILITIES (only available when v_utils_public is set to 'true' in install script "plex_install.sql")
 --------------------------------------------------------------------------------------------------------------------------------
+
 $if $$utils_public $then
 
 FUNCTION util_bool_to_string (
@@ -402,14 +421,37 @@ FUNCTION util_multireplace (
 ) RETURN VARCHAR2;
 */
 
+FUNCTION util_multi_replace (
+  p_source_string VARCHAR2,
+  p_01_find    VARCHAR2 DEFAULT NULL,
+  p_01_replace VARCHAR2 DEFAULT NULL,
+  p_02_find    VARCHAR2 DEFAULT NULL,
+  p_02_replace VARCHAR2 DEFAULT NULL,
+  p_03_find    VARCHAR2 DEFAULT NULL,
+  p_03_replace VARCHAR2 DEFAULT NULL,
+  p_04_find    VARCHAR2 DEFAULT NULL,
+  p_04_replace VARCHAR2 DEFAULT NULL,
+  p_05_find    VARCHAR2 DEFAULT NULL,
+  p_05_replace VARCHAR2 DEFAULT NULL,
+  p_06_find    VARCHAR2 DEFAULT NULL,
+  p_06_replace VARCHAR2 DEFAULT NULL,
+  p_07_find    VARCHAR2 DEFAULT NULL,
+  p_07_replace VARCHAR2 DEFAULT NULL,
+  p_08_find    VARCHAR2 DEFAULT NULL,
+  p_08_replace VARCHAR2 DEFAULT NULL,
+  p_09_find    VARCHAR2 DEFAULT NULL,
+  p_09_replace VARCHAR2 DEFAULT NULL,
+  p_10_find    VARCHAR2 DEFAULT NULL,
+  p_10_replace VARCHAR2 DEFAULT NULL,
+  p_11_find    VARCHAR2 DEFAULT NULL,
+  p_11_replace VARCHAR2 DEFAULT NULL,
+  p_12_find    VARCHAR2 DEFAULT NULL,
+  p_12_replace VARCHAR2 DEFAULT NULL
+) RETURN VARCHAR2;
+
 FUNCTION util_set_build_status_run_only (
   p_app_export_sql IN CLOB
 ) RETURN CLOB;
-
-PROCEDURE util_clob_add_to_export_files (
-  p_export_files IN OUT NOCOPY tab_export_files,
-  p_name         IN            VARCHAR2
-);
 
 FUNCTION util_calc_data_timestamp (
   p_as_of_minutes_ago IN NUMBER
@@ -428,11 +470,34 @@ PROCEDURE util_setup_dbms_metadata (
   p_emit_schema          IN BOOLEAN DEFAULT false
 );
 
+PROCEDURE util_ensure_unique_file_names;
+
+PROCEDURE util_free_temporary_lobs;
+
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_log and g_queries
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_clob_flush_cache;
+PROCEDURE util_log_init (
+  p_module IN VARCHAR2
+);
+
+PROCEDURE util_log_start (
+  p_action IN VARCHAR2
+);
+
+PROCEDURE util_log_error (
+  p_name VARCHAR2
+);
+
+PROCEDURE util_log_stop;
+
+FUNCTION util_log_get_runtime (
+  p_start IN TIMESTAMP,
+  p_stop  IN TIMESTAMP
+) RETURN NUMBER;
+
+PROCEDURE util_log_calc_runtimes;
 
 PROCEDURE util_clob_append (
   p_content IN VARCHAR2
@@ -440,6 +505,13 @@ PROCEDURE util_clob_append (
 
 PROCEDURE util_clob_append (
   p_content IN CLOB
+);
+
+PROCEDURE util_clob_flush_cache;
+
+PROCEDURE util_clob_add_to_export_files (
+  p_export_files IN OUT NOCOPY tab_export_files,
+  p_name         IN            VARCHAR2
 );
 
 PROCEDURE util_clob_query_to_csv (
@@ -450,32 +522,9 @@ PROCEDURE util_clob_query_to_csv (
   p_header_prefix IN VARCHAR2 DEFAULT NULL
 );
 
-PROCEDURE util_clob_create_runtime_log;
+PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
-PROCEDURE util_errlog_append (
-    p_message IN VARCHAR2
-  );
-  
-PROCEDURE util_clob_create_error_log;
-
-FUNCTION util_log_get_runtime (
-  p_start IN TIMESTAMP,
-  p_stop  IN TIMESTAMP
-) RETURN NUMBER;
-
-PROCEDURE util_log_init (
-  p_module              IN VARCHAR2,
-  p_include_runtime_log IN BOOLEAN DEFAULT true,
-  p_include_error_log   IN BOOLEAN DEFAULT true
-);
-
-PROCEDURE util_log_start (
-  p_action IN VARCHAR2
-);
-
-PROCEDURE util_log_add_error_to_action;
-
-PROCEDURE util_log_stop;
+PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
 
 $end
 
