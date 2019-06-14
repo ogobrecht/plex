@@ -17,7 +17,7 @@ c_zip_end_of_central_directory CONSTANT RAW(4) := hextoraw('504B0506'); -- end o
 
 TYPE tab_errlog IS TABLE OF rec_error_log INDEX BY BINARY_INTEGER;
 
-TYPE rec_runlog_step IS RECORD ( --
+TYPE rec_runlog_step IS RECORD (
   action     app_info_text,
   start_time TIMESTAMP(6),
   stop_time  TIMESTAMP(6),
@@ -26,7 +26,7 @@ TYPE rec_runlog_step IS RECORD ( --
 );
 TYPE tab_runlog_step IS TABLE OF rec_runlog_step INDEX BY BINARY_INTEGER;
 
-TYPE rec_runlog IS RECORD ( --
+TYPE rec_runlog IS RECORD (
   module          app_info_text,
   start_time      TIMESTAMP(6),
   stop_time       TIMESTAMP(6),
@@ -337,7 +337,7 @@ BEGIN
       amount       => dbms_lob.lobmaxsize,
       dest_offset  => v_dest_offset,
       src_offset   => v_src_offset,
-      blob_csid    => nls_charset_id( 'AL32UTF8' ),
+      blob_csid    => nls_charset_id('AL32UTF8'),
       lang_context => v_lang_context,
       warning      => v_warning
     );
@@ -405,9 +405,9 @@ BEGIN
     t_clen   := t_len;
     t_blob   := p_content;
   END IF;
-  --IF dbms_lob.istemporary(p_zipped_blob) = 0 THEN --does not work? Why?
+  -- We create our temporary BLOB in to_zip and do not need it here:
   --IF p_zipped_blob IS NULL THEN
-  --  dbms_lob.createtemporary( p_zipped_blob, true );
+  --  dbms_lob.createtemporary(p_zipped_blob, true);
   --END IF;
   t_name := utl_i18n.string_to_raw(p_name, 'AL32UTF8');
   dbms_lob.append(
@@ -424,11 +424,15 @@ BEGIN
         ELSE hextoraw('0000') -- stored
       END,
       util_zip_little_endian(
-        to_number(TO_CHAR(t_now, 'ss')) / 2 + to_number(TO_CHAR(t_now, 'mi')) * 32 + to_number(TO_CHAR(t_now, 'hh24')) * 2048,
+          to_number(TO_CHAR(t_now, 'ss')) / 2 
+        + to_number(TO_CHAR(t_now, 'mi')) * 32 
+        + to_number(TO_CHAR(t_now, 'hh24')) * 2048,
         2
       ), -- file last modification time
       util_zip_little_endian(
-        to_number(TO_CHAR(t_now, 'dd')) + to_number(TO_CHAR(t_now, 'mm')) * 32 + (to_number(TO_CHAR(t_now, 'yyyy')) - 1980) * 512,
+          to_number(TO_CHAR(t_now, 'dd')) 
+        + to_number(TO_CHAR(t_now, 'mm')) * 32 
+        + (to_number(TO_CHAR(t_now, 'yyyy')) - 1980) * 512,
         2
       ), -- file last modification date
       t_crc32, -- CRC-32
@@ -446,6 +450,11 @@ BEGIN
     dbms_lob.copy(p_zipped_blob, t_blob, t_clen, dbms_lob.getlength(p_zipped_blob) + 1, 1); -- content
   END IF;
 
+  IF dbms_lob.istemporary(t_blob) = 1
+  THEN
+    dbms_lob.freetemporary(t_blob);
+  END IF;
+
 END util_zip_add_file;
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -461,51 +470,50 @@ PROCEDURE util_zip_finish (-- copyright by Anton Scheffer (MIT license, see http
 BEGIN
   t_offs_dir_header := dbms_lob.getlength(p_zipped_blob);
   t_offs            := 1;
-  WHILE dbms_lob.substr(p_zipped_blob, utl_raw.length(c_zip_local_file_header), t_offs ) = c_zip_local_file_header LOOP
-    t_cnt    := t_cnt + 1;
+  WHILE dbms_lob.substr(p_zipped_blob, utl_raw.length(c_zip_local_file_header), t_offs) = c_zip_local_file_header
+  LOOP
+    t_cnt := t_cnt + 1;
     dbms_lob.append(
       p_zipped_blob,
       utl_raw.concat(
-        hextoraw('504B0102'), -- Central directory file header signature
+        hextoraw('504B0102'), -- central directory file header signature
         hextoraw('1400'), -- version 2.0
-        dbms_lob.substr( p_zipped_blob, 26, t_offs + 4 ),
-        hextoraw('0000'), -- File comment length
-        hextoraw('0000'), -- Disk number where file starts
-        hextoraw('0000'), -- Internal file attributes =>
+        dbms_lob.substr(p_zipped_blob, 26, t_offs + 4),
+        hextoraw('0000'), -- file comment length
+        hextoraw('0000'), -- disk number where file starts
+        hextoraw('0000'), -- internal file attributes =>
                           --     0000 binary file
                           --     0100 (ascii)text file
         CASE
-          WHEN dbms_lob.substr(p_zipped_blob, 1, t_offs + 30 + util_zip_blob_to_num(p_zipped_blob, 2, t_offs + 26) - 1 ) 
+          WHEN dbms_lob.substr(p_zipped_blob, 1, t_offs + 30 + util_zip_blob_to_num(p_zipped_blob, 2, t_offs + 26) - 1) 
             IN (
               hextoraw('2F'), -- /
               hextoraw('5C') -- \
             ) 
           THEN hextoraw('10000000') -- a directory/folder
           ELSE hextoraw('2000B681') -- a file
-        END, -- External file attributes
-        util_zip_little_endian(t_offs - 1), -- Relative offset of local file header
-        dbms_lob.substr( p_zipped_blob, util_zip_blob_to_num( p_zipped_blob, 2, t_offs + 26 ), t_offs + 30 ) -- File name
+        END, -- external file attributes
+        util_zip_little_endian(t_offs - 1), -- relative offset of local file header
+        dbms_lob.substr(p_zipped_blob, util_zip_blob_to_num(p_zipped_blob, 2, t_offs + 26), t_offs + 30) -- File name
       ));
-
     t_offs := t_offs + 30 
-      + util_zip_blob_to_num( p_zipped_blob, 4, t_offs + 18) -- compressed size
-      + util_zip_blob_to_num( p_zipped_blob, 2, t_offs + 26 ) -- File name length
-      + util_zip_blob_to_num( p_zipped_blob, 2, t_offs + 28 ); -- Extra field length
-
+      + util_zip_blob_to_num(p_zipped_blob, 4, t_offs + 18) -- compressed size
+      + util_zip_blob_to_num(p_zipped_blob, 2, t_offs + 26) -- file name length
+      + util_zip_blob_to_num(p_zipped_blob, 2, t_offs + 28); -- extra field length
   END LOOP;
 
-  t_offs_end_header   := dbms_lob.getlength(p_zipped_blob);
+  t_offs_end_header := dbms_lob.getlength(p_zipped_blob);
   dbms_lob.append(
     p_zipped_blob,
     utl_raw.concat(
-      c_zip_end_of_central_directory, -- End of central directory signature
-      hextoraw('0000'), -- Number of this disk
-      hextoraw('0000'), -- Disk where central directory starts
-      util_zip_little_endian( t_cnt, 2 ), -- Number of central directory records on this disk
-      util_zip_little_endian( t_cnt, 2 ), -- Total number of central directory records
-      util_zip_little_endian(t_offs_end_header - t_offs_dir_header), -- Size of central directory
-      util_zip_little_endian(t_offs_dir_header), -- Offset of start of central directory, relative to start of archive
-      util_zip_little_endian(nvl( utl_raw.length(t_comment), 0 ), 2), -- ZIP file comment length
+      c_zip_end_of_central_directory, -- end of central directory signature
+      hextoraw('0000'), -- number of this disk
+      hextoraw('0000'), -- disk where central directory starts
+      util_zip_little_endian(t_cnt, 2), -- number of central directory records on this disk
+      util_zip_little_endian(t_cnt, 2), -- total number of central directory records
+      util_zip_little_endian(t_offs_end_header - t_offs_dir_header), -- size of central directory
+      util_zip_little_endian(t_offs_dir_header), -- offset of start of central directory, relative to start of archive
+      util_zip_little_endian(nvl(utl_raw.length(t_comment), 0), 2), -- ZIP file comment length
       t_comment
     )
   );
@@ -567,10 +575,10 @@ FUNCTION util_set_build_status_run_only (
   v_position PLS_INTEGER;
 BEGIN
   v_position := instr(p_app_export_sql, ',p_exact_substitutions_only');
-  RETURN substr( p_app_export_sql, 1, v_position - 1 ) 
+  RETURN substr(p_app_export_sql, 1, v_position - 1) 
     || ',p_build_status=>''RUN_ONLY''' 
     || c_lf 
-    || substr( p_app_export_sql, v_position );
+    || substr(p_app_export_sql, v_position);
 
 END util_set_build_status_run_only;
 
@@ -774,7 +782,7 @@ FUNCTION util_log_get_runtime (
   p_stop  IN TIMESTAMP
 ) RETURN NUMBER IS
 BEGIN
-  RETURN SYSDATE + ( ( p_stop - p_start ) * 86400 ) - SYSDATE;
+  RETURN SYSDATE + ((p_stop - p_start) * 86400) - SYSDATE;
   --sysdate + (interval_difference * 86400) - sysdate
   --https://stackoverflow.com/questions/10092032/extracting-the-total-number-of-seconds-from-an-interval-data-type
 END util_log_get_runtime;
@@ -795,9 +803,6 @@ BEGIN
   g_clob_vc_cache := g_clob_vc_cache || p_content;
 EXCEPTION
   WHEN value_error THEN
-    --IF dbms_lob.istemporary(g_clob) = 0 THEN
-    --  dbms_lob.createtemporary(g_clob, true);
-    --END IF;
     IF g_clob IS NULL THEN
       g_clob := g_clob_vc_cache;
     ELSE
@@ -813,9 +818,6 @@ PROCEDURE util_clob_append (
 ) IS
 BEGIN
   IF p_content IS NOT NULL THEN
-    --IF dbms_lob.istemporary(g_clob) = 0 THEN
-    --  dbms_lob.createtemporary(g_clob, true);
-    --END IF;
     util_clob_flush_cache;
     IF g_clob IS NULL THEN
       g_clob := p_content;
@@ -830,9 +832,6 @@ END util_clob_append;
 PROCEDURE util_clob_flush_cache IS
 BEGIN
   IF g_clob_vc_cache IS NOT NULL THEN
-    --IF dbms_lob.istemporary(g_clob) = 0 THEN
-    --  dbms_lob.createtemporary(g_clob, true);
-    --END IF;
     IF g_clob IS NULL THEN
       g_clob := g_clob_vc_cache;
     ELSE
@@ -924,9 +923,9 @@ PROCEDURE util_clob_query_to_csv (
       -- if we have the parameter p_force_quotes set to true or the delimiter character or
       -- line feeds in the string then we have to wrap the text in quotes marks and escape
       -- the quote marks inside the text by double them
-      IF instr( v_buffer_varchar2, p_delimiter ) > 0 OR instr( v_buffer_varchar2, c_lf ) > 0 THEN
+      IF instr(v_buffer_varchar2, p_delimiter) > 0 OR instr(v_buffer_varchar2, c_lf) > 0 THEN
         v_buffer_varchar2 := p_quote_mark 
-          || replace( v_buffer_varchar2, p_quote_mark, p_quote_mark || p_quote_mark ) 
+          || replace(v_buffer_varchar2, p_quote_mark, p_quote_mark || p_quote_mark) 
           || p_quote_mark;
       END IF;
 
@@ -1021,7 +1020,7 @@ BEGIN
           util_clob_append('Binary data type skipped - not supported for CSV');
 
         ELSE
-          dbms_sql.column_value( v_cursor, i, v_buffer_varchar2 );
+          dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
           escape_varchar2_buffer_for_csv;
           util_clob_append(v_buffer_varchar2);
         END IF;
@@ -1121,13 +1120,13 @@ BEGIN
     util_clob_append(util_multi_replace(
       '| {{STEP}} | {{ELAPSED}} | {{EXECUTION}} | {{ACTION}} |' || c_lf,
       '{{STEP}}',
-      lpad( TO_CHAR(i), 5 ),
+      lpad(TO_CHAR(i), 5),
       '{{ELAPSED}}',
-      lpad( trim(TO_CHAR( g_runlog.data(i).elapsed, '99990D000' )), 9 ),
+      lpad(trim(TO_CHAR(g_runlog.data(i).elapsed, '99990D000')), 9),
       '{{EXECUTION}}',
-      lpad( trim(TO_CHAR( g_runlog.data(i).execution, '9990D000000' )), 11 ),
+      lpad(trim(TO_CHAR(g_runlog.data(i).execution, '9990D000000')), 11),
       '{{ACTION}}',
-      rpad( g_runlog.data(i).action, 64 )
+      rpad(g_runlog.data(i).action, 64)
     ));
   END LOOP;
 
@@ -2526,10 +2525,10 @@ END;
 
 prompt Start frontend installation
 BEGIN
-  apex_application_install.set_workspace_id( APEX_UTIL.find_security_group_id( :app_workspace ) );
-  apex_application_install.set_application_alias( :app_alias );
-  apex_application_install.set_application_id( :app_id );
-  apex_application_install.set_schema( :app_schema );
+  apex_application_install.set_workspace_id(APEX_UTIL.find_security_group_id(:app_workspace));
+  apex_application_install.set_application_alias(:app_alias);
+  apex_application_install.set_application_id(:app_id);
+  apex_application_install.set_schema(:app_schema);
   apex_application_install.generate_offset;
 END;
 {{SLASH}}
@@ -2736,7 +2735,7 @@ FUNCTION to_zip (
 ) RETURN BLOB IS
   v_zip BLOB;
 BEGIN
-  dbms_lob.createtemporary( v_zip, true );
+  dbms_lob.createtemporary(v_zip, true);
   util_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');
   FOR i IN 1..p_file_collection.count LOOP
     util_zip_add_file(

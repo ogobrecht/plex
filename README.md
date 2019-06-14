@@ -6,6 +6,7 @@
 - [Procedure add_query](#add_query)
 - [Function queries_to_csv](#queries_to_csv)
 - [Function to_zip](#to_zip)
+- [Function view_error_log](#view_error_log)
 - [Function view_runtime_log](#view_runtime_log)
 
 
@@ -29,7 +30,7 @@ DEPENDENCIES
 The package itself is independend, but functionality varies on the following conditions:
 
 - For APEX app export: APEX >= 5.1.4 installed
-- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= ??? installed
+- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= FIXME installed
 
 
 INSTALLATION
@@ -45,7 +46,7 @@ CHANGELOG
 
 - 2.0.0 (2019-06-xx)
     - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
-      - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
+        - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
     - New parameters to filter for object types
     - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
@@ -105,12 +106,32 @@ BEGIN
       );
   END LOOP;
 END;
+{{SLASH}}
 ```
 
-EXAMPLE EXPORT ZIP FILE
+EXAMPLE ZIP FILE PL/SQL
 
 ```sql
--- Inline function (needs Oracle 12c or higher)
+DECLARE
+  l_zip_file BLOB;
+BEGIN
+  l_zip_file := plex.to_zip(plex.backapp(
+    p_app_id             => 100,   -- parameter only available when APEX installed
+    p_include_object_ddl => true,
+    p_include_data       => false
+  ));
+
+  -- do something with the zip file
+  -- Your code here...
+END;
+{{SLASH}}
+```
+
+EXAMPLE ZIP FILE SQL
+
+```sql
+-- Inline function because of boolean parameters (needs Oracle 12c or higher).
+-- Alternative create a helper function and call that in a SQL context.
 WITH
   FUNCTION backapp RETURN BLOB IS
   BEGIN
@@ -266,7 +287,34 @@ END;
 {{SLASH}}
 ```
 
-EXAMPLE EXPORT ZIP FILE
+EXPORT EXPORT ZIP FILE PL/SQL
+
+```sql
+DECLARE
+  l_zip_file BLOB;
+BEGIN
+
+  --fill the queries array
+  plex.add_query(
+    p_query     => 'select * from user_tables',
+    p_file_name => 'user_tables'
+  );
+  plex.add_query(
+    p_query     => 'select * from user_tab_columns',
+    p_file_name => 'user_tab_columns',
+    p_max_rows  => 10000
+  );
+
+  -- process the queries
+  l_zip_file := plex.to_zip(plex.queries_to_csv);
+
+  -- do something with the zip file
+  -- Your code here...
+END;
+{{SLASH}}
+```
+
+EXAMPLE EXPORT ZIP FILE SQL
 
 ```sql
 WITH
@@ -330,10 +378,28 @@ FUNCTION to_zip (
 ```
 
 
+<h2><a id="view_error_log"></a>Function view_error_log</h2>
+<!-------------------------------------------------------->
+
+View the error log from the last plex run. The internal array for the error log is cleared on each call of BackApp or Queries_to_CSV.
+
+EXAMPLE
+
+```sql
+SELECT * FROM TABLE(plex.view_error_log);
+```
+
+SIGNATURE
+
+```sql
+FUNCTION view_error_log RETURN tab_error_log PIPELINED;
+```
+
+
 <h2><a id="view_runtime_log"></a>Function view_runtime_log</h2>
 <!------------------------------------------------------------>
 
-View the log from the last plex run. The internal array for the runtime log is cleared after each call of BackApp or Queries_to_CSV.
+View the runtime log from the last plex run. The internal array for the runtime log is cleared on each call of BackApp or Queries_to_CSV.
 
 EXAMPLE
 
