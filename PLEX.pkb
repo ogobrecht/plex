@@ -15,16 +15,8 @@ c_vc2_max_size                 CONSTANT PLS_INTEGER := 32767;
 c_zip_local_file_header        CONSTANT RAW(4) := hextoraw('504B0304'); -- local file header signature
 c_zip_end_of_central_directory CONSTANT RAW(4) := hextoraw('504B0506'); -- end of central directory signature
 
---
-TYPE rec_errlog IS RECORD (
-  name      VARCHAR2(255),
-  error     VARCHAR2(100),
-  callstack VARCHAR2(500)
-);
+TYPE tab_errlog IS TABLE OF rec_error_log INDEX BY BINARY_INTEGER;
 
-TYPE tab_errlog IS TABLE OF rec_errlog INDEX BY BINARY_INTEGER;
-
---
 TYPE rec_runlog_step IS RECORD ( --
   action     app_info_text,
   start_time TIMESTAMP(6),
@@ -32,10 +24,8 @@ TYPE rec_runlog_step IS RECORD ( --
   elapsed    NUMBER,
   execution  NUMBER
 );
-TYPE tab_runlog_step IS
-  TABLE OF rec_runlog_step INDEX BY BINARY_INTEGER;
+TYPE tab_runlog_step IS TABLE OF rec_runlog_step INDEX BY BINARY_INTEGER;
 
---
 TYPE rec_runlog IS RECORD ( --
   module          app_info_text,
   start_time      TIMESTAMP(6),
@@ -46,12 +36,9 @@ TYPE rec_runlog IS RECORD ( --
   data            tab_runlog_step
 );
 
---
-TYPE tab_vc1000 IS
-  TABLE OF VARCHAR2(1000) INDEX BY BINARY_INTEGER;
+TYPE tab_vc1000 IS TABLE OF VARCHAR2(1000) INDEX BY BINARY_INTEGER;
 
---
-TYPE rec_ddl_files IS RECORD ( --
+TYPE rec_ddl_files IS RECORD (
   sequences_       tab_vc1000,
   tables_          tab_vc1000,
   ref_constraints_ tab_vc1000,
@@ -68,18 +55,14 @@ TYPE rec_ddl_files IS RECORD ( --
   other_objects_   tab_vc1000
 );
 
---
 TYPE rec_queries IS RECORD (--
   query       VARCHAR2(32767 CHAR),
   file_name   VARCHAR2(256 CHAR),
   max_rows    NUMBER DEFAULT 100000
 );
-TYPE tab_queries IS
-  TABLE OF rec_queries INDEX BY PLS_INTEGER;
+TYPE tab_queries IS TABLE OF rec_queries INDEX BY PLS_INTEGER;
 
---
-TYPE tab_file_list_lookup IS
-  TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
+TYPE tab_file_list_lookup IS TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
 
 
 -- GLOBAL VARIABLES
@@ -158,30 +141,18 @@ FUNCTION util_multireplace (
 
 FUNCTION util_multi_replace (
   p_source_string VARCHAR2,
-  p_01_find    VARCHAR2 DEFAULT NULL,
-  p_01_replace VARCHAR2 DEFAULT NULL,
-  p_02_find    VARCHAR2 DEFAULT NULL,
-  p_02_replace VARCHAR2 DEFAULT NULL,
-  p_03_find    VARCHAR2 DEFAULT NULL,
-  p_03_replace VARCHAR2 DEFAULT NULL,
-  p_04_find    VARCHAR2 DEFAULT NULL,
-  p_04_replace VARCHAR2 DEFAULT NULL,
-  p_05_find    VARCHAR2 DEFAULT NULL,
-  p_05_replace VARCHAR2 DEFAULT NULL,
-  p_06_find    VARCHAR2 DEFAULT NULL,
-  p_06_replace VARCHAR2 DEFAULT NULL,
-  p_07_find    VARCHAR2 DEFAULT NULL,
-  p_07_replace VARCHAR2 DEFAULT NULL,
-  p_08_find    VARCHAR2 DEFAULT NULL,
-  p_08_replace VARCHAR2 DEFAULT NULL,
-  p_09_find    VARCHAR2 DEFAULT NULL,
-  p_09_replace VARCHAR2 DEFAULT NULL,
-  p_10_find    VARCHAR2 DEFAULT NULL,
-  p_10_replace VARCHAR2 DEFAULT NULL,
-  p_11_find    VARCHAR2 DEFAULT NULL,
-  p_11_replace VARCHAR2 DEFAULT NULL,
-  p_12_find    VARCHAR2 DEFAULT NULL,
-  p_12_replace VARCHAR2 DEFAULT NULL
+  p_01_find VARCHAR2 DEFAULT NULL, p_01_replace VARCHAR2 DEFAULT NULL,
+  p_02_find VARCHAR2 DEFAULT NULL, p_02_replace VARCHAR2 DEFAULT NULL,
+  p_03_find VARCHAR2 DEFAULT NULL, p_03_replace VARCHAR2 DEFAULT NULL,
+  p_04_find VARCHAR2 DEFAULT NULL, p_04_replace VARCHAR2 DEFAULT NULL,
+  p_05_find VARCHAR2 DEFAULT NULL, p_05_replace VARCHAR2 DEFAULT NULL,
+  p_06_find VARCHAR2 DEFAULT NULL, p_06_replace VARCHAR2 DEFAULT NULL,
+  p_07_find VARCHAR2 DEFAULT NULL, p_07_replace VARCHAR2 DEFAULT NULL,
+  p_08_find VARCHAR2 DEFAULT NULL, p_08_replace VARCHAR2 DEFAULT NULL,
+  p_09_find VARCHAR2 DEFAULT NULL, p_09_replace VARCHAR2 DEFAULT NULL,
+  p_10_find VARCHAR2 DEFAULT NULL, p_10_replace VARCHAR2 DEFAULT NULL,
+  p_11_find VARCHAR2 DEFAULT NULL, p_11_replace VARCHAR2 DEFAULT NULL,
+  p_12_find VARCHAR2 DEFAULT NULL, p_12_replace VARCHAR2 DEFAULT NULL
 ) RETURN VARCHAR2;
 
 FUNCTION util_set_build_status_run_only (
@@ -204,8 +175,6 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false
 );
-
-PROCEDURE util_free_temporary_lobs;
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_runlog and g_queries
@@ -436,10 +405,10 @@ BEGIN
     t_clen   := t_len;
     t_blob   := p_content;
   END IF;
-  --IF dbms_lob.istemporary(p_zipped_blob) = 0 THEN?
-  IF p_zipped_blob IS NULL THEN
-    dbms_lob.createtemporary( p_zipped_blob, true );
-  END IF;
+  --IF dbms_lob.istemporary(p_zipped_blob) = 0 THEN --does not work? Why?
+  --IF p_zipped_blob IS NULL THEN
+  --  dbms_lob.createtemporary( p_zipped_blob, true );
+  --END IF;
   t_name := utl_i18n.string_to_raw(p_name, 'AL32UTF8');
   dbms_lob.append(
     p_zipped_blob,
@@ -475,10 +444,6 @@ BEGIN
     dbms_lob.copy(p_zipped_blob, t_blob, t_clen, dbms_lob.getlength(p_zipped_blob) + 1, 11); -- compressed content
   ELSIF t_clen > 0 THEN
     dbms_lob.copy(p_zipped_blob, t_blob, t_clen, dbms_lob.getlength(p_zipped_blob) + 1, 1); -- content
-  END IF;
-
-  IF dbms_lob.istemporary(t_blob) = 1 THEN
-    dbms_lob.freetemporary(t_blob);
   END IF;
 
 END util_zip_add_file;
@@ -563,35 +528,22 @@ END;
 
 FUNCTION util_multi_replace (
   p_source_string VARCHAR2,
-  p_01_find    VARCHAR2 DEFAULT NULL,
-  p_01_replace VARCHAR2 DEFAULT NULL,
-  p_02_find    VARCHAR2 DEFAULT NULL,
-  p_02_replace VARCHAR2 DEFAULT NULL,
-  p_03_find    VARCHAR2 DEFAULT NULL,
-  p_03_replace VARCHAR2 DEFAULT NULL,
-  p_04_find    VARCHAR2 DEFAULT NULL,
-  p_04_replace VARCHAR2 DEFAULT NULL,
-  p_05_find    VARCHAR2 DEFAULT NULL,
-  p_05_replace VARCHAR2 DEFAULT NULL,
-  p_06_find    VARCHAR2 DEFAULT NULL,
-  p_06_replace VARCHAR2 DEFAULT NULL,
-  p_07_find    VARCHAR2 DEFAULT NULL,
-  p_07_replace VARCHAR2 DEFAULT NULL,
-  p_08_find    VARCHAR2 DEFAULT NULL,
-  p_08_replace VARCHAR2 DEFAULT NULL,
-  p_09_find    VARCHAR2 DEFAULT NULL,
-  p_09_replace VARCHAR2 DEFAULT NULL,
-  p_10_find    VARCHAR2 DEFAULT NULL,
-  p_10_replace VARCHAR2 DEFAULT NULL,
-  p_11_find    VARCHAR2 DEFAULT NULL,
-  p_11_replace VARCHAR2 DEFAULT NULL,
-  p_12_find    VARCHAR2 DEFAULT NULL,
-  p_12_replace VARCHAR2 DEFAULT NULL
+  p_01_find VARCHAR2 DEFAULT NULL, p_01_replace VARCHAR2 DEFAULT NULL,
+  p_02_find VARCHAR2 DEFAULT NULL, p_02_replace VARCHAR2 DEFAULT NULL,
+  p_03_find VARCHAR2 DEFAULT NULL, p_03_replace VARCHAR2 DEFAULT NULL,
+  p_04_find VARCHAR2 DEFAULT NULL, p_04_replace VARCHAR2 DEFAULT NULL,
+  p_05_find VARCHAR2 DEFAULT NULL, p_05_replace VARCHAR2 DEFAULT NULL,
+  p_06_find VARCHAR2 DEFAULT NULL, p_06_replace VARCHAR2 DEFAULT NULL,
+  p_07_find VARCHAR2 DEFAULT NULL, p_07_replace VARCHAR2 DEFAULT NULL,
+  p_08_find VARCHAR2 DEFAULT NULL, p_08_replace VARCHAR2 DEFAULT NULL,
+  p_09_find VARCHAR2 DEFAULT NULL, p_09_replace VARCHAR2 DEFAULT NULL,
+  p_10_find VARCHAR2 DEFAULT NULL, p_10_replace VARCHAR2 DEFAULT NULL,
+  p_11_find VARCHAR2 DEFAULT NULL, p_11_replace VARCHAR2 DEFAULT NULL,
+  p_12_find VARCHAR2 DEFAULT NULL, p_12_replace VARCHAR2 DEFAULT NULL
 ) RETURN VARCHAR2 IS
   v_return VARCHAR2(32767);
 BEGIN
   v_return := p_source_string;
-
   IF p_01_find IS NOT NULL THEN v_return := replace(v_return, p_01_find, p_01_replace); END IF;
   IF p_02_find IS NOT NULL THEN v_return := replace(v_return, p_02_find, p_02_replace); END IF;
   IF p_03_find IS NOT NULL THEN v_return := replace(v_return, p_03_find, p_03_replace); END IF;
@@ -604,7 +556,6 @@ BEGIN
   IF p_10_find IS NOT NULL THEN v_return := replace(v_return, p_10_find, p_10_replace); END IF;
   IF p_11_find IS NOT NULL THEN v_return := replace(v_return, p_11_find, p_11_replace); END IF;
   IF p_12_find IS NOT NULL THEN v_return := replace(v_return, p_12_find, p_12_replace); END IF;
-
   RETURN v_return;
 END util_multi_replace;
 
@@ -745,15 +696,6 @@ END util_ensure_unique_file_names;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_free_temporary_lobs IS
-BEGIN
-  IF dbms_lob.istemporary(g_clob) = 1 THEN
-    dbms_lob.freetemporary(g_clob);
-  END IF;
-END util_free_temporary_lobs;
-
---------------------------------------------------------------------------------------------------------------------------------
-
 PROCEDURE util_log_init (
   p_module IN VARCHAR2
 ) IS
@@ -765,9 +707,7 @@ BEGIN
   g_runlog.measured_time   := 0;
   g_runlog.unmeasured_time := 0;
   g_runlog.data.DELETE;
-  IF g_errlog.count > 0 THEN
-    g_errlog.DELETE;
-  END IF;
+  g_errlog.DELETE;
 END util_log_init;
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -802,11 +742,13 @@ PROCEDURE util_log_error (
 
 BEGIN
   v_index := g_errlog.count + 1;
-  g_errlog(v_index).name      := substr(p_name, 1, 255);
-  g_errlog(v_index).error     := substr(sqlerrm, 1, 100);
-  g_errlog(v_index).callstack := substr(dbms_utility.format_error_backtrace, 1, 500);
+  g_errlog(v_index).time_stamp := systimestamp;
+  g_errlog(v_index).file_name  := substr(p_name, 1, 255);
+  g_errlog(v_index).error_text := substr(sqlerrm, 1, 200);
+  g_errlog(v_index).call_stack := substr(dbms_utility.format_error_backtrace, 1, 500);
   add_error_to_action;
   util_log_stop;
+  g_clob := null;
 END util_log_error;
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -853,6 +795,9 @@ BEGIN
   g_clob_vc_cache := g_clob_vc_cache || p_content;
 EXCEPTION
   WHEN value_error THEN
+    --IF dbms_lob.istemporary(g_clob) = 0 THEN
+    --  dbms_lob.createtemporary(g_clob, true);
+    --END IF;
     IF g_clob IS NULL THEN
       g_clob := g_clob_vc_cache;
     ELSE
@@ -868,6 +813,9 @@ PROCEDURE util_clob_append (
 ) IS
 BEGIN
   IF p_content IS NOT NULL THEN
+    --IF dbms_lob.istemporary(g_clob) = 0 THEN
+    --  dbms_lob.createtemporary(g_clob, true);
+    --END IF;
     util_clob_flush_cache;
     IF g_clob IS NULL THEN
       g_clob := p_content;
@@ -882,6 +830,9 @@ END util_clob_append;
 PROCEDURE util_clob_flush_cache IS
 BEGIN
   IF g_clob_vc_cache IS NOT NULL THEN
+    --IF dbms_lob.istemporary(g_clob) = 0 THEN
+    --  dbms_lob.createtemporary(g_clob, true);
+    --END IF;
     IF g_clob IS NULL THEN
       g_clob := g_clob_vc_cache;
     ELSE
@@ -906,7 +857,7 @@ BEGIN
     name     => p_name,
     contents => g_clob
   );
-  g_clob := NULL;
+  g_clob := null;
 END util_clob_add_to_export_files;
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -1104,8 +1055,9 @@ BEGIN
     );
 
     FOR i IN 1..g_errlog.count LOOP
-      util_clob_append('## ' || g_errlog(i).name || c_crlf || c_crlf || g_errlog(i).error || c_crlf || c_crlf);
-      util_clob_append('```sql' || c_crlf || g_errlog(i).callstack || c_crlf || '```' || c_crlf || c_crlf || c_crlf);
+      util_clob_append('## ' || g_errlog(i).file_name || c_crlf || c_crlf);
+      util_clob_append(to_char(g_errlog(i).time_stamp, 'yyyy-mm-dd hh24:mi:ss.ffffff') || ': ' || g_errlog(i).error_text || c_crlf || c_crlf);
+      util_clob_append('```sql' || c_crlf || g_errlog(i).call_stack || c_crlf || '```' || c_crlf || c_crlf || c_crlf);
     END LOOP;
 
     -- add error log to file collection
@@ -1251,9 +1203,6 @@ $end
     util_log_start('init');
     v_export_files   := NEW tab_export_files();
     v_current_user   := sys_context('USERENV', 'CURRENT_USER');
-    IF dbms_lob.istemporary(g_clob) = 0 THEN
-      dbms_lob.createtemporary(g_clob, true, dbms_lob.call);
-    END IF;
     util_log_stop;
   END init;
 
@@ -1453,35 +1402,23 @@ $end
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '.sql';
       util_log_start(v_file_path);
       util_setup_dbms_metadata(p_sqlterminator => false);
-      util_clob_append(replace(
-        replace(
-          replace(
-            q'^
+      util_clob_append(util_multi_replace(q'^
 BEGIN
-FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual
-          MINUS
-          SELECT username FROM dba_users) LOOP
-  EXECUTE IMMEDIATE q'[
+  FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual
+            MINUS
+            SELECT username FROM dba_users) LOOP
+    EXECUTE IMMEDIATE q'[
 --------------------------------------------------------------------------------
 {{DDL}}
 --------------------------------------------------------------------------------
-  ]'
-END LOOP;
+    ]'
+  END LOOP;
 END;
 {{SLASH}}
-^'
-            ,
-            '{{CURRENT_USER}}',
-            v_current_user
-          ),
-          '{{DDL}}',
-          dbms_metadata.get_ddl(
-            'USER',
-            v_current_user
-          )
-        ),
-        '{{SLASH}}',
-        c_slash
+^',
+        '{{CURRENT_USER}}', v_current_user,
+        '{{DDL}}', dbms_metadata.get_ddl('USER', v_current_user),
+        '{{SLASH}}', c_slash
       ));
 
       util_clob_add_to_export_files(
@@ -2671,7 +2608,6 @@ prompt
     IF p_include_runtime_log THEN
       util_clob_create_runtime_log(v_export_files);
     END IF;
-    util_free_temporary_lobs;
   END finish;
 
 BEGIN
@@ -2784,7 +2720,6 @@ FUNCTION queries_to_csv (
     IF p_include_runtime_log THEN
       util_clob_create_runtime_log(v_export_files);
     END IF;
-    util_free_temporary_lobs;
   END finish;
 
 BEGIN
@@ -2801,12 +2736,13 @@ FUNCTION to_zip (
 ) RETURN BLOB IS
   v_zip BLOB;
 BEGIN
+  dbms_lob.createtemporary( v_zip, true );
   util_log_start('post processing with to_zip: ' || p_file_collection.count || ' files');
   FOR i IN 1..p_file_collection.count LOOP
     util_zip_add_file(
-      p_zipped_blob   => v_zip,
-      p_name          => p_file_collection(i).name,
-      p_content       => util_clob_to_blob(p_file_collection(i).contents)
+      p_zipped_blob => v_zip,
+      p_name        => p_file_collection(i).name,
+      p_content     => util_clob_to_blob(p_file_collection(i).contents)
     );
   END LOOP;
   util_zip_finish(v_zip);
@@ -2818,13 +2754,9 @@ END to_zip;
 --------------------------------------------------------------------------------------------------------------------------------
 
 FUNCTION view_error_log RETURN tab_error_log PIPELINED IS
-  v_return rec_error_log;
 BEGIN
   FOR i IN 1..g_errlog.count LOOP
-    v_return.name        := g_errlog(i).name;
-    v_return.error       := g_errlog(i).error;
-    v_return.callstack   := g_errlog(i).callstack;
-    PIPE ROW (v_return);
+    PIPE ROW (g_errlog(i));
   END LOOP;
 END view_error_log;
 
@@ -2833,19 +2765,23 @@ END view_error_log;
 FUNCTION view_runtime_log RETURN tab_runtime_log PIPELINED IS
   v_return rec_runtime_log;
 BEGIN
-  v_return.overall_start_time   := g_runlog.start_time;
-  v_return.overall_run_time     := round(g_runlog.run_time, 3);
+  v_return.overall_start_time := g_runlog.start_time;
+  v_return.overall_run_time   := round(g_runlog.run_time, 3);
   FOR i IN 1..g_runlog.data.count LOOP
-    v_return.step        := i;
-    v_return.elapsed     := round(g_runlog.data(i).elapsed, 3);
-    v_return.execution   := round(g_runlog.data(i).execution, 6);
-    v_return.module      := g_runlog.module;
-    v_return.action      := g_runlog.data(i).action;
+    v_return.step      := i;
+    v_return.elapsed   := round(g_runlog.data(i).elapsed, 3);
+    v_return.execution := round(g_runlog.data(i).execution, 6);
+    v_return.module    := g_runlog.module;
+    v_return.action    := g_runlog.data(i).action;
     PIPE ROW (v_return);
   END LOOP;
 END view_runtime_log;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
+BEGIN
+    IF dbms_lob.istemporary(g_clob) = 0 THEN
+      dbms_lob.createtemporary(g_clob, true);
+    END IF;
 END plex;
 /

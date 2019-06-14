@@ -23,7 +23,7 @@ DEPENDENCIES
 The package itself is independend, but functionality varies on the following conditions:
 
 - For APEX app export: APEX >= 5.1.4 installed
-- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= ??? installed
+- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= FIXME installed
 
 
 INSTALLATION
@@ -39,7 +39,7 @@ CHANGELOG
 
 - 2.0.0 (2019-06-xx)
     - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
-      - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
+        - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
     - New parameters to filter for object types
     - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
@@ -64,9 +64,10 @@ c_app_info_length  CONSTANT PLS_INTEGER := 64;
 SUBTYPE app_info_text IS VARCHAR2(64 CHAR);
 
 TYPE rec_error_log IS RECORD (
-  name      VARCHAR2(255),
-  error     VARCHAR2(100),
-  callstack VARCHAR2(500)
+  time_stamp TIMESTAMP,
+  file_name  VARCHAR2(255),
+  error_text VARCHAR2(200),
+  call_stack VARCHAR2(500)
 );
 
 TYPE tab_error_log IS TABLE OF rec_error_log;
@@ -165,12 +166,32 @@ BEGIN
       );
   END LOOP;
 END;
+{{SLASH}}
 ```
 
-EXAMPLE EXPORT ZIP FILE
+EXAMPLE ZIP FILE PL/SQL
 
 ```sql
--- Inline function (needs Oracle 12c or higher)
+DECLARE
+  l_zip_file BLOB;
+BEGIN
+  l_zip_file := plex.to_zip(plex.backapp(
+    p_app_id             => 100,   -- parameter only available when APEX installed
+    p_include_object_ddl => true,
+    p_include_data       => false
+  ));
+
+  -- do something with the zip file
+  -- Your code here...
+END;
+{{SLASH}}
+```
+
+EXAMPLE ZIP FILE SQL
+
+```sql
+-- Inline function because of boolean parameters (needs Oracle 12c or higher).
+-- Alternative create a helper function and call that in a SQL context.
 WITH
   FUNCTION backapp RETURN BLOB IS
   BEGIN
@@ -286,7 +307,34 @@ END;
 {{SLASH}}
 ```
 
-EXAMPLE EXPORT ZIP FILE
+EXPORT EXPORT ZIP FILE PL/SQL
+
+```sql
+DECLARE
+  l_zip_file BLOB;
+BEGIN
+
+  --fill the queries array
+  plex.add_query(
+    p_query     => 'select * from user_tables',
+    p_file_name => 'user_tables'
+  );
+  plex.add_query(
+    p_query     => 'select * from user_tab_columns',
+    p_file_name => 'user_tab_columns',
+    p_max_rows  => 10000
+  );
+
+  -- process the queries
+  l_zip_file := plex.to_zip(plex.queries_to_csv);
+
+  -- do something with the zip file
+  -- Your code here...
+END;
+{{SLASH}}
+```
+
+EXAMPLE EXPORT ZIP FILE SQL
 
 ```sql
 WITH
@@ -357,7 +405,7 @@ SELECT * FROM TABLE(plex.view_runtime_log);
 
 
 --------------------------------------------------------------------------------------------------------------------------------
--- UTILITIES (only available when v_utils_public is set to 'true' in install script "plex_install.sql")
+-- UTILITIES (only available when v_utils_public is set to 'true' in install script plex_install.sql)
 --------------------------------------------------------------------------------------------------------------------------------
 
 $if $$utils_public $then
@@ -423,30 +471,18 @@ FUNCTION util_multireplace (
 
 FUNCTION util_multi_replace (
   p_source_string VARCHAR2,
-  p_01_find    VARCHAR2 DEFAULT NULL,
-  p_01_replace VARCHAR2 DEFAULT NULL,
-  p_02_find    VARCHAR2 DEFAULT NULL,
-  p_02_replace VARCHAR2 DEFAULT NULL,
-  p_03_find    VARCHAR2 DEFAULT NULL,
-  p_03_replace VARCHAR2 DEFAULT NULL,
-  p_04_find    VARCHAR2 DEFAULT NULL,
-  p_04_replace VARCHAR2 DEFAULT NULL,
-  p_05_find    VARCHAR2 DEFAULT NULL,
-  p_05_replace VARCHAR2 DEFAULT NULL,
-  p_06_find    VARCHAR2 DEFAULT NULL,
-  p_06_replace VARCHAR2 DEFAULT NULL,
-  p_07_find    VARCHAR2 DEFAULT NULL,
-  p_07_replace VARCHAR2 DEFAULT NULL,
-  p_08_find    VARCHAR2 DEFAULT NULL,
-  p_08_replace VARCHAR2 DEFAULT NULL,
-  p_09_find    VARCHAR2 DEFAULT NULL,
-  p_09_replace VARCHAR2 DEFAULT NULL,
-  p_10_find    VARCHAR2 DEFAULT NULL,
-  p_10_replace VARCHAR2 DEFAULT NULL,
-  p_11_find    VARCHAR2 DEFAULT NULL,
-  p_11_replace VARCHAR2 DEFAULT NULL,
-  p_12_find    VARCHAR2 DEFAULT NULL,
-  p_12_replace VARCHAR2 DEFAULT NULL
+  p_01_find VARCHAR2 DEFAULT NULL, p_01_replace VARCHAR2 DEFAULT NULL,
+  p_02_find VARCHAR2 DEFAULT NULL, p_02_replace VARCHAR2 DEFAULT NULL,
+  p_03_find VARCHAR2 DEFAULT NULL, p_03_replace VARCHAR2 DEFAULT NULL,
+  p_04_find VARCHAR2 DEFAULT NULL, p_04_replace VARCHAR2 DEFAULT NULL,
+  p_05_find VARCHAR2 DEFAULT NULL, p_05_replace VARCHAR2 DEFAULT NULL,
+  p_06_find VARCHAR2 DEFAULT NULL, p_06_replace VARCHAR2 DEFAULT NULL,
+  p_07_find VARCHAR2 DEFAULT NULL, p_07_replace VARCHAR2 DEFAULT NULL,
+  p_08_find VARCHAR2 DEFAULT NULL, p_08_replace VARCHAR2 DEFAULT NULL,
+  p_09_find VARCHAR2 DEFAULT NULL, p_09_replace VARCHAR2 DEFAULT NULL,
+  p_10_find VARCHAR2 DEFAULT NULL, p_10_replace VARCHAR2 DEFAULT NULL,
+  p_11_find VARCHAR2 DEFAULT NULL, p_11_replace VARCHAR2 DEFAULT NULL,
+  p_12_find VARCHAR2 DEFAULT NULL, p_12_replace VARCHAR2 DEFAULT NULL
 ) RETURN VARCHAR2;
 
 FUNCTION util_set_build_status_run_only (
@@ -472,10 +508,8 @@ PROCEDURE util_setup_dbms_metadata (
 
 PROCEDURE util_ensure_unique_file_names;
 
-PROCEDURE util_free_temporary_lobs;
-
 --------------------------------------------------------------------------------------------------------------------------------
--- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_log and g_queries
+-- The following tools are working on global private package variables
 --------------------------------------------------------------------------------------------------------------------------------
 
 PROCEDURE util_log_init (
