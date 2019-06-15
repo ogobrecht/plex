@@ -5,10 +5,10 @@ prompt Installing PL/SQL Export Utilities
 prompt ==================================
 prompt Set compiler flags
 DECLARE
-  v_apex_installed   VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
-  v_ords_installed   VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
-  v_utils_public     VARCHAR2(5) := 'FALSE'; -- Make utilities public available (for testing or other usages).
-  v_debug_on         VARCHAR2(5) := 'TRUE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
+  v_apex_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
+  v_ords_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
+  v_utils_public   VARCHAR2(5) := 'FALSE'; -- Make utilities public available (for testing or other usages).
+  v_debug_on       VARCHAR2(5) := 'FALSE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
 BEGIN
   FOR i IN (
     SELECT *

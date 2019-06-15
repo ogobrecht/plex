@@ -92,21 +92,16 @@ BEGIN
   l_file_collection := plex.backapp(
     p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => false,
-    p_include_data       => false
-  );
+    p_include_data       => false);
 
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
-    dbms_output.put_line(
-         i
-      || ' | '
-      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB'
-      || ' | '
-      || l_file_collection(i).name
-      );
+    dbms_output.put_line(i || ' | '
+      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB' || ' | '
+      || l_file_collection(i).name);
   END LOOP;
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXAMPLE ZIP FILE PL/SQL
@@ -118,13 +113,12 @@ BEGIN
   l_zip_file := plex.to_zip(plex.backapp(
     p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => true,
-    p_include_data       => false
-  ));
+    p_include_data       => false));
 
   -- do something with the zip file
   -- Your code here...
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXAMPLE ZIP FILE SQL
@@ -169,11 +163,10 @@ WITH
       p_include_error_log         => true,
       p_base_path_backend         => 'app_backend',
       p_base_path_frontend        => 'app_frontend',
-      p_base_path_data            => 'app_data' 
-    ));
+      p_base_path_data            => 'app_data'));
   END backapp;
 SELECT backapp FROM dual;
-{{SLASH}}
+{{/}}
 ```
 
 SIGNATURE
@@ -230,19 +223,18 @@ EXAMPLE
 BEGIN
   plex.add_query(
     p_query     => 'select * from user_tables',
-    p_file_name => 'user_tables'
-  );
+    p_file_name => 'user_tables');
 END;
-{{SLASH}}
+{{/}}
 ```
 
 SIGNATURE
 
 ```sql
 PROCEDURE add_query (
-  p_query     IN VARCHAR2,             -- The query itself
-  p_file_name IN VARCHAR2,             -- File name like 'Path/to/your/file-without-extension'.
-  p_max_rows  IN NUMBER   DEFAULT 1000 -- The maximum number of rows to be included in your file.
+  p_query     IN VARCHAR2,              -- The query itself
+  p_file_name IN VARCHAR2,              -- File name like 'Path/to/your/file-without-extension'.
+  p_max_rows  IN NUMBER    DEFAULT 1000 -- The maximum number of rows to be included in your file.
 );
 ```
 
@@ -262,29 +254,23 @@ BEGIN
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
-    p_file_name => 'user_tables'
-  );
+    p_file_name => 'user_tables');
   plex.add_query(
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
-    p_max_rows  => 10000
-  );
+    p_max_rows  => 10000);
 
   -- process the queries
   l_file_collection := plex.queries_to_csv;
 
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
-    dbms_output.put_line(
-         i
-      || ' | '
-      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB'
-      || ' | '
-      || l_file_collection(i).name
-      );
+    dbms_output.put_line(i || ' | '
+      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB' || ' | '
+      || l_file_collection(i).name);
   END LOOP;
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXPORT EXPORT ZIP FILE PL/SQL
@@ -297,13 +283,11 @@ BEGIN
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
-    p_file_name => 'user_tables'
-  );
+    p_file_name => 'user_tables');
   plex.add_query(
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
-    p_max_rows  => 10000
-  );
+    p_max_rows  => 10000);
 
   -- process the queries
   l_zip_file := plex.to_zip(plex.queries_to_csv);
@@ -311,7 +295,7 @@ BEGIN
   -- do something with the zip file
   -- Your code here...
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXAMPLE EXPORT ZIP FILE SQL
@@ -323,18 +307,16 @@ WITH
   BEGIN
     plex.add_query(
       p_query     => 'select * from user_tables',
-      p_file_name => 'user_tables'
-    );
+      p_file_name => 'user_tables');
     plex.add_query(
       p_query     => 'select * from user_tab_columns',
       p_file_name => 'user_tab_columns',
-      p_max_rows  => 10000
-    );
+      p_max_rows  => 10000);
     v_return := plex.to_zip(plex.queries_to_csv);
     RETURN v_return;
   END queries_to_csv_zip;
 SELECT queries_to_csv_zip FROM dual;
-{{SLASH}}
+{{/}}
 
 SIGNATURE
 
@@ -362,8 +344,7 @@ DECLARE
 BEGIN
     l_zip := plex.to_zip(plex.backapp(
       p_app_id             => 100,
-      p_include_object_ddl => true
-    ));
+      p_include_object_ddl => true));
 
   -- do something with the zip file...
 END;

@@ -59,8 +59,7 @@ CHANGELOG
 -- CONSTANTS, TYPES
 --------------------------------------------------------------------------------------------------------------------------------
 
-c_app_info_length  CONSTANT PLS_INTEGER := 64;
-
+c_app_info_length CONSTANT PLS_INTEGER := 64;
 SUBTYPE app_info_text IS VARCHAR2(64 CHAR);
 
 TYPE rec_error_log IS RECORD (
@@ -69,7 +68,6 @@ TYPE rec_error_log IS RECORD (
   error_text VARCHAR2(200),
   call_stack VARCHAR2(500)
 );
-
 TYPE tab_error_log IS TABLE OF rec_error_log;
 
 TYPE rec_runtime_log IS RECORD (
@@ -81,14 +79,12 @@ TYPE rec_runtime_log IS RECORD (
   module             app_info_text,
   action             app_info_text
 );
-
 TYPE tab_runtime_log IS TABLE OF rec_runtime_log;
 
 TYPE rec_export_file IS RECORD (
   name     VARCHAR2(255),
   contents CLOB
 );
-
 TYPE tab_export_files IS TABLE OF rec_export_file;
 
 TYPE tab_varchar2 IS TABLE OF varchar2(32767);
@@ -152,21 +148,16 @@ BEGIN
   l_file_collection := plex.backapp(
     p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => false,
-    p_include_data       => false
-  );
+    p_include_data       => false);
 
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
-    dbms_output.put_line(
-         i
-      || ' | '
-      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB'
-      || ' | '
-      || l_file_collection(i).name
-      );
+    dbms_output.put_line(i || ' | '
+      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB' || ' | '
+      || l_file_collection(i).name);
   END LOOP;
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXAMPLE ZIP FILE PL/SQL
@@ -178,13 +169,12 @@ BEGIN
   l_zip_file := plex.to_zip(plex.backapp(
     p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => true,
-    p_include_data       => false
-  ));
+    p_include_data       => false));
 
   -- do something with the zip file
   -- Your code here...
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXAMPLE ZIP FILE SQL
@@ -229,20 +219,19 @@ WITH
       p_include_error_log         => true,
       p_base_path_backend         => 'app_backend',
       p_base_path_frontend        => 'app_frontend',
-      p_base_path_data            => 'app_data' 
-    ));
+      p_base_path_data            => 'app_data'));
   END backapp;
 SELECT backapp FROM dual;
-{{SLASH}}
+{{/}}
 ```
 **/
 
 
 
 PROCEDURE add_query (
-  p_query     IN VARCHAR2,             -- The query itself
-  p_file_name IN VARCHAR2,             -- File name like 'Path/to/your/file-without-extension'.
-  p_max_rows  IN NUMBER   DEFAULT 1000 -- The maximum number of rows to be included in your file.
+  p_query     IN VARCHAR2,              -- The query itself
+  p_file_name IN VARCHAR2,              -- File name like 'Path/to/your/file-without-extension'.
+  p_max_rows  IN NUMBER    DEFAULT 1000 -- The maximum number of rows to be included in your file.
 );
 /**
 Add a query to be processed by the method queries_to_csv. You can add as many queries as you like.
@@ -253,10 +242,9 @@ EXAMPLE
 BEGIN
   plex.add_query(
     p_query     => 'select * from user_tables',
-    p_file_name => 'user_tables'
-  );
+    p_file_name => 'user_tables');
 END;
-{{SLASH}}
+{{/}}
 ```
 **/
 
@@ -282,29 +270,23 @@ BEGIN
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
-    p_file_name => 'user_tables'
-  );
+    p_file_name => 'user_tables');
   plex.add_query(
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
-    p_max_rows  => 10000
-  );
+    p_max_rows  => 10000);
 
   -- process the queries
   l_file_collection := plex.queries_to_csv;
 
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
-    dbms_output.put_line(
-         i
-      || ' | '
-      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB'
-      || ' | '
-      || l_file_collection(i).name
-      );
+    dbms_output.put_line(i || ' | '
+      || lpad(round(length(l_file_collection(i).contents) / 1024), 3) || ' kB' || ' | '
+      || l_file_collection(i).name);
   END LOOP;
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXPORT EXPORT ZIP FILE PL/SQL
@@ -317,13 +299,11 @@ BEGIN
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
-    p_file_name => 'user_tables'
-  );
+    p_file_name => 'user_tables');
   plex.add_query(
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
-    p_max_rows  => 10000
-  );
+    p_max_rows  => 10000);
 
   -- process the queries
   l_zip_file := plex.to_zip(plex.queries_to_csv);
@@ -331,7 +311,7 @@ BEGIN
   -- do something with the zip file
   -- Your code here...
 END;
-{{SLASH}}
+{{/}}
 ```
 
 EXAMPLE EXPORT ZIP FILE SQL
@@ -343,18 +323,16 @@ WITH
   BEGIN
     plex.add_query(
       p_query     => 'select * from user_tables',
-      p_file_name => 'user_tables'
-    );
+      p_file_name => 'user_tables');
     plex.add_query(
       p_query     => 'select * from user_tab_columns',
       p_file_name => 'user_tab_columns',
-      p_max_rows  => 10000
-    );
+      p_max_rows  => 10000);
     v_return := plex.to_zip(plex.queries_to_csv);
     RETURN v_return;
   END queries_to_csv_zip;
 SELECT queries_to_csv_zip FROM dual;
-{{SLASH}}
+{{/}}
 **/
 
 
@@ -373,8 +351,7 @@ DECLARE
 BEGIN
     l_zip := plex.to_zip(plex.backapp(
       p_app_id             => 100,
-      p_include_object_ddl => true
-    ));
+      p_include_object_ddl => true));
 
   -- do something with the zip file...
 END;
@@ -446,28 +423,18 @@ FUNCTION util_zip_blob_to_num (
   p_len  IN INTEGER,
   p_pos  IN INTEGER
 ) RETURN NUMBER;
-
 FUNCTION util_zip_little_endian (
   p_big   IN NUMBER,
   p_bytes IN PLS_INTEGER := 4
 ) RETURN RAW;
-
 PROCEDURE util_zip_add_file (
   p_zipped_blob IN OUT BLOB,
   p_name        IN     VARCHAR2,
   p_content     IN     BLOB
 );
-
 PROCEDURE util_zip_finish (
   p_zipped_blob IN OUT BLOB
 );
-
-/* FIXME: implement this
-FUNCTION util_multireplace (
-  p_source_string IN VARCHAR2,
-  p_replacements  IN tab_varchar2
-) RETURN VARCHAR2;
-*/
 
 FUNCTION util_multi_replace (
   p_source_string VARCHAR2,
@@ -506,7 +473,9 @@ PROCEDURE util_setup_dbms_metadata (
   p_emit_schema          IN BOOLEAN DEFAULT false
 );
 
-PROCEDURE util_ensure_unique_file_names;
+PROCEDURE util_ensure_unique_file_names (
+  p_export_files IN OUT tab_export_files
+);
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on global private package variables
@@ -556,9 +525,13 @@ PROCEDURE util_clob_query_to_csv (
   p_header_prefix IN VARCHAR2 DEFAULT NULL
 );
 
-PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
+PROCEDURE util_clob_create_error_log (
+  p_export_files IN OUT NOCOPY tab_export_files
+);
 
-PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
+PROCEDURE util_clob_create_runtime_log (
+  p_export_files IN OUT NOCOPY tab_export_files
+);
 
 $end
 
