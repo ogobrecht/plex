@@ -36,7 +36,7 @@ The package itself is independend, but functionality varies on the following con
 INSTALLATION
 
 - Download the [latest version](https://github.com/ogobrecht/plex/releases/latest)
-- Unzip it, open a shell and `cd` into the root directory
+- Unzip it, open a shell and go into the root directory
 - Start SQL*Plus (or another tool which can run SQL scripts)
 - To install PLEX run the provided install script `plex_install.sql` (script provides compiler flags)
 - To uninstall PLEX run the provided script `plex_uninstall.sql` or drop the package manually
@@ -114,7 +114,6 @@ BEGIN
     p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => true,
     p_include_data       => false));
-
   -- do something with the zip file
   -- Your code here...
 END;
@@ -173,7 +172,7 @@ SIGNATURE
 
 ```sql
 FUNCTION backapp (
-$if $$apex_installed $then
+  $if $$apex_installed $then
   -- App related options:
   p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
   p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
@@ -188,7 +187,7 @@ $if $$apex_installed $then
   p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
-$end
+  $end
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_type_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
@@ -207,8 +206,8 @@ $end
   p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
   p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
   p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
-  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
-) RETURN tab_export_files;
+  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')     -- The base path in the project root for the data files.
+RETURN tab_export_files;
 ```
 
 
@@ -232,10 +231,9 @@ SIGNATURE
 
 ```sql
 PROCEDURE add_query (
-  p_query     IN VARCHAR2,              -- The query itself
-  p_file_name IN VARCHAR2,              -- File name like 'Path/to/your/file-without-extension'.
-  p_max_rows  IN NUMBER    DEFAULT 1000 -- The maximum number of rows to be included in your file.
-);
+  p_query     IN VARCHAR2,                -- The query itself
+  p_file_name IN VARCHAR2,                -- File name like 'Path/to/your/file-without-extension'.
+  p_max_rows  IN NUMBER    DEFAULT 1000); -- The maximum number of rows to be included in your file.
 ```
 
 
@@ -250,7 +248,6 @@ EXAMPLE BASIC USAGE
 DECLARE
   l_file_collection plex.tab_export_files;
 BEGIN
-
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
@@ -259,10 +256,8 @@ BEGIN
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
     p_max_rows  => 10000);
-
   -- process the queries
   l_file_collection := plex.queries_to_csv;
-
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
     dbms_output.put_line(i || ' | '
@@ -279,7 +274,6 @@ EXPORT EXPORT ZIP FILE PL/SQL
 DECLARE
   l_zip_file BLOB;
 BEGIN
-
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
@@ -288,10 +282,8 @@ BEGIN
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
     p_max_rows  => 10000);
-
   -- process the queries
   l_zip_file := plex.to_zip(plex.queries_to_csv);
-
   -- do something with the zip file
   -- Your code here...
 END;
@@ -302,7 +294,7 @@ EXAMPLE EXPORT ZIP FILE SQL
 
 ```sql
 WITH
-  FUNCTION queries_to_csv_zip RETURN BLOB IS  
+  FUNCTION queries_to_csv_zip RETURN BLOB IS
     v_return BLOB;
   BEGIN
     plex.add_query(
@@ -326,8 +318,8 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_error_log.md with detailed error messages.
-) RETURN tab_export_files;
+  p_include_error_log         IN BOOLEAN  DEFAULT true)   -- If true, generate file plex_error_log.md with detailed error messages.
+RETURN tab_export_files;
 ```
 
 
@@ -342,10 +334,9 @@ EXAMPLE
 DECLARE
   l_zip BLOB;
 BEGIN
-    l_zip := plex.to_zip(plex.backapp(
-      p_app_id             => 100,
-      p_include_object_ddl => true));
-
+  l_zip := plex.to_zip(plex.backapp(
+    p_app_id             => 100,
+    p_include_object_ddl => true));
   -- do something with the zip file...
 END;
 ```
@@ -354,8 +345,8 @@ SIGNATURE
 
 ```sql
 FUNCTION to_zip (
-  p_file_collection IN tab_export_files -- The file collection to zip.
-) RETURN BLOB;
+  p_file_collection IN tab_export_files) -- The file collection to zip.
+RETURN BLOB;
 ```
 
 

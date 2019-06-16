@@ -29,7 +29,7 @@ The package itself is independend, but functionality varies on the following con
 INSTALLATION
 
 - Download the [latest version](https://github.com/ogobrecht/plex/releases/latest)
-- Unzip it, open a shell and `cd` into the root directory
+- Unzip it, open a shell and go into the root directory
 - Start SQL*Plus (or another tool which can run SQL scripts)
 - To install PLEX run the provided install script `plex_install.sql` (script provides compiler flags)
 - To uninstall PLEX run the provided script `plex_uninstall.sql` or drop the package manually
@@ -66,8 +66,7 @@ TYPE rec_error_log IS RECORD (
   time_stamp TIMESTAMP,
   file_name  VARCHAR2(255),
   error_text VARCHAR2(200),
-  call_stack VARCHAR2(500)
-);
+  call_stack VARCHAR2(500));
 TYPE tab_error_log IS TABLE OF rec_error_log;
 
 TYPE rec_runtime_log IS RECORD (
@@ -77,17 +76,16 @@ TYPE rec_runtime_log IS RECORD (
   elapsed            NUMBER,
   execution          NUMBER,
   module             app_info_text,
-  action             app_info_text
-);
+  action             app_info_text);
 TYPE tab_runtime_log IS TABLE OF rec_runtime_log;
 
 TYPE rec_export_file IS RECORD (
   name     VARCHAR2(255),
-  contents CLOB
-);
+  contents CLOB);
 TYPE tab_export_files IS TABLE OF rec_export_file;
 
-TYPE tab_varchar2 IS TABLE OF varchar2(32767);
+TYPE tab_vc32k IS TABLE OF varchar2(32767);
+TYPE tab_vc1k  IS TABLE OF VARCHAR2(1024) INDEX BY BINARY_INTEGER;
 
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -95,7 +93,7 @@ TYPE tab_varchar2 IS TABLE OF varchar2(32767);
 --------------------------------------------------------------------------------------------------------------------------------
 
 FUNCTION backapp (
-$if $$apex_installed $then
+  $if $$apex_installed $then
   -- App related options:
   p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
   p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
@@ -110,7 +108,7 @@ $if $$apex_installed $then
   p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
-$end
+  $end
   -- Object related options:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_type_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
@@ -129,8 +127,8 @@ $end
   p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
   p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
   p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
-  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data'      -- The base path in the project root for the data files.
-) RETURN tab_export_files;
+  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')     -- The base path in the project root for the data files.
+RETURN tab_export_files;
 /**
 Get a file collection of an APEX application (or the current user/schema only) including:
 
@@ -170,7 +168,6 @@ BEGIN
     p_app_id             => 100,   -- parameter only available when APEX installed
     p_include_object_ddl => true,
     p_include_data       => false));
-
   -- do something with the zip file
   -- Your code here...
 END;
@@ -229,10 +226,9 @@ SELECT backapp FROM dual;
 
 
 PROCEDURE add_query (
-  p_query     IN VARCHAR2,              -- The query itself
-  p_file_name IN VARCHAR2,              -- File name like 'Path/to/your/file-without-extension'.
-  p_max_rows  IN NUMBER    DEFAULT 1000 -- The maximum number of rows to be included in your file.
-);
+  p_query     IN VARCHAR2,                -- The query itself
+  p_file_name IN VARCHAR2,                -- File name like 'Path/to/your/file-without-extension'.
+  p_max_rows  IN NUMBER    DEFAULT 1000); -- The maximum number of rows to be included in your file.
 /**
 Add a query to be processed by the method queries_to_csv. You can add as many queries as you like.
 
@@ -255,8 +251,8 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true   -- If true, generate file plex_error_log.md with detailed error messages.
-) RETURN tab_export_files;
+  p_include_error_log         IN BOOLEAN  DEFAULT true)   -- If true, generate file plex_error_log.md with detailed error messages.
+RETURN tab_export_files;
 /**
 Export one or more queries as CSV data within a file collection.
 
@@ -266,7 +262,6 @@ EXAMPLE BASIC USAGE
 DECLARE
   l_file_collection plex.tab_export_files;
 BEGIN
-
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
@@ -275,10 +270,8 @@ BEGIN
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
     p_max_rows  => 10000);
-
   -- process the queries
   l_file_collection := plex.queries_to_csv;
-
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
     dbms_output.put_line(i || ' | '
@@ -295,7 +288,6 @@ EXPORT EXPORT ZIP FILE PL/SQL
 DECLARE
   l_zip_file BLOB;
 BEGIN
-
   --fill the queries array
   plex.add_query(
     p_query     => 'select * from user_tables',
@@ -304,10 +296,8 @@ BEGIN
     p_query     => 'select * from user_tab_columns',
     p_file_name => 'user_tab_columns',
     p_max_rows  => 10000);
-
   -- process the queries
   l_zip_file := plex.to_zip(plex.queries_to_csv);
-
   -- do something with the zip file
   -- Your code here...
 END;
@@ -318,7 +308,7 @@ EXAMPLE EXPORT ZIP FILE SQL
 
 ```sql
 WITH
-  FUNCTION queries_to_csv_zip RETURN BLOB IS  
+  FUNCTION queries_to_csv_zip RETURN BLOB IS
     v_return BLOB;
   BEGIN
     plex.add_query(
@@ -338,8 +328,8 @@ SELECT queries_to_csv_zip FROM dual;
 
 
 FUNCTION to_zip (
-  p_file_collection IN tab_export_files -- The file collection to zip.
-) RETURN BLOB;
+  p_file_collection IN tab_export_files) -- The file collection to zip.
+RETURN BLOB;
 /**
 Convert a file collection to a zip file.
 
@@ -349,10 +339,9 @@ EXAMPLE
 DECLARE
   l_zip BLOB;
 BEGIN
-    l_zip := plex.to_zip(plex.backapp(
-      p_app_id             => 100,
-      p_include_object_ddl => true));
-
+  l_zip := plex.to_zip(plex.backapp(
+    p_app_id             => 100,
+    p_include_object_ddl => true));
   -- do something with the zip file...
 END;
 ```
@@ -387,30 +376,26 @@ SELECT * FROM TABLE(plex.view_runtime_log);
 
 $if $$utils_public $then
 
-FUNCTION util_bool_to_string (
-  p_bool IN BOOLEAN
-) RETURN VARCHAR2;
+FUNCTION util_bool_to_string (p_bool IN BOOLEAN) RETURN VARCHAR2;
 
 FUNCTION util_string_to_bool (
   p_bool_string IN VARCHAR2,
-  p_default     IN BOOLEAN
-) RETURN BOOLEAN;
+  p_default     IN BOOLEAN)
+RETURN BOOLEAN;
 
 FUNCTION util_split (
   p_string    IN VARCHAR2,
-  p_delimiter IN VARCHAR2 DEFAULT ','
-) RETURN tab_varchar2;
+  p_delimiter IN VARCHAR2 DEFAULT ',')
+RETURN tab_vc32k;
 
 FUNCTION util_join (
-  p_array     IN tab_varchar2,
-  p_delimiter IN VARCHAR2 DEFAULT ','
-) RETURN VARCHAR2;
+  p_array     IN tab_vc32k,
+  p_delimiter IN VARCHAR2 DEFAULT ',')
+RETURN VARCHAR2;
 
-FUNCTION util_clob_to_blob (
-  p_clob CLOB
-) RETURN BLOB;
+FUNCTION util_clob_to_blob (p_clob CLOB) RETURN BLOB;
 
-/* 
+/*
 ZIP UTILS
 - The following four zip utilities are copied from this article:
     - Blog: https://technology.amis.nl/2010/03/13/utl_compress-gzip-and-zlib/
@@ -421,20 +406,18 @@ ZIP UTILS
 FUNCTION util_zip_blob_to_num (
   p_blob IN BLOB,
   p_len  IN INTEGER,
-  p_pos  IN INTEGER
-) RETURN NUMBER;
+  p_pos  IN INTEGER)
+RETURN NUMBER;
 FUNCTION util_zip_little_endian (
   p_big   IN NUMBER,
-  p_bytes IN PLS_INTEGER := 4
-) RETURN RAW;
+  p_bytes IN PLS_INTEGER := 4)
+RETURN RAW;
 PROCEDURE util_zip_add_file (
   p_zipped_blob IN OUT BLOB,
   p_name        IN     VARCHAR2,
-  p_content     IN     BLOB
-);
-PROCEDURE util_zip_finish (
-  p_zipped_blob IN OUT BLOB
-);
+  p_content     IN     BLOB);
+
+PROCEDURE util_zip_finish (p_zipped_blob IN OUT BLOB);
 
 FUNCTION util_multi_replace (
   p_source_string VARCHAR2,
@@ -449,16 +432,12 @@ FUNCTION util_multi_replace (
   p_09_find VARCHAR2 DEFAULT NULL, p_09_replace VARCHAR2 DEFAULT NULL,
   p_10_find VARCHAR2 DEFAULT NULL, p_10_replace VARCHAR2 DEFAULT NULL,
   p_11_find VARCHAR2 DEFAULT NULL, p_11_replace VARCHAR2 DEFAULT NULL,
-  p_12_find VARCHAR2 DEFAULT NULL, p_12_replace VARCHAR2 DEFAULT NULL
-) RETURN VARCHAR2;
+  p_12_find VARCHAR2 DEFAULT NULL, p_12_replace VARCHAR2 DEFAULT NULL)
+RETURN VARCHAR2;
 
-FUNCTION util_set_build_status_run_only (
-  p_app_export_sql IN CLOB
-) RETURN CLOB;
+FUNCTION util_set_build_status_run_only (p_app_export_sql IN CLOB) RETURN CLOB;
 
-FUNCTION util_calc_data_timestamp (
-  p_as_of_minutes_ago IN NUMBER
-) RETURN TIMESTAMP;
+FUNCTION util_calc_data_timestamp (p_as_of_minutes_ago IN NUMBER) RETURN TIMESTAMP;
 
 PROCEDURE util_setup_dbms_metadata (
   p_pretty               IN BOOLEAN DEFAULT true,
@@ -470,68 +449,49 @@ PROCEDURE util_setup_dbms_metadata (
   p_segment_attributes   IN BOOLEAN DEFAULT false,
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
-  p_emit_schema          IN BOOLEAN DEFAULT false
-);
+  p_emit_schema          IN BOOLEAN DEFAULT false);
 
-PROCEDURE util_ensure_unique_file_names (
-  p_export_files IN OUT tab_export_files
-);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on global private package variables
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_log_init (
-  p_module IN VARCHAR2
-);
+PROCEDURE util_log_init (p_module IN VARCHAR2);
 
-PROCEDURE util_log_start (
-  p_action IN VARCHAR2
-);
+PROCEDURE util_log_start (p_action IN VARCHAR2);
 
-PROCEDURE util_log_error (
-  p_name VARCHAR2
-);
+PROCEDURE util_log_error (p_name VARCHAR2);
 
 PROCEDURE util_log_stop;
 
 FUNCTION util_log_get_runtime (
   p_start IN TIMESTAMP,
-  p_stop  IN TIMESTAMP
-) RETURN NUMBER;
+  p_stop  IN TIMESTAMP)
+RETURN NUMBER;
 
 PROCEDURE util_log_calc_runtimes;
 
-PROCEDURE util_clob_append (
-  p_content IN VARCHAR2
-);
+PROCEDURE util_clob_append (p_content IN VARCHAR2);
 
-PROCEDURE util_clob_append (
-  p_content IN CLOB
-);
+PROCEDURE util_clob_append (p_content IN CLOB);
 
 PROCEDURE util_clob_flush_cache;
 
 PROCEDURE util_clob_add_to_export_files (
   p_export_files IN OUT NOCOPY tab_export_files,
-  p_name         IN            VARCHAR2
-);
+  p_name         IN            VARCHAR2);
 
 PROCEDURE util_clob_query_to_csv (
   p_query         IN VARCHAR2,
   p_max_rows      IN NUMBER DEFAULT 1000,
   p_delimiter     IN VARCHAR2 DEFAULT ',',
   p_quote_mark    IN VARCHAR2 DEFAULT '"',
-  p_header_prefix IN VARCHAR2 DEFAULT NULL
-);
+  p_header_prefix IN VARCHAR2 DEFAULT NULL);
 
-PROCEDURE util_clob_create_error_log (
-  p_export_files IN OUT NOCOPY tab_export_files
-);
+PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
-PROCEDURE util_clob_create_runtime_log (
-  p_export_files IN OUT NOCOPY tab_export_files
-);
+PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
 
 $end
 
