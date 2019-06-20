@@ -37,7 +37,7 @@ INSTALLATION
 
 CHANGELOG
 
-- 2.0.0 (2019-06-xx)
+- 2.0.0 (2019-06-20)
     - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
         - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
     - New parameters to filter for object types
