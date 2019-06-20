@@ -164,7 +164,6 @@ WITH
       p_base_path_data            => 'app_data'));
   END backapp;
 SELECT backapp FROM dual;
-/
 ```
 
 SIGNATURE
@@ -307,7 +306,6 @@ WITH
     RETURN v_return;
   END queries_to_csv_zip;
 SELECT queries_to_csv_zip FROM dual;
-/
 ```
 
 SIGNATURE
