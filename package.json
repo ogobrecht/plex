@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "chokidar-cli": "^1.2.2",
-    "ploc": "^0.5.0"
+    "ploc": "^0.6.1"
   }
 }
