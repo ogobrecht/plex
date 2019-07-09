@@ -43,6 +43,8 @@ INSTALLATION
 
 CHANGELOG
 
+- 2.0.1 (2019-07-09)
+    - Fixed: Compile error PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE', when DB version is lower then 18.1
 - 2.0.0 (2019-06-20)
     - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
         - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
@@ -64,7 +66,7 @@ SIGNATURE
 ```sql
 PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.0.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.0.1';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';

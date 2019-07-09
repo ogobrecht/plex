@@ -743,9 +743,8 @@ BEGIN
   util_clob_flush_cache;
   v_index := p_export_files.count + 1;
   p_export_files.extend;
-  p_export_files(v_index) := rec_export_file(
-    name     => p_name,
-    contents => g_clob);
+  p_export_files(v_index).name := p_name;
+  p_export_files(v_index).contents := g_clob;
   g_clob := null;
 END util_clob_add_to_export_files;
 
