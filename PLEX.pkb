@@ -1098,9 +1098,8 @@ RETURN tab_export_files IS
         v_export_files(i).name     := 'scripts/install_frontend_generated_by_apex.sql';
         v_export_files(i).contents := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
           || c_lf || c_lf
-          || util_multi_replace(
-              v_export_files(i).contents,
-              '@application/',    '@../' || p_base_path_frontend || '/',
+          || replace(replace(v_export_files(i).contents,
+              '@application/', '@../' || p_base_path_frontend || '/'),
               'prompt --install', 'prompt --install_frontend_generated_by_apex');
       END IF;
       -- handle build status RUN_ONLY
