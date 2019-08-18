@@ -29,7 +29,7 @@ DEPENDENCIES
 The package itself is independend, but functionality varies on the following conditions:
 
 - For APEX app export: APEX >= 5.1.4 installed
-- NOT YET IMPLEMENTED: For ORDS REST service export: ORDS >= FIXME installed
+- For ORDS modules export: ORDS >= FIXME installed
 
 
 INSTALLATION
@@ -43,6 +43,8 @@ INSTALLATION
 
 CHANGELOG
 
+- 2.1.0 (2019-xx-xx)
+    - New parameter to include ORDS modules
 - 2.0.2 (2019-08-16)
     - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
@@ -93,9 +95,10 @@ DECLARE
   l_file_collection plex.tab_export_files;
 BEGIN
   l_file_collection := plex.backapp(
-    p_app_id             => 100,   -- parameter only available when APEX installed
-    p_include_object_ddl => false,
-    p_include_data       => false);
+    p_app_id               => 100,   -- parameter only available when APEX is installed
+    p_include_ords_modules => false, -- parameter only available when ORDS is installed
+    p_include_object_ddl   => false,
+    p_include_data         => false);
 
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
@@ -114,9 +117,10 @@ DECLARE
   l_zip_file BLOB;
 BEGIN
   l_zip_file := plex.to_zip(plex.backapp(
-    p_app_id             => 100,   -- parameter only available when APEX installed
-    p_include_object_ddl => true,
-    p_include_data       => false));
+    p_app_id               => 100,  -- parameter only available when APEX is installed
+    p_include_ords_modules => true, -- parameter only available when ORDS is installed
+    p_include_object_ddl   => true,
+    p_include_data         => false));
   -- do something with the zip file
   -- Your code here...
 END;
@@ -133,7 +137,7 @@ WITH
   BEGIN
     RETURN plex.to_zip(plex.backapp(
       -- All parameters are optional and shown with their defaults
-      -- App related options (only available, when APEX is installed):
+      -- APEX App (only available, when APEX is installed):
       p_app_id                    => NULL,
       p_app_date                  => true,
       p_app_public_reports        => true,
@@ -147,13 +151,15 @@ WITH
       p_app_supporting_objects    => NULL,
       p_app_include_single_file   => false,
       p_app_build_status_run_only => false,
-      -- Object related options:
+      -- ORDS Modules (only available, when ORDS is installed):
+      p_include_object_ddl        => false,
+      -- Schema Objects:
       p_include_object_ddl        => false,
       p_object_type_like          => NULL,
       p_object_type_not_like      => NULL,
       p_object_name_like          => NULL,
       p_object_name_not_like      => NULL,
-      -- Data related options:
+      -- Tbale Data:
       p_include_data              => false,
       p_data_as_of_minutes_ago    => 0,
       p_data_max_rows             => 1000,
@@ -165,6 +171,7 @@ WITH
       p_include_error_log         => true,
       p_base_path_backend         => 'app_backend',
       p_base_path_frontend        => 'app_frontend',
+      p_base_path_web_services    => 'app_web_services',
       p_base_path_data            => 'app_data'));
   END backapp;
 SELECT backapp FROM dual;
@@ -175,7 +182,7 @@ SIGNATURE
 ```sql
 FUNCTION backapp (
   $if $$apex_installed $then
-  -- App related options:
+  -- APEX App:
   p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
   p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
   p_app_public_reports        IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
@@ -190,25 +197,30 @@ FUNCTION backapp (
   p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
   $end
-  -- Object related options:
+  $if $$ords_installed $then
+  -- ORDS Modules:
+  p_include_ords_modules      IN BOOLEAN  DEFAULT false, -- If true, include ORDS modules of current user/schema.
+  $end
+  -- Schema Objects:
   p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
   p_object_type_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
   p_object_type_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type not like '%BODY' escape '\' and object_type not like 'JAVA%' escape '\').
   p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
   p_object_name_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name not like 'EMP%' escape '\' and object_name not like 'DEPT%' escape '\').
-  -- Data related options:
+  -- Table Data:
   p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
   p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
   p_data_max_rows             IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
   p_data_table_name_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
   p_data_table_name_not_like  IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
-  -- Miscellaneous options:
+  -- General Options:
   p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
   p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
-  p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',  -- The base path in the project root for the database DDL files.
-  p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend', -- The base path in the project root for the APEX UI install files.
-  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')     -- The base path in the project root for the data files.
+  p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',      -- The base path in the project root for the Schema objects.
+  p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend',     -- The base path in the project root for the APEX app.
+  p_base_path_web_services    IN VARCHAR2 DEFAULT 'app_web_services', -- The base path in the project root for the ORDS modules.
+  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')         -- The base path in the project root for the table data.
 RETURN tab_export_files;
 ```
 

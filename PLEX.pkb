@@ -985,6 +985,9 @@ FUNCTION backapp (
   p_app_include_single_file   IN BOOLEAN  DEFAULT false,
   p_app_build_status_run_only IN BOOLEAN  DEFAULT false,
   $end
+  $if $$ords_installed $then
+  p_include_ords_modules      IN BOOLEAN  DEFAULT false,
+  $end
   p_include_object_ddl        IN BOOLEAN  DEFAULT false,
   p_object_type_like          IN VARCHAR2 DEFAULT NULL,
   p_object_type_not_like      IN VARCHAR2 DEFAULT NULL,
@@ -1000,6 +1003,7 @@ FUNCTION backapp (
   p_include_error_log         IN BOOLEAN  DEFAULT true,
   p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',
   p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend',
+  p_base_path_web_services    IN VARCHAR2 DEFAULT 'app_web_services',
   p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')
 RETURN tab_export_files IS
   v_apex_version     NUMBER;
@@ -1139,6 +1143,35 @@ RETURN tab_export_files IS
     END IF;
   END process_apex_app;
   $end
+
+  $if $$ords_installed $then
+  PROCEDURE process_ords_modules IS
+    v_module_name user_ords_modules.name%type;
+  BEGIN
+    util_log_start(p_base_path_web_services || '/open_modules_cursor');
+    OPEN v_cur FOR 'select name from user_ords_modules';
+    util_log_stop;
+    --
+    LOOP
+      FETCH v_cur INTO v_module_name;
+      EXIT WHEN v_cur%notfound;
+      BEGIN
+        v_file_path := p_base_path_web_services || '/' || v_module_name || '.sql';
+        util_log_start(v_file_path);
+        util_clob_append(ords_export.export_module(p_module_name => v_module_name) || chr(10) || '/');
+        util_clob_add_to_export_files(
+          p_export_files => v_export_files,
+          p_name         => v_file_path);
+        util_log_stop;
+      EXCEPTION
+        WHEN OTHERS THEN
+          util_log_error(v_file_path);
+      END;
+    END LOOP;
+    CLOSE v_cur;
+  END process_ords_modules;
+  $end
+
 
   PROCEDURE replace_query_like_expressions (
     p_like_list          VARCHAR2,
@@ -2193,6 +2226,11 @@ BEGIN
   check_owner;
   IF p_app_id IS NOT NULL THEN
     process_apex_app;
+  END IF;
+  $end
+  $if $$ords_installed $then
+  IF p_include_ords_modules THEN
+    process_ords_modules;
   END IF;
   $end
   IF p_include_object_ddl THEN
