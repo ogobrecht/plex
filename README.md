@@ -152,20 +152,20 @@ WITH
       p_app_include_single_file   => false,
       p_app_build_status_run_only => false,
       -- ORDS Modules (only available, when ORDS is installed):
-      p_include_object_ddl        => false,
+      p_include_ords_modules      => false,
       -- Schema Objects:
       p_include_object_ddl        => false,
       p_object_type_like          => NULL,
       p_object_type_not_like      => NULL,
       p_object_name_like          => NULL,
       p_object_name_not_like      => NULL,
-      -- Tbale Data:
+      -- Table Data:
       p_include_data              => false,
       p_data_as_of_minutes_ago    => 0,
       p_data_max_rows             => 1000,
       p_data_table_name_like      => NULL,
       p_data_table_name_not_like  => NULL,
-      -- Miscellaneous options:
+      -- General options:
       p_include_templates         => true,
       p_include_runtime_log       => true,
       p_include_error_log         => true,

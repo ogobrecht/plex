@@ -42,6 +42,7 @@ TYPE tab_queries IS TABLE OF rec_queries INDEX BY BINARY_INTEGER;
 TYPE tab_file_list_lookup IS TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
 
 TYPE rec_ddl_files IS RECORD (
+  ords_modules_    tab_vc1k,
   sequences_       tab_vc1k,
   tables_          tab_vc1k,
   ref_constraints_ tab_vc1k,
@@ -1022,6 +1023,12 @@ RETURN tab_export_files IS
   v_cur              obj_cur_typ;
   v_query            VARCHAR2(32767);
 
+  FUNCTION util_get_script_line (p_file_path VARCHAR2) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'prompt --' || replace(p_file_path, '.sql', NULL)
+      || c_lf || '@' || '../' || p_file_path || c_lf || c_lf;
+  END util_get_script_line; 
+
   PROCEDURE init IS
   BEGIN
     util_log_init(
@@ -1147,28 +1154,61 @@ RETURN tab_export_files IS
   $if $$ords_installed $then
   PROCEDURE process_ords_modules IS
     v_module_name user_ords_modules.name%type;
-  BEGIN
-    util_log_start(p_base_path_web_services || '/open_modules_cursor');
-    OPEN v_cur FOR 'select name from user_ords_modules';
-    util_log_stop;
     --
-    LOOP
-      FETCH v_cur INTO v_module_name;
-      EXIT WHEN v_cur%notfound;
-      BEGIN
-        v_file_path := p_base_path_web_services || '/' || v_module_name || '.sql';
-        util_log_start(v_file_path);
-        util_clob_append(ords_export.export_module(p_module_name => v_module_name) || chr(10) || '/');
-        util_clob_add_to_export_files(
-          p_export_files => v_export_files,
-          p_name         => v_file_path);
-        util_log_stop;
-      EXCEPTION
-        WHEN OTHERS THEN
-          util_log_error(v_file_path);
-      END;
-    END LOOP;
-    CLOSE v_cur;
+    PROCEDURE export_ords_modules IS
+    BEGIN
+      util_log_start(p_base_path_web_services || '/open_modules_cursor');
+      OPEN v_cur FOR 'select name from user_ords_modules';
+      util_log_stop;
+      --
+      LOOP
+        FETCH v_cur INTO v_module_name;
+        EXIT WHEN v_cur%notfound;
+        BEGIN
+          v_file_path := p_base_path_web_services || '/' || v_module_name || '.sql';
+          util_log_start(v_file_path);
+          util_clob_append(ords_export.export_module(p_module_name => v_module_name) || chr(10) || '/');
+          util_clob_add_to_export_files(
+            p_export_files => v_export_files,
+            p_name         => v_file_path);
+          v_ddl_files.ords_modules_(v_ddl_files.ords_modules_.count + 1) := v_file_path;
+          util_log_stop;
+        EXCEPTION
+          WHEN OTHERS THEN
+            util_log_error(v_file_path);
+        END;
+      END LOOP;
+      CLOSE v_cur;
+    END export_ords_modules;
+    --
+    PROCEDURE create_ords_install_file IS
+    BEGIN
+      v_file_path := 'scripts/install_ords_modules_generated_by_plex.sql';
+      util_log_start(v_file_path);
+      util_clob_append('/* A T T E N T I O N
+DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_ords_modules
+to false - otherwise your changes would be overwritten on next PLEX.BackApp
+call.
+*/
+
+set define off verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
+prompt --install_ords_modules_generated_by_plex
+
+  '   );
+      FOR i IN 1..v_ddl_files.ords_modules_.count LOOP
+        util_clob_append(util_get_script_line(v_ddl_files.sequences_(i)));
+      END LOOP;
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END create_ords_install_file;
+
+  BEGIN
+    export_ords_modules;
+    create_ords_install_file;
   END process_ords_modules;
   $end
 
@@ -1628,13 +1668,6 @@ END;
   END process_ref_constraints;
 
   PROCEDURE create_backend_install_file IS
-
-    FUNCTION get_script_line (p_file_path VARCHAR2) RETURN VARCHAR2 IS
-    BEGIN
-      RETURN 'prompt --' || replace(p_file_path, '.sql', NULL)
-        || c_lf || '@' || '../' || p_file_path || c_lf || c_lf;
-    END get_script_line;
-
   BEGIN
     v_file_path := 'scripts/install_backend_generated_by_plex.sql';
     util_log_start(v_file_path);
@@ -1652,52 +1685,54 @@ prompt --install_backend_generated_by_plex
 
 '   );
     FOR i IN 1..v_ddl_files.sequences_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.sequences_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.sequences_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.tables_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.tables_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.tables_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.ref_constraints_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.ref_constraints_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.ref_constraints_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.indices_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.indices_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.indices_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.views_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.views_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.views_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.types_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.types_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.types_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.type_bodies_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.type_bodies_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.type_bodies_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.triggers_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.triggers_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.triggers_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.functions_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.functions_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.functions_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.procedures_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.procedures_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.procedures_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.packages_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.packages_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.packages_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.package_bodies_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.package_bodies_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.package_bodies_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.grants_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.grants_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.grants_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.other_objects_.count LOOP
-      util_clob_append(get_script_line(v_ddl_files.other_objects_(i)));
+      util_clob_append(util_get_script_line(v_ddl_files.other_objects_(i)));
     END LOOP;
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
       p_name         => v_file_path);
     util_log_stop;
   END create_backend_install_file;
+
+
 
   PROCEDURE process_data IS
     TYPE obj_rec_typ IS RECORD (
@@ -1765,6 +1800,7 @@ SELECT table_name,
   PROCEDURE create_template_files IS
     v_file_template VARCHAR2(32767 CHAR);
   BEGIN
+    -- the readme template
     v_file_template := q'^Your Global README File
 =======================
 
@@ -1782,6 +1818,7 @@ for you:
 
 - scripts/install_backend_generated_by_plex.sql
 - scripts/install_frontend_generated_by_apex.sql
+- scripts/install_ords_modules_generated_by_plex.sql
 
 Do not touch these generated install files. They will be overwritten on each
 plex call. Depending on your call parameters it would be ok to modify the file
@@ -1814,6 +1851,8 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
       p_export_files => v_export_files,
       p_name         => v_file_path);
     util_log_stop;
+
+    -- export and import template - used by three files
     v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
 
@@ -1922,6 +1961,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       p_name         => v_file_path);
     util_log_stop;
 
+    -- export app custom code template
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
@@ -2092,7 +2132,7 @@ prompt
       p_export_files => v_export_files,
       p_name         => v_file_path);
     util_log_stop;
-    --
+    -- install app custom code template
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
@@ -2118,9 +2158,8 @@ set define off
 prompt
 prompt Start Installation
 prompt =========================================================================
-prompt Start backend installation
 
-prompt Call PLEX backend install script
+prompt Install backend
 {{@}}install_backend_generated_by_plex.sql
 
 prompt Compile invalid objects
@@ -2150,7 +2189,10 @@ BEGIN
 END;
 {{/}}
 
-prompt Start frontend installation
+prompt Install ORDS modules
+{{@}}install_ords_modules_generated_by_plex.sql
+
+prompt Install APEX frontend
 BEGIN
   apex_application_install.set_workspace_id(APEX_UTIL.find_security_group_id(:app_workspace));
   apex_application_install.set_application_alias(:app_alias);
@@ -2159,9 +2201,7 @@ BEGIN
   apex_application_install.generate_offset;
 END;
 {{/}}
-
-prompt Call APEX frontend install script
-{{@}}install_frontend_generated_by_APEX.sql
+{{@}}install_frontend_generated_by_apex.sql
 
 prompt =========================================================================
 prompt Installation DONE :-)
