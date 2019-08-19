@@ -1151,68 +1151,6 @@ RETURN tab_export_files IS
   END process_apex_app;
   $end
 
-  $if $$ords_installed $then
-  PROCEDURE process_ords_modules IS
-    v_module_name user_ords_modules.name%type;
-    --
-    PROCEDURE export_ords_modules IS
-    BEGIN
-      util_log_start(p_base_path_web_services || '/open_modules_cursor');
-      OPEN v_cur FOR 'select name from user_ords_modules';
-      util_log_stop;
-      --
-      LOOP
-        FETCH v_cur INTO v_module_name;
-        EXIT WHEN v_cur%notfound;
-        BEGIN
-          v_file_path := p_base_path_web_services || '/' || v_module_name || '.sql';
-          util_log_start(v_file_path);
-          util_clob_append(ords_export.export_module(p_module_name => v_module_name) || chr(10) || '/');
-          util_clob_add_to_export_files(
-            p_export_files => v_export_files,
-            p_name         => v_file_path);
-          v_ddl_files.ords_modules_(v_ddl_files.ords_modules_.count + 1) := v_file_path;
-          util_log_stop;
-        EXCEPTION
-          WHEN OTHERS THEN
-            util_log_error(v_file_path);
-        END;
-      END LOOP;
-      CLOSE v_cur;
-    END export_ords_modules;
-    --
-    PROCEDURE create_ords_install_file IS
-    BEGIN
-      v_file_path := 'scripts/install_ords_modules_generated_by_plex.sql';
-      util_log_start(v_file_path);
-      util_clob_append('/* A T T E N T I O N
-DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_ords_modules
-to false - otherwise your changes would be overwritten on next PLEX.BackApp
-call.
-*/
-
-set define off verify off feedback off
-whenever sqlerror exit sql.sqlcode rollback
-
-prompt --install_ords_modules_generated_by_plex
-
-  '   );
-      FOR i IN 1..v_ddl_files.ords_modules_.count LOOP
-        util_clob_append(util_get_script_line(v_ddl_files.sequences_(i)));
-      END LOOP;
-      util_clob_add_to_export_files(
-        p_export_files => v_export_files,
-        p_name         => v_file_path);
-      util_log_stop;
-    END create_ords_install_file;
-
-  BEGIN
-    export_ords_modules;
-    create_ords_install_file;
-  END process_ords_modules;
-  $end
-
-
   PROCEDURE replace_query_like_expressions (
     p_like_list          VARCHAR2,
     p_not_like_list      VARCHAR2,
@@ -1732,7 +1670,66 @@ prompt --install_backend_generated_by_plex
     util_log_stop;
   END create_backend_install_file;
 
+  $if $$ords_installed $then
+  PROCEDURE process_ords_modules IS
+    v_module_name user_ords_modules.name%type;
+    --
+    PROCEDURE export_ords_modules IS
+    BEGIN
+      util_log_start(p_base_path_web_services || '/open_modules_cursor');
+      OPEN v_cur FOR 'select name from user_ords_modules';
+      util_log_stop;
+      --
+      LOOP
+        FETCH v_cur INTO v_module_name;
+        EXIT WHEN v_cur%notfound;
+        BEGIN
+          v_file_path := p_base_path_web_services || '/' || v_module_name || '.sql';
+          util_log_start(v_file_path);
+          util_clob_append(ords_export.export_module(p_module_name => v_module_name) || chr(10) || '/');
+          util_clob_add_to_export_files(
+            p_export_files => v_export_files,
+            p_name         => v_file_path);
+          v_ddl_files.ords_modules_(v_ddl_files.ords_modules_.count + 1) := v_file_path;
+          util_log_stop;
+        EXCEPTION
+          WHEN OTHERS THEN
+            util_log_error(v_file_path);
+        END;
+      END LOOP;
+      CLOSE v_cur;
+    END export_ords_modules;
+    --
+    PROCEDURE create_ords_install_file IS
+    BEGIN
+      v_file_path := 'scripts/install_web_services_generated_by_ords.sql';
+      util_log_start(v_file_path);
+      util_clob_append('/* A T T E N T I O N
+DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_ords_modules
+to false - otherwise your changes would be overwritten on next PLEX.BackApp
+call.
+*/
 
+set define off verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
+prompt --install_web_services_generated_by_ords
+
+'   );
+      FOR i IN 1..v_ddl_files.ords_modules_.count LOOP
+        util_clob_append(util_get_script_line(v_ddl_files.ords_modules_(i)));
+      END LOOP;
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END create_ords_install_file;
+
+  BEGIN
+    export_ords_modules;
+    create_ords_install_file;
+  END process_ords_modules;
+  $end
 
   PROCEDURE process_data IS
     TYPE obj_rec_typ IS RECORD (
@@ -1818,7 +1815,7 @@ for you:
 
 - scripts/install_backend_generated_by_plex.sql
 - scripts/install_frontend_generated_by_apex.sql
-- scripts/install_ords_modules_generated_by_plex.sql
+- scripts/install_web_services_generated_by_ords.sql
 
 Do not touch these generated install files. They will be overwritten on each
 plex call. Depending on your call parameters it would be ok to modify the file
@@ -2159,10 +2156,10 @@ prompt
 prompt Start Installation
 prompt =========================================================================
 
-prompt Install backend
+prompt Install Backend
 {{@}}install_backend_generated_by_plex.sql
 
-prompt Compile invalid objects
+prompt Compile Invalid Objects
 BEGIN
   dbms_utility.compile_schema(
     schema         => user,
@@ -2171,7 +2168,7 @@ BEGIN
 END;
 {{/}}
 
-prompt Check invalid objects
+prompt Check Invalid Objects
 DECLARE
   v_count   PLS_INTEGER;
   v_objects VARCHAR2(4000);
@@ -2189,10 +2186,10 @@ BEGIN
 END;
 {{/}}
 
-prompt Install ORDS modules
-{{@}}install_ords_modules_generated_by_plex.sql
+prompt Install Web Services
+{{@}}install_web_services_generated_by_ords.sql
 
-prompt Install APEX frontend
+prompt Install Frontend
 BEGIN
   apex_application_install.set_workspace_id(APEX_UTIL.find_security_group_id(:app_workspace));
   apex_application_install.set_application_alias(:app_alias);
@@ -2268,11 +2265,6 @@ BEGIN
     process_apex_app;
   END IF;
   $end
-  $if $$ords_installed $then
-  IF p_include_ords_modules THEN
-    process_ords_modules;
-  END IF;
-  $end
   IF p_include_object_ddl THEN
     process_user_ddl;
     process_object_ddl;
@@ -2283,6 +2275,11 @@ BEGIN
     $end
     create_backend_install_file;
   END IF;
+  $if $$ords_installed $then
+  IF p_include_ords_modules THEN
+    process_ords_modules;
+  END IF;
+  $end
   IF p_include_data THEN
     process_data;
   END IF;
