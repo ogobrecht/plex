@@ -1228,9 +1228,7 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_roles.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_role_privs) LOOP
-        util_clob_append(dbms_metadata.get_granted_ddl(
-          'ROLE_GRANT',
-          v_current_user));
+        util_clob_append(dbms_metadata.get_granted_ddl('ROLE_GRANT', v_current_user));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1246,9 +1244,7 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_system_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_sys_privs) LOOP
-        util_clob_append(dbms_metadata.get_granted_ddl(
-          'SYSTEM_GRANT',
-          v_current_user));
+        util_clob_append(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', v_current_user));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1264,9 +1260,7 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_object_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT grantee FROM user_tab_privs WHERE grantee = v_current_user) LOOP
-        util_clob_append(dbms_metadata.get_granted_ddl(
-          'OBJECT_GRANT',
-          v_current_user));
+        util_clob_append(dbms_metadata.get_granted_ddl('OBJECT_GRANT', v_current_user));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1295,77 +1289,87 @@ END;
     v_query   := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
-SELECT CASE object_type
-         --http://psoug.org/reference/dbms_metadata.html
-         WHEN 'UNIFIED AUDIT POLICY' THEN 'AUDIT_OBJ'
-         WHEN 'CONSUMER GROUP'       THEN 'RMGR_CONSUMER_GROUP'
-         WHEN 'DATABASE LINK'        THEN 'DB_LINK'
-         WHEN 'EVALUATION CONTEXT'   THEN 'PROCOBJ'
-         WHEN 'JAVA CLASS'           THEN 'JAVA_CLASS'
-         WHEN 'JAVA RESOURCE'        THEN 'JAVA_RESOURCE'
-         WHEN 'JAVA SOURCE'          THEN 'JAVA_SOURCE'
-         WHEN 'JAVA TYPE'            THEN 'JAVA_TYPE'
-         WHEN 'JOB'                  THEN 'PROCOBJ'
-         WHEN 'JOB CLASS'            THEN 'PROCOBJ'
-         WHEN 'MATERIALIZED VIEW'    THEN 'MATERIALIZED_VIEW'
-         WHEN 'PACKAGE BODY'         THEN 'PACKAGE_BODY'
-         WHEN 'PACKAGE'              THEN 'PACKAGE_SPEC'
-         WHEN 'PROGRAM'              THEN 'PROCOBJ'
-         WHEN 'QUEUE'                THEN 'AQ_QUEUE'
-         WHEN 'RESOURCE PLAN'        THEN 'RMGR_PLAN'
-         WHEN 'RULE SET'             THEN 'PROCOBJ'
-         WHEN 'RULE'                 THEN 'PROCOBJ'
-         WHEN 'SCHEDULE'             THEN 'PROCOBJ'
-         WHEN 'SCHEDULER GROUP'      THEN 'PROCOBJ'
-         WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
-         WHEN 'TYPE'                 THEN 'TYPE_SPEC'
-         ELSE object_type
-       END AS object_type,
-       object_name,
-       '{{BASE_PATH_APP_BACKEND}}/'
-        || replace(lower(
-              CASE
-                WHEN object_type LIKE '%S'  THEN object_type || 'ES'
-                WHEN object_type LIKE '%EX' THEN regexp_replace(object_type, 'EX$', 'ICES', 1, 0, 'i')
-                WHEN object_type LIKE '%Y'  THEN regexp_replace(object_type, 'Y$', 'IES', 1, 0, 'i')
-                ELSE object_type || 'S'
-              END), ' ', '_')
-        || '/' || object_name
-        || CASE object_type
-              WHEN 'FUNCTION'     THEN '.fnc'
-              WHEN 'PACKAGE BODY' THEN '.pkb'
-              WHEN 'PACKAGE'      THEN '.pks'
-              WHEN 'PROCEDURE'    THEN '.prc'
-              WHEN 'TRIGGER'      THEN '.trg'
-              WHEN 'TYPE BODY'    THEN '.tpb'
-              WHEN 'TYPE'         THEN '.tps'
-              ELSE                     '.sql'
-            END AS file_path
-  FROM ^'
+WITH t AS (
+  SELECT CASE object_type
+           --http://psoug.org/reference/dbms_metadata.html
+           WHEN 'UNIFIED AUDIT POLICY' THEN 'AUDIT_OBJ'
+           WHEN 'CONSUMER GROUP'       THEN 'RMGR_CONSUMER_GROUP'
+           WHEN 'DATABASE LINK'        THEN 'DB_LINK'
+           WHEN 'EVALUATION CONTEXT'   THEN 'PROCOBJ'
+           WHEN 'JAVA CLASS'           THEN 'JAVA_CLASS'
+           WHEN 'JAVA RESOURCE'        THEN 'JAVA_RESOURCE'
+           WHEN 'JAVA SOURCE'          THEN 'JAVA_SOURCE'
+           WHEN 'JAVA TYPE'            THEN 'JAVA_TYPE'
+           WHEN 'JOB'                  THEN 'PROCOBJ'
+           WHEN 'JOB CLASS'            THEN 'PROCOBJ'
+           WHEN 'MATERIALIZED VIEW'    THEN 'MATERIALIZED_VIEW'
+           WHEN 'PACKAGE BODY'         THEN 'PACKAGE_BODY'
+           WHEN 'PACKAGE'              THEN 'PACKAGE_SPEC'
+           WHEN 'PROGRAM'              THEN 'PROCOBJ'
+           WHEN 'QUEUE'                THEN 'AQ_QUEUE'
+           WHEN 'RESOURCE PLAN'        THEN 'RMGR_PLAN'
+           WHEN 'RULE SET'             THEN 'PROCOBJ'
+           WHEN 'RULE'                 THEN 'PROCOBJ'
+           WHEN 'SCHEDULE'             THEN 'PROCOBJ'
+           WHEN 'SCHEDULER GROUP'      THEN 'PROCOBJ'
+           WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
+           WHEN 'TYPE'                 THEN 'TYPE_SPEC'
+           ELSE object_type
+         END AS object_type,
+         CASE 
+           WHEN object_type like 'JAVA%' AND substr(object_name, 1, 1) = '/' THEN
+             dbms_java.longname(object_name)
+           ELSE
+             object_name
+         END as object_name
+    FROM ^'
 $if NOT $$debug_on
 $then || 'user_objects'
 $else || '(SELECT MIN(object_name) AS object_name, object_type FROM user_objects GROUP BY object_type)'
 $end || q'^
- WHERE -- ignore invalid object types
-       object_type NOT IN ('UNDEFINED','DESTINATION','EDITION','JAVA DATA','WINDOW')
-       --These objects are included within other object types:
-   AND object_type NOT IN ('INDEX PARTITION','INDEX SUBPARTITION','LOB','LOB PARTITION','TABLE PARTITION','TABLE SUBPARTITION')
-       --Ignore system-generated types for collection processing:
-   AND NOT (object_type = 'TYPE' AND object_name LIKE 'SYS_PLSQL_%')
-       --Ignore system-generated sequences for identity columns:
-   AND NOT (object_type = 'SEQUENCE' AND object_name LIKE 'ISEQ$$_%')
-       --Ignore LOB indices, their DDL is part of the table:
-   AND object_name NOT IN (SELECT index_name FROM user_lobs)
-       --Ignore nested tables, their DDL is part of their parent table:
-   AND object_name NOT IN (SELECT table_name FROM user_nested_tables)
-       --Set user specific like filters:
-   AND (#TYPE_LIKE_EXPRESSIONS#)
-   AND (#TYPE_NOT_LIKE_EXPRESSIONS#)
-   AND (#NAME_LIKE_EXPRESSIONS#)
-   AND (#NAME_NOT_LIKE_EXPRESSIONS#)
- ORDER BY
-       object_type,
-       object_name
+   WHERE -- ignore invalid object types
+         object_type NOT IN ('UNDEFINED','DESTINATION','EDITION','JAVA DATA','WINDOW')
+         --These objects are included within other object types:
+     AND object_type NOT IN ('INDEX PARTITION','INDEX SUBPARTITION','LOB','LOB PARTITION','TABLE PARTITION','TABLE SUBPARTITION')
+         --Ignore system-generated types for collection processing:
+     AND NOT (object_type = 'TYPE' AND object_name LIKE 'SYS_PLSQL_%')
+         --Ignore system-generated sequences for identity columns:
+     AND NOT (object_type = 'SEQUENCE' AND object_name LIKE 'ISEQ$$_%')
+         --Ignore LOB indices, their DDL is part of the table:
+     AND object_name NOT IN (SELECT index_name FROM user_lobs)
+         --Ignore nested tables, their DDL is part of their parent table:
+     AND object_name NOT IN (SELECT table_name FROM user_nested_tables)
+         --Set user specific like filters:
+     AND (#TYPE_LIKE_EXPRESSIONS#)
+     AND (#TYPE_NOT_LIKE_EXPRESSIONS#)
+     AND (#NAME_LIKE_EXPRESSIONS#)
+     AND (#NAME_NOT_LIKE_EXPRESSIONS#)
+   ORDER BY
+         object_type,
+         object_name
+)
+SELECT object_type,
+       object_name,
+       '{{BASE_PATH_APP_BACKEND}}/'
+       || replace(lower(
+          CASE
+            WHEN object_type LIKE '%S'  THEN object_type || 'ES'
+            WHEN object_type LIKE '%EX' THEN regexp_replace(object_type, 'EX$', 'ICES', 1, 0, 'i')
+            WHEN object_type LIKE '%Y'  THEN regexp_replace(object_type, 'Y$', 'IES', 1, 0, 'i')
+            ELSE object_type || 'S'
+          END), ' ', '_')
+       || '/' || object_name
+       || CASE object_type
+             WHEN 'FUNCTION'     THEN '.fnc'
+             WHEN 'PACKAGE BODY' THEN '.pkb'
+             WHEN 'PACKAGE'      THEN '.pks'
+             WHEN 'PROCEDURE'    THEN '.prc'
+             WHEN 'TRIGGER'      THEN '.trg'
+             WHEN 'TYPE BODY'    THEN '.tpb'
+             WHEN 'TYPE'         THEN '.tps'
+             ELSE                     '.sql'
+           END AS file_path
+  FROM t
 ^'  ;
     v_query := replace(
       v_query,
@@ -1419,10 +1423,7 @@ $end || q'^
           WHEN v_rec.object_type = 'VIEW' THEN
             util_clob_append(ltrim(regexp_replace(regexp_replace(
               -- source string
-              dbms_metadata.get_ddl(
-                object_type => v_rec.object_type,
-                name        => v_rec.object_name,
-                schema      => v_current_user),
+              dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user),
               -- regex replace: remove additional column list from the compiler
               '\(.*\) ', NULL, 1, 1),
               -- regex replace: remove additional whitespace from the compiler
@@ -1459,10 +1460,7 @@ END;
               c_slash));
             util_setup_dbms_metadata;
           ELSE
-            util_clob_append(dbms_metadata.get_ddl(
-              object_type => v_rec.object_type,
-              name        => v_rec.object_name,
-              schema      => v_current_user));
+            util_clob_append(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user));
         END CASE;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
@@ -1516,10 +1514,7 @@ ORDER BY
       EXIT WHEN v_cur%notfound;
       BEGIN
         util_log_start(v_rec.file_path);
-        util_clob_append(dbms_metadata.get_dependent_ddl(
-          'OBJECT_GRANT',
-          v_rec.object_name,
-          v_rec.grantor));
+        util_clob_append(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', v_rec.object_name, v_rec.grantor));
         v_ddl_files.grants_(v_ddl_files.grants_.count + 1) := v_rec.file_path;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
@@ -1580,7 +1575,7 @@ FOR i IN (SELECT '{{CONSTRAINT_NAME}}' AS constraint_name FROM dual
 ^'        ,
           '{{CONSTRAINT_NAME}}',
           v_rec.constraint_name)
-          || dbms_metadata.get_ddl('REF_CONSTRAINT', v_rec.constraint_name)
+          || dbms_metadata.get_ddl('REF_CONSTRAINT', v_rec.constraint_name, v_current_user)
           || replace(q'^
 --------------------------------------------------------------------------------
   ]';
@@ -1828,7 +1823,7 @@ following templates - they call the generated files and you can do your own
 stuff before or after the calls.
 
 - scripts/templates/1_export_app_from_DEV.bat
-- scripts/templates/2_install_app_into_TEST.bat
+- scripts/templates/2_install_app_into_INT.bat
 - scripts/templates/3_install_app_into_PROD.bat
 - scripts/templates/export_app_custom_code.sql
 - scripts/templates/install_app_custom_code.sql
@@ -1916,13 +1911,13 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       p_name         => v_file_path);
     util_log_stop;
 
-    v_file_path := 'scripts/templates/2_install_app_into_TEST.bat';
+    v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
     util_log_start(v_file_path);
     util_clob_append(util_multi_replace(
       v_file_template,
       '{{PLEX_VERSION}}',  c_plex_version,
       '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'TEST',
+      '{{SYSTEMROLE}}',    'INT',
       $if $$apex_installed $then
       '{{APP_ID}}',        p_app_id,
       '{{APP_ALIAS}}',     v_app_alias,
@@ -2005,7 +2000,7 @@ END;
 prompt Do the app export, relocate files and save to temporary table
 prompt ATTENTION: Depending on your options this could take some time ...
 DECLARE
-  v_files tab_export_files;
+  v_files plex.tab_export_files;
 BEGIN
   v_files := plex.backapp(
     -- These are the defaults - align it to your needs:^';
