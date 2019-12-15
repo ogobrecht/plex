@@ -8,7 +8,7 @@ DECLARE
   v_apex_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_ords_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_utils_public   VARCHAR2(5) := 'FALSE'; -- Make utilities public available (for testing or other usages).
-  v_debug_on       VARCHAR2(5) := 'FALSE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
+  v_debug_on       VARCHAR2(5) := 'TRUE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
 BEGIN
   FOR i IN (SELECT *
               FROM all_objects
@@ -44,9 +44,9 @@ c_plex_author      CONSTANT VARCHAR2(20 CHAR) := 'Ottmar Gobrecht';
 PL/SQL Export Utilities
 =======================
 
-PLEX was created to be able to quickstart version control for existing (APEX) apps and has currently two main functions called **BackApp** and **Queries_to_CSV**. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone.
+PLEX was created to be able to quickstart version control for existing Oracle DB projects and has currently two main functions called **BackApp** and **Queries_to_CSV**. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone.
 
-See also this resources for more information:
+Also see also this resources for more information:
 
 - [Blog post on how to getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
 - [PLEX project page on GitHub](https://github.com/ogobrecht/plex)
@@ -58,7 +58,8 @@ DEPENDENCIES
 The package itself is independend, but functionality varies on the following conditions:
 
 - For APEX app export: APEX >= 5.1.4 installed
-- For ORDS modules export: ORDS >= FIXME installed
+- For ORDS modules export: ORDS >= 18.3 installed (I think package ords_export is included since this version, but I don't know it)
+    - ATTENTION: There seems to be a bug in ORDS 19.2 which prevents you to export ORDS modules via the package ords_export: https://community.oracle.com/thread/4292776; please see plex_error_log.md, if you miss your ORDS modules after an export - this is no problem of PLEX
 
 
 INSTALLATION
@@ -73,7 +74,11 @@ INSTALLATION
 CHANGELOG
 
 - 2.1.0 (2019-xx-xx)
-    - New parameter to include ORDS modules
+    - Function BackApp:
+        - New parameter to include ORDS modules
+        - Fixed: Unable to export JAVA objects on systems with 30 character object names
+        - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty 
+        - Improved script templates
 - 2.0.2 (2019-08-16)
     - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
@@ -81,14 +86,18 @@ CHANGELOG
 - 2.0.0 (2019-06-20)
     - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
         - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
-    - New parameters to filter for object types
-    - New parameters to change base paths for backend, frontend and data
+    - Function BackApp:
+        - New parameters to filter for object types
+        - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
-    - Fix script templates: Change old parameters in plex.backapp call
+    - Function BackApp:
+        - Fix script templates: Change old parameters in plex.backapp call
     - Add install and uninstall scripts for PLEX itself
 - 1.2.0 (2018-10-31)
-    - New: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
-    - Fixed: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export data to CSV functionality
+    - Function BackApp:
+        - New: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
+    - Function Queries_to_CSV:
+        - Fixed: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
 - 1.1.0 (2018-09-23)
     - Change filter parameter from regular expression to list of like expressions for easier handling
 - 1.0.0 (2018-08-26)
@@ -136,44 +145,45 @@ TYPE tab_vc1k  IS TABLE OF VARCHAR2(1024) INDEX BY BINARY_INTEGER;
 FUNCTION backapp (
   $if $$apex_installed $then
   -- APEX App:
-  p_app_id                    IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
-  p_app_date                  IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
-  p_app_public_reports        IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
-  p_app_private_reports       IN BOOLEAN  DEFAULT false, -- If true, include private reports that a user saved.
-  p_app_notifications         IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
-  p_app_translations          IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
-  p_app_pkg_app_mapping       IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
-  p_app_original_ids          IN BOOLEAN  DEFAULT false, -- If true, export with the IDs as they were when the application was imported.
-  p_app_subscriptions         IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
-  p_app_comments              IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
-  p_app_supporting_objects    IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
-  p_app_include_single_file   IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
-  p_app_build_status_run_only IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
+  p_app_id                      IN NUMBER   DEFAULT null,  -- If null, we simply skip the APEX app export.
+  p_app_date                    IN BOOLEAN  DEFAULT true,  -- If true, include export date and time in the result.
+  p_app_public_reports          IN BOOLEAN  DEFAULT true,  -- If true, include public reports that a user saved.
+  p_app_private_reports         IN BOOLEAN  DEFAULT false, -- If true, include private reports that a user saved.
+  p_app_notifications           IN BOOLEAN  DEFAULT false, -- If true, include report notifications.
+  p_app_translations            IN BOOLEAN  DEFAULT true,  -- If true, include application translation mappings and all text from the translation repository.
+  p_app_pkg_app_mapping         IN BOOLEAN  DEFAULT false, -- If true, export installed packaged applications with references to the packaged application definition. If FALSE, export them as normal applications.
+  p_app_original_ids            IN BOOLEAN  DEFAULT false, -- If true, export with the IDs as they were when the application was imported.
+  p_app_subscriptions           IN BOOLEAN  DEFAULT true,  -- If true, components contain subscription references.
+  p_app_comments                IN BOOLEAN  DEFAULT true,  -- If true, include developer comments.
+  p_app_supporting_objects      IN VARCHAR2 DEFAULT null,  -- If 'Y', export supporting objects. If 'I', automatically install on import. If 'N', do not export supporting objects. If null, the application's include in export deployment value is used.
+  p_app_include_single_file     IN BOOLEAN  DEFAULT false, -- If true, the single sql install file is also included beside the splitted files.
+  p_app_build_status_run_only   IN BOOLEAN  DEFAULT false, -- If true, the build status of the app will be overwritten to RUN_ONLY.
   $end
   $if $$ords_installed $then
   -- ORDS Modules:
-  p_include_ords_modules      IN BOOLEAN  DEFAULT false, -- If true, include ORDS modules of current user/schema.
+  p_include_ords_modules        IN BOOLEAN  DEFAULT false, -- If true, include ORDS modules of current user/schema.
   $end
   -- Schema Objects:
-  p_include_object_ddl        IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
-  p_object_type_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
-  p_object_type_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type not like '%BODY' escape '\' and object_type not like 'JAVA%' escape '\').
-  p_object_name_like          IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
-  p_object_name_not_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name not like 'EMP%' escape '\' and object_name not like 'DEPT%' escape '\').
+  p_include_object_ddl          IN BOOLEAN  DEFAULT false, -- If true, include DDL of current user/schema and all its objects.
+  p_object_type_like            IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type like '%BODY' escape '\' or object_type like 'JAVA%' escape '\').
+  p_object_type_not_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: '%BODY,JAVA%' will be translated to: ... from user_objects where ... and (object_type not like '%BODY' escape '\' and object_type not like 'JAVA%' escape '\').
+  p_object_name_like            IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name like 'EMP%' escape '\' or object_name like 'DEPT%' escape '\').
+  p_object_name_not_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the objects - example: 'EMP%,DEPT%' will be translated to: ... from user_objects where ... and (object_name not like 'EMP%' escape '\' and object_name not like 'DEPT%' escape '\').
+  p_object_view_remove_col_list IN BOOLEAN  DEFAULT true,  -- If true, the outer column list, added by Oracle on views during compilation, is removed
   -- Table Data:
-  p_include_data              IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
-  p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
-  p_data_max_rows             IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
-  p_data_table_name_like      IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
-  p_data_table_name_not_like  IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
+  p_include_data                IN BOOLEAN  DEFAULT false, -- If true, include CSV data of each table.
+  p_data_as_of_minutes_ago      IN NUMBER   DEFAULT 0,     -- Read consistent data with the resulting timestamp(SCN).
+  p_data_max_rows               IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
+  p_data_table_name_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
+  p_data_table_name_not_like    IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
   -- General Options:
-  p_include_templates         IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
-  p_include_error_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
-  p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',      -- The base path in the project root for the Schema objects.
-  p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend',     -- The base path in the project root for the APEX app.
-  p_base_path_web_services    IN VARCHAR2 DEFAULT 'app_web_services', -- The base path in the project root for the ORDS modules.
-  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')         -- The base path in the project root for the table data.
+  p_include_templates           IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
+  p_include_runtime_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
+  p_include_error_log           IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_error_log.md with detailed error messages.
+  p_base_path_backend           IN VARCHAR2 DEFAULT 'app_backend',      -- The base path in the project root for the Schema objects.
+  p_base_path_frontend          IN VARCHAR2 DEFAULT 'app_frontend',     -- The base path in the project root for the APEX app.
+  p_base_path_web_services      IN VARCHAR2 DEFAULT 'app_web_services', -- The base path in the project root for the ORDS modules.
+  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data')         -- The base path in the project root for the table data.
 RETURN tab_export_files;
 /**
 Get a file collection of an APEX application (or the current user/schema only) including:
@@ -1523,40 +1533,41 @@ END util_clob_create_runtime_log;
 
 FUNCTION backapp (
   $if $$apex_installed $then
-  p_app_id                    IN NUMBER   DEFAULT NULL,
-  p_app_date                  IN BOOLEAN  DEFAULT true,
-  p_app_public_reports        IN BOOLEAN  DEFAULT true,
-  p_app_private_reports       IN BOOLEAN  DEFAULT false,
-  p_app_notifications         IN BOOLEAN  DEFAULT false,
-  p_app_translations          IN BOOLEAN  DEFAULT true,
-  p_app_pkg_app_mapping       IN BOOLEAN  DEFAULT false,
-  p_app_original_ids          IN BOOLEAN  DEFAULT false,
-  p_app_subscriptions         IN BOOLEAN  DEFAULT true,
-  p_app_comments              IN BOOLEAN  DEFAULT true,
-  p_app_supporting_objects    IN VARCHAR2 DEFAULT NULL,
-  p_app_include_single_file   IN BOOLEAN  DEFAULT false,
-  p_app_build_status_run_only IN BOOLEAN  DEFAULT false,
+  p_app_id                      IN NUMBER   DEFAULT NULL,
+  p_app_date                    IN BOOLEAN  DEFAULT true,
+  p_app_public_reports          IN BOOLEAN  DEFAULT true,
+  p_app_private_reports         IN BOOLEAN  DEFAULT false,
+  p_app_notifications           IN BOOLEAN  DEFAULT false,
+  p_app_translations            IN BOOLEAN  DEFAULT true,
+  p_app_pkg_app_mapping         IN BOOLEAN  DEFAULT false,
+  p_app_original_ids            IN BOOLEAN  DEFAULT false,
+  p_app_subscriptions           IN BOOLEAN  DEFAULT true,
+  p_app_comments                IN BOOLEAN  DEFAULT true,
+  p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
+  p_app_include_single_file     IN BOOLEAN  DEFAULT false,
+  p_app_build_status_run_only   IN BOOLEAN  DEFAULT false,
   $end
   $if $$ords_installed $then
-  p_include_ords_modules      IN BOOLEAN  DEFAULT false,
+  p_include_ords_modules        IN BOOLEAN  DEFAULT false,
   $end
-  p_include_object_ddl        IN BOOLEAN  DEFAULT false,
-  p_object_type_like          IN VARCHAR2 DEFAULT NULL,
-  p_object_type_not_like      IN VARCHAR2 DEFAULT NULL,
-  p_object_name_like          IN VARCHAR2 DEFAULT NULL,
-  p_object_name_not_like      IN VARCHAR2 DEFAULT NULL,
-  p_include_data              IN BOOLEAN  DEFAULT false,
-  p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,
-  p_data_max_rows             IN NUMBER   DEFAULT 1000,
-  p_data_table_name_like      IN VARCHAR2 DEFAULT NULL,
-  p_data_table_name_not_like  IN VARCHAR2 DEFAULT NULL,
-  p_include_templates         IN BOOLEAN  DEFAULT true,
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,
-  p_include_error_log         IN BOOLEAN  DEFAULT true,
-  p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',
-  p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend',
-  p_base_path_web_services    IN VARCHAR2 DEFAULT 'app_web_services',
-  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')
+  p_include_object_ddl          IN BOOLEAN  DEFAULT false,
+  p_object_type_like            IN VARCHAR2 DEFAULT NULL,
+  p_object_type_not_like        IN VARCHAR2 DEFAULT NULL,
+  p_object_name_like            IN VARCHAR2 DEFAULT NULL,
+  p_object_name_not_like        IN VARCHAR2 DEFAULT NULL,
+  p_object_view_remove_col_list IN BOOLEAN  DEFAULT true, 
+  p_include_data                IN BOOLEAN  DEFAULT false,
+  p_data_as_of_minutes_ago      IN NUMBER   DEFAULT 0,
+  p_data_max_rows               IN NUMBER   DEFAULT 1000,
+  p_data_table_name_like        IN VARCHAR2 DEFAULT NULL,
+  p_data_table_name_not_like    IN VARCHAR2 DEFAULT NULL,
+  p_include_templates           IN BOOLEAN  DEFAULT true,
+  p_include_runtime_log         IN BOOLEAN  DEFAULT true,
+  p_include_error_log           IN BOOLEAN  DEFAULT true,
+  p_base_path_backend           IN VARCHAR2 DEFAULT 'app_backend',
+  p_base_path_frontend          IN VARCHAR2 DEFAULT 'app_frontend',
+  p_base_path_web_services      IN VARCHAR2 DEFAULT 'app_web_services',
+  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data')
 RETURN tab_export_files IS
   v_apex_version     NUMBER;
   v_data_timestamp   TIMESTAMP;
@@ -1872,7 +1883,7 @@ WITH t AS (
              dbms_java.longname(object_name)
            ELSE
              object_name
-         END as object_name
+         END AS object_name
     FROM ^'
 $if NOT $$debug_on
 $then || 'user_objects'
@@ -1971,7 +1982,7 @@ SELECT object_type,
             v_ddl_files.other_objects_(v_ddl_files.other_objects_.count + 1) := v_rec.file_path;
         END CASE;
         CASE
-          WHEN v_rec.object_type = 'VIEW' THEN
+          WHEN v_rec.object_type = 'VIEW' AND p_object_view_remove_col_list THEN
             util_clob_append(ltrim(regexp_replace(regexp_replace(
               -- source string
               dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user),
@@ -1981,9 +1992,6 @@ SELECT object_type,
               '^\s*SELECT', 'SELECT', 1, 1, 'im'),
               -- ltrim: remove leading whitspace
               ' ' || c_lf));
-            util_clob_add_to_export_files(
-              p_export_files => v_export_files,
-              p_name         => v_rec.file_path);
           WHEN v_rec.object_type IN ('TABLE', 'INDEX', 'SEQUENCE') THEN
             util_setup_dbms_metadata(p_sqlterminator => false);
             util_clob_append(replace(q'^
@@ -2158,7 +2166,7 @@ END;
     util_clob_append('/* A T T E N T I O N
 DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_object_ddl
 to false - otherwise your changes would be overwritten on next PLEX.BackApp
-call. It is recommended to export your object ddl only ones on initial
+call. It is recommended to export your object DDL only ones on initial
 repository creation and then start to use the "files first approach".
 */
 
@@ -2273,7 +2281,9 @@ prompt --install_web_services_generated_by_ords
 
   BEGIN
     export_ords_modules;
-    create_ords_install_file;
+    IF v_ddl_files.ords_modules_.count > 0 THEN
+      create_ords_install_file;
+    END IF;
   END process_ords_modules;
   $end
 
@@ -2455,7 +2465,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'export_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/export_app_%app_id%_from_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2476,7 +2486,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/install_app_%app_id%_into_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2497,7 +2507,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/install_app_%app_id%_into_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2508,7 +2518,9 @@ if %errorlevel% neq 0 exit /b %errorlevel%
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
-set verify off feedback off heading off
+set timing on
+timing start EXPORT_APP
+set timing off verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 -- whenever oserror exit failure rollback
@@ -2572,6 +2584,7 @@ BEGIN
     p_app_build_status_run_only => false,^';
       $end
       v_file_template := v_file_template || q'^
+
     p_include_object_ddl        => true,
     p_object_type_like          => null,
     p_object_type_not_like      => null,
@@ -2658,7 +2671,7 @@ spool "&logfile." append
 prompt Delete files from the global temporary table
 COMMIT;
 
-
+timing stop EXPORT_APP
 prompt =========================================================================
 prompt Export DONE :-)
 prompt
@@ -2679,7 +2692,9 @@ prompt
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
-set define on verify off feedback off
+set timing on define on 
+timing start INSTALL_APP
+set timing off verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 -- whenever oserror exit failure rollback
 define logfile = "&1"
@@ -2696,7 +2711,7 @@ BEGIN
 END;
 {{/}}
 set define off
-
+ 
 
 prompt
 prompt Start Installation
@@ -2746,6 +2761,7 @@ END;
 {{/}}
 {{@}}install_frontend_generated_by_apex.sql
 
+timing stop INSTALL_APP
 prompt =========================================================================
 prompt Installation DONE :-)
 prompt

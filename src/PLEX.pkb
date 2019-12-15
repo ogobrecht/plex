@@ -972,40 +972,41 @@ END util_clob_create_runtime_log;
 
 FUNCTION backapp (
   $if $$apex_installed $then
-  p_app_id                    IN NUMBER   DEFAULT NULL,
-  p_app_date                  IN BOOLEAN  DEFAULT true,
-  p_app_public_reports        IN BOOLEAN  DEFAULT true,
-  p_app_private_reports       IN BOOLEAN  DEFAULT false,
-  p_app_notifications         IN BOOLEAN  DEFAULT false,
-  p_app_translations          IN BOOLEAN  DEFAULT true,
-  p_app_pkg_app_mapping       IN BOOLEAN  DEFAULT false,
-  p_app_original_ids          IN BOOLEAN  DEFAULT false,
-  p_app_subscriptions         IN BOOLEAN  DEFAULT true,
-  p_app_comments              IN BOOLEAN  DEFAULT true,
-  p_app_supporting_objects    IN VARCHAR2 DEFAULT NULL,
-  p_app_include_single_file   IN BOOLEAN  DEFAULT false,
-  p_app_build_status_run_only IN BOOLEAN  DEFAULT false,
+  p_app_id                      IN NUMBER   DEFAULT NULL,
+  p_app_date                    IN BOOLEAN  DEFAULT true,
+  p_app_public_reports          IN BOOLEAN  DEFAULT true,
+  p_app_private_reports         IN BOOLEAN  DEFAULT false,
+  p_app_notifications           IN BOOLEAN  DEFAULT false,
+  p_app_translations            IN BOOLEAN  DEFAULT true,
+  p_app_pkg_app_mapping         IN BOOLEAN  DEFAULT false,
+  p_app_original_ids            IN BOOLEAN  DEFAULT false,
+  p_app_subscriptions           IN BOOLEAN  DEFAULT true,
+  p_app_comments                IN BOOLEAN  DEFAULT true,
+  p_app_supporting_objects      IN VARCHAR2 DEFAULT NULL,
+  p_app_include_single_file     IN BOOLEAN  DEFAULT false,
+  p_app_build_status_run_only   IN BOOLEAN  DEFAULT false,
   $end
   $if $$ords_installed $then
-  p_include_ords_modules      IN BOOLEAN  DEFAULT false,
+  p_include_ords_modules        IN BOOLEAN  DEFAULT false,
   $end
-  p_include_object_ddl        IN BOOLEAN  DEFAULT false,
-  p_object_type_like          IN VARCHAR2 DEFAULT NULL,
-  p_object_type_not_like      IN VARCHAR2 DEFAULT NULL,
-  p_object_name_like          IN VARCHAR2 DEFAULT NULL,
-  p_object_name_not_like      IN VARCHAR2 DEFAULT NULL,
-  p_include_data              IN BOOLEAN  DEFAULT false,
-  p_data_as_of_minutes_ago    IN NUMBER   DEFAULT 0,
-  p_data_max_rows             IN NUMBER   DEFAULT 1000,
-  p_data_table_name_like      IN VARCHAR2 DEFAULT NULL,
-  p_data_table_name_not_like  IN VARCHAR2 DEFAULT NULL,
-  p_include_templates         IN BOOLEAN  DEFAULT true,
-  p_include_runtime_log       IN BOOLEAN  DEFAULT true,
-  p_include_error_log         IN BOOLEAN  DEFAULT true,
-  p_base_path_backend         IN VARCHAR2 DEFAULT 'app_backend',
-  p_base_path_frontend        IN VARCHAR2 DEFAULT 'app_frontend',
-  p_base_path_web_services    IN VARCHAR2 DEFAULT 'app_web_services',
-  p_base_path_data            IN VARCHAR2 DEFAULT 'app_data')
+  p_include_object_ddl          IN BOOLEAN  DEFAULT false,
+  p_object_type_like            IN VARCHAR2 DEFAULT NULL,
+  p_object_type_not_like        IN VARCHAR2 DEFAULT NULL,
+  p_object_name_like            IN VARCHAR2 DEFAULT NULL,
+  p_object_name_not_like        IN VARCHAR2 DEFAULT NULL,
+  p_object_view_remove_col_list IN BOOLEAN  DEFAULT true, 
+  p_include_data                IN BOOLEAN  DEFAULT false,
+  p_data_as_of_minutes_ago      IN NUMBER   DEFAULT 0,
+  p_data_max_rows               IN NUMBER   DEFAULT 1000,
+  p_data_table_name_like        IN VARCHAR2 DEFAULT NULL,
+  p_data_table_name_not_like    IN VARCHAR2 DEFAULT NULL,
+  p_include_templates           IN BOOLEAN  DEFAULT true,
+  p_include_runtime_log         IN BOOLEAN  DEFAULT true,
+  p_include_error_log           IN BOOLEAN  DEFAULT true,
+  p_base_path_backend           IN VARCHAR2 DEFAULT 'app_backend',
+  p_base_path_frontend          IN VARCHAR2 DEFAULT 'app_frontend',
+  p_base_path_web_services      IN VARCHAR2 DEFAULT 'app_web_services',
+  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data')
 RETURN tab_export_files IS
   v_apex_version     NUMBER;
   v_data_timestamp   TIMESTAMP;
@@ -1321,7 +1322,7 @@ WITH t AS (
              dbms_java.longname(object_name)
            ELSE
              object_name
-         END as object_name
+         END AS object_name
     FROM ^'
 $if NOT $$debug_on
 $then || 'user_objects'
@@ -1420,7 +1421,7 @@ SELECT object_type,
             v_ddl_files.other_objects_(v_ddl_files.other_objects_.count + 1) := v_rec.file_path;
         END CASE;
         CASE
-          WHEN v_rec.object_type = 'VIEW' THEN
+          WHEN v_rec.object_type = 'VIEW' AND p_object_view_remove_col_list THEN
             util_clob_append(ltrim(regexp_replace(regexp_replace(
               -- source string
               dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user),
@@ -1430,9 +1431,6 @@ SELECT object_type,
               '^\s*SELECT', 'SELECT', 1, 1, 'im'),
               -- ltrim: remove leading whitspace
               ' ' || c_lf));
-            util_clob_add_to_export_files(
-              p_export_files => v_export_files,
-              p_name         => v_rec.file_path);
           WHEN v_rec.object_type IN ('TABLE', 'INDEX', 'SEQUENCE') THEN
             util_setup_dbms_metadata(p_sqlterminator => false);
             util_clob_append(replace(q'^
@@ -1607,7 +1605,7 @@ END;
     util_clob_append('/* A T T E N T I O N
 DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_object_ddl
 to false - otherwise your changes would be overwritten on next PLEX.BackApp
-call. It is recommended to export your object ddl only ones on initial
+call. It is recommended to export your object DDL only ones on initial
 repository creation and then start to use the "files first approach".
 */
 
@@ -1722,7 +1720,9 @@ prompt --install_web_services_generated_by_ords
 
   BEGIN
     export_ords_modules;
-    create_ords_install_file;
+    IF v_ddl_files.ords_modules_.count > 0 THEN
+      create_ords_install_file;
+    END IF;
   END process_ords_modules;
   $end
 
@@ -1904,7 +1904,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'export_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/export_app_%app_id%_from_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -1925,7 +1925,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/install_app_%app_id%_into_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -1946,7 +1946,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/install_app_%app_id%_into_%app_schema%_at_%systemrole%_%mydate%_%mytime%.log',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -1957,7 +1957,9 @@ if %errorlevel% neq 0 exit /b %errorlevel%
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
-set verify off feedback off heading off
+set timing on
+timing start EXPORT_APP
+set timing off verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 -- whenever oserror exit failure rollback
@@ -2021,6 +2023,7 @@ BEGIN
     p_app_build_status_run_only => false,^';
       $end
       v_file_template := v_file_template || q'^
+
     p_include_object_ddl        => true,
     p_object_type_like          => null,
     p_object_type_not_like      => null,
@@ -2107,7 +2110,7 @@ spool "&logfile." append
 prompt Delete files from the global temporary table
 COMMIT;
 
-
+timing stop EXPORT_APP
 prompt =========================================================================
 prompt Export DONE :-)
 prompt
@@ -2128,7 +2131,9 @@ prompt
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
-set define on verify off feedback off
+set timing on define on 
+timing start INSTALL_APP
+set timing off verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 -- whenever oserror exit failure rollback
 define logfile = "&1"
@@ -2145,7 +2150,7 @@ BEGIN
 END;
 {{/}}
 set define off
-
+ 
 
 prompt
 prompt Start Installation
@@ -2195,6 +2200,7 @@ END;
 {{/}}
 {{@}}install_frontend_generated_by_apex.sql
 
+timing stop INSTALL_APP
 prompt =========================================================================
 prompt Installation DONE :-)
 prompt
