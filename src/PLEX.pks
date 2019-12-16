@@ -41,9 +41,9 @@ CHANGELOG
 - 2.1.0 (2019-xx-xx)
     - Function BackApp:
         - New parameter to include ORDS modules
+        - Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
         - Fixed: Unable to export JAVA objects on systems with 30 character object names
         - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty 
-        - Improved script templates
 - 2.0.2 (2019-08-16)
     - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
@@ -370,7 +370,25 @@ BEGIN
   -- do something with the zip file...
 END;
 ```
-***/
+**/
+
+FUNCTION to_base64(
+  p_blob IN BLOB) -- The BLOB to convert.
+RETURN CLOB;
+/**
+Encodes a BLOB into a Base64 CLOB for transfers over a network (like with SQL*Plus). For encoding on the client side see [this blog article](https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/).
+
+```sql
+DECLARE
+  l_clob CLOB;
+BEGIN
+  l_clob := plex.to_base64(plex.to_zip(plex.backapp(
+    p_app_id             => 100,
+    p_include_object_ddl => true)));
+  -- do something with the clob...
+END;
+```
+**/
 
 FUNCTION view_error_log RETURN tab_error_log PIPELINED;
 /**

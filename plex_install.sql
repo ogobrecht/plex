@@ -8,7 +8,7 @@ DECLARE
   v_apex_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_ords_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_utils_public   VARCHAR2(5) := 'FALSE'; -- Make utilities public available (for testing or other usages).
-  v_debug_on       VARCHAR2(5) := 'TRUE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
+  v_debug_on       VARCHAR2(5) := 'FALSE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
 BEGIN
   FOR i IN (SELECT *
               FROM all_objects
@@ -76,9 +76,9 @@ CHANGELOG
 - 2.1.0 (2019-xx-xx)
     - Function BackApp:
         - New parameter to include ORDS modules
+        - Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
         - Fixed: Unable to export JAVA objects on systems with 30 character object names
         - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty 
-        - Improved script templates
 - 2.0.2 (2019-08-16)
     - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
@@ -405,7 +405,25 @@ BEGIN
   -- do something with the zip file...
 END;
 ```
-***/
+**/
+
+FUNCTION to_base64(
+  p_blob IN BLOB) -- The BLOB to convert.
+RETURN CLOB;
+/**
+Encodes a BLOB into a Base64 CLOB for transfers over a network (like with SQL*Plus). For encoding on the client side see [this blog article](https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/).
+
+```sql
+DECLARE
+  l_clob CLOB;
+BEGIN
+  l_clob := plex.to_base64(plex.to_zip(plex.backapp(
+    p_app_id             => 100,
+    p_include_object_ddl => true)));
+  -- do something with the clob...
+END;
+```
+**/
 
 FUNCTION view_error_log RETURN tab_error_log PIPELINED;
 /**
@@ -2414,9 +2432,87 @@ setlocal
 set "areyousure=N"
 
 rem ### BEGIN CONFIG ###########################################################
-rem Align delimiters to your operating system locale:
-for /f "tokens=1-3 delims=. " %%a in ("%DATE%") do (set "mydate=%%c%%b%%a")
-for /f "tokens=1-3 delims=:." %%a in ("%TIME: =0%") do (set "mytime=%%a%%b%%c")
+rem Align substrings to your operating system locale: (how it works: https://stackoverflow.com/a/23558738)
+set "datetime=%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
+set "datetime=%datetime: =0%"
+set "systemrole=DEV"
+set "connection=localhost:1521/xepdb1"
+set "app_schema=DEMO"
+set "app_id=101"
+set "scriptfile=export_app_custom_code.sql"
+set "logfile=logs/%datetime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log"
+set "zipfile=BackApp_%app_id%_from_%app_schema%_at_%systemrole%_%datetime%.zip"
+rem ### END CONFIG #############################################################
+
+:PROMPT
+echo.
+echo.
+set /p "areyousure=Run %scriptfile% on %app_schema%@%systemrole%(%connection%) [Y/N]? " || set "areyousure=N"
+if /i %areyousure% neq y goto END
+set NLS_LANG=AMERICAN_AMERICA.UTF8
+set /p "password=Please enter password for %app_schema% [default = oracle]: " || set "password=oracle"
+echo This is the runlog for %scriptfile% on %app_schema%@%systemrole%(%connection%) > %logfile%
+echo exit | sqlplus -S %app_schema%/%password%@%connection% ^
+{{@}}%scriptfile% ^
+%logfile% ^
+%zipfile% ^
+%app_id%
+
+if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-( >> %logfile%
+if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-(
+
+echo Decode file %zipfile%.base64 >> %logfile%
+echo Decode file %zipfile%.base64
+certutil -decode %zipfile%.base64 %zipfile%
+del %zipfile%.base64
+
+echo Unzip file %zipfile% >> %logfile%
+echo Unzip file %zipfile%
+tar -xf "%zipfile%" -C ..
+
+echo Delete file %zipfile% >> %logfile%
+echo Delete file %zipfile%
+del %zipfile%
+
+:END
+rem Remove "pause" for fully automated setup:
+pause
+if %errorlevel% neq 0 exit /b %errorlevel%
+^'  ;
+    v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
+    util_log_start(v_file_path);
+    util_clob_append(util_multi_replace(
+      v_file_template,
+      '{{PLEX_VERSION}}',  c_plex_version,
+      '{{PLEX_URL}}',      c_plex_url,
+      '{{SYSTEMROLE}}',    'DEV',
+      $if $$apex_installed $then
+      '{{APP_ID}}',        p_app_id,
+      '{{APP_ALIAS}}',     v_app_alias,
+      '{{APP_OWNER}}',     v_app_owner,
+      '{{APP_WORKSPACE}}', v_app_workspace,
+      $end
+      '{{SCRIPTFILE}}',    'export_app_custom_code.sql',
+      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log',
+      '{{@}}',             c_at));
+    util_clob_add_to_export_files(
+      p_export_files => v_export_files,
+      p_name         => v_file_path);
+    util_log_stop;
+
+
+    -- import batch template - used by two files
+    v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
+rem More infos here: {{PLEX_URL}}
+
+{{@}}echo off
+setlocal
+set "areyousure=N"
+
+rem ### BEGIN CONFIG ###########################################################
+rem Align substrings to your operating system locale: (how it works: https://stackoverflow.com/a/23558738)
+set "datetime=%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
+set "datetime=%datetime: =0%"
 set "systemrole={{SYSTEMROLE}}"
 set "connection=localhost:1521/orcl"
 set "scriptfile={{SCRIPTFILE}}"
@@ -2451,27 +2547,6 @@ rem Remove "pause" for fully automated setup:
 pause
 if %errorlevel% neq 0 exit /b %errorlevel%
 ^'  ;
-    v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}',  c_plex_version,
-      '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'DEV',
-      $if $$apex_installed $then
-      '{{APP_ID}}',        p_app_id,
-      '{{APP_ALIAS}}',     v_app_alias,
-      '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_WORKSPACE}}', v_app_workspace,
-      $end
-      '{{SCRIPTFILE}}',    'export_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log',
-      '{{@}}',             c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
-
     v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
     util_log_start(v_file_path);
     util_clob_append(util_multi_replace(
@@ -2486,7 +2561,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
+      '{{LOGFILE}}',       'logs/%datetime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2507,7 +2582,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{APP_WORKSPACE}}', v_app_workspace,
       $end
       '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
+      '{{LOGFILE}}',       'logs/%datetime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2524,17 +2599,13 @@ set timing off verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 -- whenever oserror exit failure rollback
-define logfile = "&1"
+define logfile = "&1."
+define zipfile = "&2..base64"
 spool "&logfile" append
-variable app_id        varchar2(100)
-variable app_alias     varchar2(100)
-variable app_schema    varchar2(100)
-variable app_workspace varchar2(100)
+variable contents clob
+variable app_id   number
 BEGIN
-  :app_id        := &2;
-  :app_alias     := '&3';
-  :app_schema    := '&4';
-  :app_workspace := '&5';
+  :app_id := &3;
 END;
 {{/}}
 
@@ -2542,33 +2613,14 @@ END;
 prompt
 prompt Start Export
 prompt =========================================================================
-prompt Create global temporary table temp_export_files if not exist
-BEGIN
-  FOR i IN (SELECT 'TEMP_EXPORT_FILES' AS object_name FROM dual
-             MINUS
-            SELECT object_name FROM user_objects) LOOP
-    EXECUTE IMMEDIATE '
---------------------------------------------------------------------------------
-CREATE GLOBAL TEMPORARY TABLE temp_export_files (
-  name     VARCHAR2(255),
-  contents CLOB)
-ON COMMIT DELETE ROWS
---------------------------------------------------------------------------------
-    ';
-  END LOOP;
-END;
-{{/}}
 
-
-prompt Do the app export, relocate files and save to temporary table
+prompt Do the app export and save to zip file
 prompt ATTENTION: Depending on your options this could take some time ...
-DECLARE
-  v_files plex.tab_export_files;
 BEGIN
-  v_files := plex.backapp(
+  :contents := plex.to_base64(plex.to_zip(plex.backapp(
     -- These are the defaults - align it to your needs:^';
-      $if $$apex_installed $then
-      v_file_template := v_file_template || q'^
+    $if $$apex_installed $then
+    v_file_template := v_file_template || q'^
     p_app_id                    => :app_id,
     p_app_date                  => true,
     p_app_public_reports        => true,
@@ -2582,8 +2634,13 @@ BEGIN
     p_app_supporting_objects    => null,
     p_app_include_single_file   => false,
     p_app_build_status_run_only => false,^';
-      $end
-      v_file_template := v_file_template || q'^
+    $end
+    $if $$ords_installed $then      
+    v_file_template := v_file_template || q'^
+
+    p_include_ords_modules      => false,^';
+    $end
+    v_file_template := v_file_template || q'^
 
     p_include_object_ddl        => true,
     p_object_type_like          => null,
@@ -2602,74 +2659,17 @@ BEGIN
     p_include_error_log         => true,
     p_base_path_backend         => 'app_backend',
     p_base_path_frontend        => 'app_frontend',
-    p_base_path_data            => 'app_data');
-
-  -- relocate files to own project structure, we are inside the scripts folder
-  FOR i IN 1..v_files.count LOOP
-    v_files(i).name := '../' || v_files(i).name;
-  END LOOP;
-
-  FORALL i IN 1..v_files.count
-    INSERT INTO temp_export_files VALUES (
-      v_files(i).name,
-      v_files(i).contents);
+    p_base_path_data            => 'app_data')));
 END;
 {{/}}
 
-
-prompt Create intermediate script file to unload the table contents into files
+prompt Spool the resulting base64 encoded zip file to disk
 spool off
-set termout off serveroutput on
-spool "logs/temp_export_files.sql"
-BEGIN
-  -- create host commands for the needed directories (spool does not create missing directories)
-  FOR i IN (WITH t AS (SELECT regexp_substr(
-                                name,
-                                '^((\w|\.)+\/)+' /*path without file name*/) AS dir
-                         FROM temp_export_files)
-            SELECT DISTINCT
-                   dir,
-                   -- This is for Windows to create a directory and suppress warning if it exist.
-                   -- Align the command to your operating system:
-                   'host mkdir "' || replace(dir,'/','\') || '" 2>NUL' AS mkdir
-              FROM t
-             WHERE dir IS NOT NULL) LOOP
-    dbms_output.put_line('set termout on');
-    dbms_output.put_line('spool "&logfile." append');
-    dbms_output.put_line('prompt --create directory if not exist: ' || i.dir);
-    dbms_output.put_line('spool off');
-    dbms_output.put_line('set termout off');
-    dbms_output.put_line(i.mkdir);
-    dbms_output.put_line('-----');
-  END LOOP;
-  -- create the spool calls for unload the files
-  FOR i IN (SELECT * FROM temp_export_files) LOOP
-    dbms_output.put_line('set termout on');
-    dbms_output.put_line('spool "&logfile." append');
-    dbms_output.put_line('prompt --' || i.name);
-    dbms_output.put_line('spool off');
-    dbms_output.put_line('set termout off');
-    dbms_output.put_line('spool "' || i.name || '"');
-    dbms_output.put_line('select contents from temp_export_files where name = ''' || i.name || ''';');
-    dbms_output.put_line('spool off');
-    dbms_output.put_line('-----');
-  END LOOP;
-END;
-{{/}}
-spool off
-set termout on serveroutput off
+set termout off
+spool "&zipfile"
+print contents
+set termout on
 spool "&logfile." append
-
-
-prompt Call the intermediate script file to save the files
-spool off
-{{@}}logs/temp_export_files.sql
-set termout on serveroutput off
-spool "&logfile." append
-
-
-prompt Delete files from the global temporary table
-COMMIT;
 
 timing stop EXPORT_APP
 prompt =========================================================================
@@ -2954,6 +2954,23 @@ BEGIN
   util_log_calc_runtimes;
   RETURN v_zip;
 END to_zip;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+-- copyright by Tim Hall, see https://oracle-base.com/dba/miscellaneous/base64encode.sql
+FUNCTION to_base64(p_blob IN BLOB) RETURN CLOB IS
+  v_bas64 CLOB;
+  v_step PLS_INTEGER := 14400; -- make sure you set a multiple of 3 not higher than 24573
+  -- size of a whole multiple of 48 is beneficial to get NEW_LINE after each 64 characters 
+BEGIN
+  util_log_start('post processing with to_base64');
+  FOR i IN 0 .. TRUNC((DBMS_LOB.getlength(p_blob) - 1 ) / v_step) LOOP
+    v_bas64 := v_bas64 || UTL_RAW.cast_to_varchar2(UTL_ENCODE.base64_encode(DBMS_LOB.substr(p_blob, v_step, i * v_step + 1)));
+  END LOOP;
+  util_log_stop;
+  util_log_calc_runtimes;
+  RETURN v_bas64;
+END;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
