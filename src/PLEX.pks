@@ -11,7 +11,7 @@ PL/SQL Export Utilities
 
 PLEX was created to be able to quickstart version control for existing Oracle DB projects and has currently two main functions called **BackApp** and **Queries_to_CSV**. Queries_to_CSV is used by BackApp as a helper function, but its functionality is also useful standalone.
 
-Also see also this resources for more information:
+Also see this resources for more information:
 
 - [Blog post on how to getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
 - [PLEX project page on GitHub](https://github.com/ogobrecht/plex)
@@ -55,16 +55,13 @@ CHANGELOG
         - New parameters to filter for object types
         - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
-    - Function BackApp:
-        - Fix script templates: Change old parameters in plex.backapp call
+    - Fixed: Script templates for function BackApp used old/invalid parameters
     - Add install and uninstall scripts for PLEX itself
 - 1.2.0 (2018-10-31)
-    - Function BackApp:
-        - New: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
-    - Function Queries_to_CSV:
-        - Fixed: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
+    - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
+    - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
 - 1.1.0 (2018-09-23)
-    - Change filter parameter from regular expression to list of like expressions for easier handling
+    - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
 - 1.0.0 (2018-08-26)
     - First public release
 **/
@@ -493,6 +490,11 @@ PROCEDURE util_setup_dbms_metadata (
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
+
+FUNCTION util_get_ddl (
+  p_object_type IN VARCHAR,
+  p_object_name IN VARCHAR)
+RETURN CLOB;   
 
 PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
 

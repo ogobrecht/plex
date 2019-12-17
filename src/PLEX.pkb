@@ -150,6 +150,11 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
 
+FUNCTION util_get_ddl (
+  p_object_type IN VARCHAR,
+  p_object_name IN VARCHAR)
+RETURN CLOB; 
+
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_runlog and g_queries
 --------------------------------------------------------------------------------------------------------------------------------
@@ -549,6 +554,15 @@ BEGIN
   dbms_metadata.set_transform_param(dbms_metadata.session_transform, 'CONSTRAINTS_AS_ALTER', p_constraints_as_alter);
   dbms_metadata.set_transform_param(dbms_metadata.session_transform, 'EMIT_SCHEMA', p_emit_schema);
 END util_setup_dbms_metadata;
+
+FUNCTION util_get_ddl (
+  p_object_type IN VARCHAR,
+  p_object_name IN VARCHAR)
+RETURN CLOB
+IS
+BEGIN
+  RETURN ltrim(dbms_metadata.get_ddl(p_object_type, p_object_name), ' ' || c_lf);
+END util_get_ddl;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -1196,8 +1210,7 @@ RETURN tab_export_files IS
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '.sql';
       util_log_start(v_file_path);
       util_setup_dbms_metadata(p_sqlterminator => false);
-      util_clob_append(util_multi_replace(q'^
-BEGIN
+      util_clob_append(util_multi_replace(q'^BEGIN
   FOR i IN (SELECT '{{CURRENT_USER}}' AS username FROM dual
              MINUS
             SELECT username FROM dba_users) LOOP
@@ -1211,7 +1224,7 @@ END;
 {{/}}
 ^'      ,
         '{{CURRENT_USER}}', v_current_user,
-        '{{DDL}}',          dbms_metadata.get_ddl('USER', v_current_user),
+        '{{DDL}}',          util_get_ddl('USER', v_current_user),
         '{{/}}',            c_slash));
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1424,7 +1437,7 @@ SELECT object_type,
           WHEN v_rec.object_type = 'VIEW' AND p_object_view_remove_col_list THEN
             util_clob_append(ltrim(regexp_replace(regexp_replace(
               -- source string
-              dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user),
+              util_get_ddl(v_rec.object_type, v_rec.object_name),
               -- regex replace: remove additional column list from the compiler
               '\(.*\) ', NULL, 1, 1),
               -- regex replace: remove additional whitespace from the compiler
@@ -1433,8 +1446,7 @@ SELECT object_type,
               ' ' || c_lf));
           WHEN v_rec.object_type IN ('TABLE', 'INDEX', 'SEQUENCE') THEN
             util_setup_dbms_metadata(p_sqlterminator => false);
-            util_clob_append(replace(q'^
-BEGIN
+            util_clob_append(replace(q'^BEGIN
   FOR i IN (SELECT '{{OBJECT_NAME}}' AS object_name FROM dual
              MINUS
             SELECT object_name FROM user_objects) LOOP
@@ -1443,7 +1455,7 @@ BEGIN
 ^'            ,
               '{{OBJECT_NAME}}',
               v_rec.object_name)
-              || dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user)
+              || util_get_ddl(v_rec.object_type, v_rec.object_name)
               || replace(q'^
 --------------------------------------------------------------------------------
     ]';
@@ -1458,7 +1470,7 @@ END;
               c_slash));
             util_setup_dbms_metadata;
           ELSE
-            util_clob_append(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name, v_current_user));
+            util_clob_append(util_get_ddl(v_rec.object_type, v_rec.object_name));
         END CASE;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
@@ -1512,7 +1524,7 @@ ORDER BY
       EXIT WHEN v_cur%notfound;
       BEGIN
         util_log_start(v_rec.file_path);
-        util_clob_append(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', v_rec.object_name, v_rec.grantor));
+        util_clob_append(ltrim(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', v_rec.object_name, v_rec.grantor), ' ' || c_lf));
         v_ddl_files.grants_(v_ddl_files.grants_.count + 1) := v_rec.file_path;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
@@ -1573,7 +1585,7 @@ FOR i IN (SELECT '{{CONSTRAINT_NAME}}' AS constraint_name FROM dual
 ^'        ,
           '{{CONSTRAINT_NAME}}',
           v_rec.constraint_name)
-          || dbms_metadata.get_ddl('REF_CONSTRAINT', v_rec.constraint_name, v_current_user)
+          || util_get_ddl('REF_CONSTRAINT', v_rec.constraint_name)
           || replace(q'^
 --------------------------------------------------------------------------------
   ]';
@@ -1844,7 +1856,7 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
       p_name         => v_file_path);
     util_log_stop;
 
-    -- export and import template - used by three files
+    -- export batch template - used by one file
     v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
 
@@ -1856,18 +1868,18 @@ rem ### BEGIN CONFIG ###########################################################
 rem Align substrings to your operating system locale: (how it works: https://stackoverflow.com/a/23558738)
 set "datetime=%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
 set "datetime=%datetime: =0%"
-set "systemrole=DEV"
+set "systemrole={{SYSTEMROLE}}"
 set "connection=localhost:1521/xepdb1"
-set "app_schema=DEMO"
-set "app_id=101"
+set "app_id={{APP_ID}}"
+set "app_schema={{APP_OWNER}}"
 set "scriptfile=export_app_custom_code.sql"
 set "logfile=logs/%datetime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log"
 set "zipfile=BackApp_%app_id%_from_%app_schema%_at_%systemrole%_%datetime%.zip"
 rem ### END CONFIG #############################################################
 
 :PROMPT
-echo.
-echo.
+echo(
+echo(
 set /p "areyousure=Run %scriptfile% on %app_schema%@%systemrole%(%connection%) [Y/N]? " || set "areyousure=N"
 if /i %areyousure% neq y goto END
 set NLS_LANG=AMERICAN_AMERICA.UTF8
@@ -1881,24 +1893,44 @@ echo exit | sqlplus -S %app_schema%/%password%@%connection% ^
 
 if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-( >> %logfile%
 if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-(
+if %errorlevel% neq 0 goto END
+
+echo Start Post Processing on Client >> %logfile%
+echo Start Post Processing on Client
+echo ========================================================================= >> %logfile%
+echo =========================================================================
 
 echo Decode file %zipfile%.base64 >> %logfile%
 echo Decode file %zipfile%.base64
-certutil -decode %zipfile%.base64 %zipfile%
+certutil -decode %zipfile%.base64 %zipfile% >> %logfile%
+if %errorlevel% neq 0 echo ERROR: Unable to decode %zipfile%.base64 :-( >> %logfile%
+if %errorlevel% neq 0 echo ERROR: Unable to decode %zipfile%.base64 :-(
+if %errorlevel% neq 0 goto END
 del %zipfile%.base64
 
 echo Unzip file %zipfile% >> %logfile%
-echo Unzip file %zipfile%
-tar -xf "%zipfile%" -C ..
+echo Unzip file %zipfile% 
+echo - For unzip details see %logfile%
+tar -xvf %zipfile% -C .. 2>> %logfile%
+if %errorlevel% neq 0 echo ERROR: Unable to unzip %zipfile% :-( >> %logfile%
+if %errorlevel% neq 0 echo ERROR: Unable to unzip %zipfile% :-(
+if %errorlevel% neq 0 goto END
 
 echo Delete file %zipfile% >> %logfile%
 echo Delete file %zipfile%
 del %zipfile%
 
+echo ========================================================================= >> %logfile%
+echo =========================================================================
+echo Post Processing DONE >> %logfile%
+echo Post Processing DONE
+echo( >> %logfile%
+echo(
+
 :END
 rem Remove "pause" for fully automated setup:
 pause
-if %errorlevel% neq 0 exit /b %errorlevel%
+if %errorlevel% neq 0 exit /b %errorlevel% 
 ^'  ;
     v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
     util_log_start(v_file_path);
@@ -1908,102 +1940,9 @@ if %errorlevel% neq 0 exit /b %errorlevel%
       '{{PLEX_URL}}',      c_plex_url,
       '{{SYSTEMROLE}}',    'DEV',
       $if $$apex_installed $then
-      '{{APP_ID}}',        p_app_id,
-      '{{APP_ALIAS}}',     v_app_alias,
       '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_WORKSPACE}}', v_app_workspace,
-      $end
-      '{{SCRIPTFILE}}',    'export_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/%mydate%_%mytime%_export_app_%app_id%_from_%app_schema%_at_%systemrole%.log',
-      '{{@}}',             c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
-
-
-    -- import batch template - used by two files
-    v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
-rem More infos here: {{PLEX_URL}}
-
-{{@}}echo off
-setlocal
-set "areyousure=N"
-
-rem ### BEGIN CONFIG ###########################################################
-rem Align substrings to your operating system locale: (how it works: https://stackoverflow.com/a/23558738)
-set "datetime=%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
-set "datetime=%datetime: =0%"
-set "systemrole={{SYSTEMROLE}}"
-set "connection=localhost:1521/orcl"
-set "scriptfile={{SCRIPTFILE}}"
-set "app_id={{APP_ID}}"
-set "app_alias={{APP_ALIAS}}"
-set "app_schema={{APP_OWNER}}"
-set "app_workspace={{APP_WORKSPACE}}"
-set "logfile={{LOGFILE}}"
-rem ### END CONFIG #############################################################
-
-:PROMPT
-echo.
-echo.
-set /p "areyousure=Run %scriptfile% on %app_schema%@%systemrole%(%connection%) [Y/N]? " || set "areyousure=N"
-if /i %areyousure% neq y goto END
-set NLS_LANG=AMERICAN_AMERICA.UTF8
-set /p "password=Please enter password for %app_schema% [default = oracle]: " || set "password=oracle"
-echo This is the runlog for %scriptfile% on %app_schema%@%systemrole%(%connection%) > %logfile%
-echo exit | sqlplus -S %app_schema%/%password%@%connection% ^
-{{@}}%scriptfile% ^
-%logfile% ^
-%app_id% ^
-%app_alias% ^
-%app_schema% ^
-%app_workspace%
-
-if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-( >> %logfile%
-if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-(
-
-:END
-rem Remove "pause" for fully automated setup:
-pause
-if %errorlevel% neq 0 exit /b %errorlevel%
-^'  ;
-    v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}',  c_plex_version,
-      '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'INT',
-      $if $$apex_installed $then
       '{{APP_ID}}',        p_app_id,
-      '{{APP_ALIAS}}',     v_app_alias,
-      '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_WORKSPACE}}', v_app_workspace,
       $end
-      '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/%datetime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
-      '{{@}}',             c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
-
-    v_file_path := 'scripts/templates/3_install_app_into_PROD.bat';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}',  c_plex_version,
-      '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'PROD',
-      $if $$apex_installed $then
-      '{{APP_ID}}',        p_app_id,
-      '{{APP_ALIAS}}',     v_app_alias,
-      '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_WORKSPACE}}', v_app_workspace,
-      $end
-      '{{SCRIPTFILE}}',    'install_app_custom_code.sql',
-      '{{LOGFILE}}',       'logs/%datetime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log',
       '{{@}}',             c_at));
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2030,9 +1969,8 @@ BEGIN
 END;
 {{/}}
 
-
 prompt
-prompt Start Export
+prompt Start Export from Database
 prompt =========================================================================
 
 prompt Do the app export and save to zip file
@@ -2084,14 +2022,13 @@ BEGIN
 END;
 {{/}}
 
-prompt Spool the resulting base64 encoded zip file to disk
+prompt Spool the resulting base64 encoded zip file to client disk
 spool off
 set termout off
 spool "&zipfile"
 print contents
 set termout on
 spool "&logfile." append
-
 timing stop EXPORT_APP
 prompt =========================================================================
 prompt Export DONE :-)
@@ -2109,6 +2046,91 @@ prompt
       p_export_files => v_export_files,
       p_name         => v_file_path);
     util_log_stop;
+
+    -- import batch template - used by two files
+    v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
+rem More infos here: {{PLEX_URL}}
+
+{{@}}echo off
+setlocal
+set "areyousure=N"
+
+rem ### BEGIN CONFIG ###########################################################
+rem Align substrings to your operating system locale: (how it works: https://stackoverflow.com/a/23558738)
+set "datetime=%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
+set "datetime=%datetime: =0%"
+set "systemrole={{SYSTEMROLE}}"
+set "connection=localhost:1521/xepdb1"
+set "app_id={{APP_ID}}"
+set "app_alias={{APP_ALIAS}}"
+set "app_schema={{APP_OWNER}}"
+set "app_workspace={{APP_WORKSPACE}}"
+set "scriptfile=install_app_custom_code.sql"
+set "logfile=logs/%datetime%_install_app_%app_id%_into_%app_schema%_at_%systemrole%.log"
+rem ### END CONFIG #############################################################
+
+:PROMPT
+echo.
+echo.
+set /p "areyousure=Run %scriptfile% on %app_schema%@%systemrole%(%connection%) [Y/N]? " || set "areyousure=N"
+if /i %areyousure% neq y goto END
+set NLS_LANG=AMERICAN_AMERICA.UTF8
+set /p "password=Please enter password for %app_schema% [default = oracle]: " || set "password=oracle"
+echo This is the runlog for %scriptfile% on %app_schema%@%systemrole%(%connection%) > %logfile%
+echo exit | sqlplus -S %app_schema%/%password%@%connection% ^
+{{@}}%scriptfile% ^
+%logfile% ^
+%app_id% ^
+%app_alias% ^
+%app_schema% ^
+%app_workspace%
+
+if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-( >> %logfile%
+if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlevel% :-(
+
+:END
+rem Remove "pause" for fully automated setup:
+pause
+if %errorlevel% neq 0 exit /b %errorlevel%
+^'  ;
+    v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
+    util_log_start(v_file_path);
+    util_clob_append(util_multi_replace(
+      v_file_template,
+      '{{PLEX_VERSION}}',  c_plex_version,
+      '{{PLEX_URL}}',      c_plex_url,
+      '{{SYSTEMROLE}}',    'INT',
+      $if $$apex_installed $then
+      '{{APP_ID}}',        p_app_id,
+      '{{APP_ALIAS}}',     v_app_alias,
+      '{{APP_OWNER}}',     v_app_owner,
+      '{{APP_WORKSPACE}}', v_app_workspace,
+      $end
+      '{{@}}',             c_at));
+    util_clob_add_to_export_files(
+      p_export_files => v_export_files,
+      p_name         => v_file_path);
+    util_log_stop;
+
+    v_file_path := 'scripts/templates/3_install_app_into_PROD.bat';
+    util_log_start(v_file_path);
+    util_clob_append(util_multi_replace(
+      v_file_template,
+      '{{PLEX_VERSION}}',  c_plex_version,
+      '{{PLEX_URL}}',      c_plex_url,
+      '{{SYSTEMROLE}}',    'PROD',
+      $if $$apex_installed $then
+      '{{APP_ID}}',        p_app_id,
+      '{{APP_ALIAS}}',     v_app_alias,
+      '{{APP_OWNER}}',     v_app_owner,
+      '{{APP_WORKSPACE}}', v_app_workspace,
+      $end
+      '{{@}}',             c_at));
+    util_clob_add_to_export_files(
+      p_export_files => v_export_files,
+      p_name         => v_file_path);
+    util_log_stop;
+
     -- install app custom code template
     v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
