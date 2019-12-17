@@ -524,12 +524,7 @@ PROCEDURE util_setup_dbms_metadata (
   p_segment_attributes   IN BOOLEAN DEFAULT false,
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
-  p_emit_schema          IN BOOLEAN DEFAULT false);
-
-FUNCTION util_get_ddl (
-  p_object_type IN VARCHAR,
-  p_object_name IN VARCHAR)
-RETURN CLOB;   
+  p_emit_schema          IN BOOLEAN DEFAULT false);  
 
 PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
 
@@ -589,6 +584,7 @@ c_tab                          CONSTANT VARCHAR2(1) := chr(9);
 c_cr                           CONSTANT VARCHAR2(1) := chr(13);
 c_lf                           CONSTANT VARCHAR2(1) := chr(10);
 c_crlf                         CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+c_space_crlf                   CONSTANT VARCHAR2(2) := ' ' || chr(13) || chr(10);
 c_at                           CONSTANT VARCHAR2(1) := '@';
 c_hash                         CONSTANT VARCHAR2(1) := '#';
 c_slash                        CONSTANT VARCHAR2(1) := '/';
@@ -731,10 +727,6 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
 
-FUNCTION util_get_ddl (
-  p_object_type IN VARCHAR,
-  p_object_name IN VARCHAR)
-RETURN CLOB; 
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_runlog and g_queries
@@ -1135,15 +1127,6 @@ BEGIN
   dbms_metadata.set_transform_param(dbms_metadata.session_transform, 'CONSTRAINTS_AS_ALTER', p_constraints_as_alter);
   dbms_metadata.set_transform_param(dbms_metadata.session_transform, 'EMIT_SCHEMA', p_emit_schema);
 END util_setup_dbms_metadata;
-
-FUNCTION util_get_ddl (
-  p_object_type IN VARCHAR,
-  p_object_name IN VARCHAR)
-RETURN CLOB
-IS
-BEGIN
-  RETURN ltrim(dbms_metadata.get_ddl(p_object_type, p_object_name), ' ' || c_lf);
-END util_get_ddl;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -1805,7 +1788,7 @@ END;
 {{/}}
 ^'      ,
         '{{CURRENT_USER}}', v_current_user,
-        '{{DDL}}',          util_get_ddl('USER', v_current_user),
+        '{{DDL}}',          ltrim(dbms_metadata.get_ddl('USER', v_current_user), c_space_crlf),
         '{{/}}',            c_slash));
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1823,7 +1806,7 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_roles.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_role_privs) LOOP
-        util_clob_append(dbms_metadata.get_granted_ddl('ROLE_GRANT', v_current_user));
+        util_clob_append(ltrim(dbms_metadata.get_granted_ddl('ROLE_GRANT', v_current_user), c_space_crlf));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1839,7 +1822,7 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_system_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_sys_privs) LOOP
-        util_clob_append(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', v_current_user));
+        util_clob_append(ltrim(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', v_current_user), c_space_crlf));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1855,7 +1838,7 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_object_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT grantee FROM user_tab_privs WHERE grantee = v_current_user) LOOP
-        util_clob_append(dbms_metadata.get_granted_ddl('OBJECT_GRANT', v_current_user));
+        util_clob_append(ltrim(dbms_metadata.get_granted_ddl('OBJECT_GRANT', v_current_user), c_space_crlf));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -2018,7 +2001,7 @@ SELECT object_type,
           WHEN v_rec.object_type = 'VIEW' AND p_object_view_remove_col_list THEN
             util_clob_append(ltrim(regexp_replace(regexp_replace(
               -- source string
-              util_get_ddl(v_rec.object_type, v_rec.object_name),
+              ltrim(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name), c_space_crlf),
               -- regex replace: remove additional column list from the compiler
               '\(.*\) ', NULL, 1, 1),
               -- regex replace: remove additional whitespace from the compiler
@@ -2036,7 +2019,7 @@ SELECT object_type,
 ^'            ,
               '{{OBJECT_NAME}}',
               v_rec.object_name)
-              || util_get_ddl(v_rec.object_type, v_rec.object_name)
+              || ltrim(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name), c_space_crlf)
               || replace(q'^
 --------------------------------------------------------------------------------
     ]';
@@ -2051,7 +2034,7 @@ END;
               c_slash));
             util_setup_dbms_metadata;
           ELSE
-            util_clob_append(util_get_ddl(v_rec.object_type, v_rec.object_name));
+            util_clob_append(ltrim(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name), c_space_crlf));
         END CASE;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
@@ -2105,7 +2088,7 @@ ORDER BY
       EXIT WHEN v_cur%notfound;
       BEGIN
         util_log_start(v_rec.file_path);
-        util_clob_append(ltrim(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', v_rec.object_name, v_rec.grantor), ' ' || c_lf));
+        util_clob_append(ltrim(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', v_rec.object_name, v_rec.grantor), c_space_crlf));
         v_ddl_files.grants_(v_ddl_files.grants_.count + 1) := v_rec.file_path;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
@@ -2166,7 +2149,7 @@ FOR i IN (SELECT '{{CONSTRAINT_NAME}}' AS constraint_name FROM dual
 ^'        ,
           '{{CONSTRAINT_NAME}}',
           v_rec.constraint_name)
-          || util_get_ddl('REF_CONSTRAINT', v_rec.constraint_name)
+          || ltrim(dbms_metadata.get_ddl('REF_CONSTRAINT', v_rec.constraint_name), c_space_crlf)
           || replace(q'^
 --------------------------------------------------------------------------------
   ]';

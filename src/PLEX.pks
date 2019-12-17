@@ -489,12 +489,7 @@ PROCEDURE util_setup_dbms_metadata (
   p_segment_attributes   IN BOOLEAN DEFAULT false,
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
-  p_emit_schema          IN BOOLEAN DEFAULT false);
-
-FUNCTION util_get_ddl (
-  p_object_type IN VARCHAR,
-  p_object_name IN VARCHAR)
-RETURN CLOB;   
+  p_emit_schema          IN BOOLEAN DEFAULT false);  
 
 PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
 
