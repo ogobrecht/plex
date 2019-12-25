@@ -8,7 +8,7 @@ c_tab                          CONSTANT VARCHAR2(1) := chr(9);
 c_cr                           CONSTANT VARCHAR2(1) := chr(13);
 c_lf                           CONSTANT VARCHAR2(1) := chr(10);
 c_crlf                         CONSTANT VARCHAR2(2) := chr(13) || chr(10);
-c_space_crlf                   CONSTANT VARCHAR2(2) := ' ' || chr(13) || chr(10);
+c_space_crlf                   CONSTANT VARCHAR2(3) := ' ' || chr(13) || chr(10);
 c_at                           CONSTANT VARCHAR2(1) := '@';
 c_hash                         CONSTANT VARCHAR2(1) := '#';
 c_slash                        CONSTANT VARCHAR2(1) := '/';
@@ -49,6 +49,7 @@ TYPE rec_ddl_files IS RECORD (
   ref_constraints_ tab_vc1k,
   indices_         tab_vc1k,
   views_           tab_vc1k,
+  mviews_          tab_vc1k,
   types_           tab_vc1k,
   type_bodies_     tab_vc1k,
   triggers_        tab_vc1k,
@@ -1230,7 +1231,11 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_roles.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_role_privs) LOOP
-        util_clob_append(ltrim(dbms_metadata.get_granted_ddl('ROLE_GRANT', v_current_user), c_space_crlf));
+        util_clob_append(regexp_replace(
+          --source string
+          dbms_metadata.get_granted_ddl('ROLE_GRANT', v_current_user),
+          --replace all leading whitespace
+          '^\s*', NULL, 1, 0, 'm'));      
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1246,7 +1251,11 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_system_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_sys_privs) LOOP
-        util_clob_append(ltrim(dbms_metadata.get_granted_ddl('SYSTEM_GRANT', v_current_user), c_space_crlf));
+        util_clob_append(regexp_replace(
+          --source string
+          dbms_metadata.get_granted_ddl('SYSTEM_GRANT', v_current_user),
+          --replace all leading whitespace
+          '^\s*', NULL, 1, 0, 'm'));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1262,7 +1271,11 @@ END;
       v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_object_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT grantee FROM user_tab_privs WHERE grantee = v_current_user) LOOP
-        util_clob_append(ltrim(dbms_metadata.get_granted_ddl('OBJECT_GRANT', v_current_user), c_space_crlf));
+        util_clob_append(regexp_replace(
+          --source string
+          dbms_metadata.get_granted_ddl('OBJECT_GRANT', v_current_user),
+          --replace all leading whitespace
+          '^\s*', NULL, 1, 0, 'm'));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1286,6 +1299,8 @@ END;
       object_name   VARCHAR2(256),
       file_path     VARCHAR2(512));
     v_rec obj_rec_typ;
+    no_comments_found EXCEPTION;
+    PRAGMA EXCEPTION_INIT(no_comments_found, -31608);    
   BEGIN
     util_log_start(p_base_path_backend || '/open_objects_cursor');
     v_query   := q'^
@@ -1329,19 +1344,24 @@ $if NOT $$debug_on
 $then || 'user_objects'
 $else || '(SELECT MIN(object_name) AS object_name, object_type FROM user_objects GROUP BY object_type)'
 $end || q'^
-   WHERE -- ignore invalid object types
-         object_type NOT IN ('UNDEFINED','DESTINATION','EDITION','JAVA DATA','WINDOW')
-         --These objects are included within other object types:
+   WHERE 1 = 1
+     --- Ignore invalid object types:
+     AND object_type NOT IN ('UNDEFINED','DESTINATION','EDITION','JAVA DATA','WINDOW')
+     --- These objects are included within other object types:
      AND object_type NOT IN ('INDEX PARTITION','INDEX SUBPARTITION','LOB','LOB PARTITION','TABLE PARTITION','TABLE SUBPARTITION')
-         --Ignore system-generated types for collection processing:
+     --- Ignore system-generated types for collection processing:
      AND NOT (object_type = 'TYPE' AND object_name LIKE 'SYS_PLSQL_%')
-         --Ignore system-generated sequences for identity columns:
+     --- Ignore system-generated sequences for identity columns:
      AND NOT (object_type = 'SEQUENCE' AND object_name LIKE 'ISEQ$$_%')
-         --Ignore LOB indices, their DDL is part of the table:
+     --- Ignore LOB indices, their DDL is part of the table:
      AND object_name NOT IN (SELECT index_name FROM user_lobs)
-         --Ignore nested tables, their DDL is part of their parent table:
+     --- Ignore nested tables, their DDL is part of their parent table:
      AND object_name NOT IN (SELECT table_name FROM user_nested_tables)
-         --Set user specific like filters:
+     --- Ignore materialized view tables, their DDL is part of the materialized view
+     AND (object_type != 'TABLE' or object_type = 'TABLE' and not exists (select 1 from user_mviews where mview_name = object_name ))
+     --- Ignore indices for materialized view tables
+     AND NOT (object_type = 'INDEX' AND object_name LIKE 'SYS_C_SNAP$_%')
+     --- Set user specific like filters:
      AND (#TYPE_LIKE_EXPRESSIONS#)
      AND (#TYPE_NOT_LIKE_EXPRESSIONS#)
      AND (#NAME_LIKE_EXPRESSIONS#)
@@ -1404,6 +1424,8 @@ SELECT object_type,
             v_ddl_files.indices_(v_ddl_files.indices_.count + 1) := v_rec.file_path;
           WHEN 'VIEW' THEN
             v_ddl_files.views_(v_ddl_files.views_.count + 1) := v_rec.file_path;
+          WHEN 'MATERIALIZED_VIEW' THEN
+            v_ddl_files.mviews_(v_ddl_files.mviews_.count + 1) := v_rec.file_path;
           WHEN 'TYPE_SPEC' THEN
             v_ddl_files.types_(v_ddl_files.types_.count + 1) := v_rec.file_path;
           WHEN 'TYPE_BODY' THEN
@@ -1423,16 +1445,12 @@ SELECT object_type,
         END CASE;
         CASE
           WHEN v_rec.object_type = 'VIEW' AND p_object_view_remove_col_list THEN
-            util_clob_append(ltrim(regexp_replace(regexp_replace(
+            util_clob_append(regexp_replace(
               -- source string
               ltrim(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name), c_space_crlf),
               -- regex replace: remove additional column list from the compiler
-              '\(.*\) ', NULL, 1, 1),
-              -- regex replace: remove additional whitespace from the compiler
-              '^\s*SELECT', 'SELECT', 1, 1, 'im'),
-              -- ltrim: remove leading whitspace
-              ' ' || c_lf));
-          WHEN v_rec.object_type IN ('TABLE', 'INDEX', 'SEQUENCE') THEN
+              '\(.*\) ', NULL, 1, 1));
+          WHEN v_rec.object_type IN ('TABLE', 'MATERIALIZED_VIEW', 'INDEX', 'SEQUENCE') THEN
             util_setup_dbms_metadata(p_sqlterminator => false);
             util_clob_append(replace(q'^BEGIN
   FOR i IN (SELECT '{{OBJECT_NAME}}' AS object_name FROM dual
@@ -1460,6 +1478,17 @@ END;
           ELSE
             util_clob_append(ltrim(dbms_metadata.get_ddl(v_rec.object_type, v_rec.object_name), c_space_crlf));
         END CASE;
+        IF v_rec.object_type IN ('TABLE', 'VIEW', 'MATERIALIZED_VIEW') THEN
+          BEGIN
+            util_clob_append(c_lf || c_lf || regexp_replace(
+              --source string
+              dbms_metadata.get_dependent_ddl('COMMENT', v_rec.object_name),
+              --replace all leading whitespace
+              '^\s*', NULL, 1, 0, 'm'));
+          EXCEPTION
+            WHEN no_comments_found THEN NULL;
+          END;
+        END IF;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
           p_name         => v_rec.file_path);
@@ -1624,20 +1653,23 @@ prompt --install_backend_generated_by_plex
     FOR i IN 1..v_ddl_files.ref_constraints_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.ref_constraints_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.indices_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.indices_(i)));
+    FOR i IN 1..v_ddl_files.types_.count LOOP
+      util_clob_append(util_get_script_line(v_ddl_files.types_(i)));
+    END LOOP;
+    FOR i IN 1..v_ddl_files.packages_.count LOOP
+      util_clob_append(util_get_script_line(v_ddl_files.packages_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.views_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.views_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.types_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.types_(i)));
+    FOR i IN 1..v_ddl_files.mviews_.count LOOP
+      util_clob_append(util_get_script_line(v_ddl_files.mviews_(i)));
+    END LOOP;
+    FOR i IN 1..v_ddl_files.indices_.count LOOP
+      util_clob_append(util_get_script_line(v_ddl_files.indices_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.type_bodies_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.type_bodies_(i)));
-    END LOOP;
-    FOR i IN 1..v_ddl_files.triggers_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.triggers_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.functions_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.functions_(i)));
@@ -1645,11 +1677,11 @@ prompt --install_backend_generated_by_plex
     FOR i IN 1..v_ddl_files.procedures_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.procedures_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.packages_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.packages_(i)));
-    END LOOP;
     FOR i IN 1..v_ddl_files.package_bodies_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.package_bodies_(i)));
+    END LOOP;
+    FOR i IN 1..v_ddl_files.triggers_.count LOOP
+      util_clob_append(util_get_script_line(v_ddl_files.triggers_(i)));
     END LOOP;
     FOR i IN 1..v_ddl_files.grants_.count LOOP
       util_clob_append(util_get_script_line(v_ddl_files.grants_(i)));

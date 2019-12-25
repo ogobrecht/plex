@@ -41,9 +41,11 @@ CHANGELOG
 - 2.1.0 (2019-xx-xx)
     - Function BackApp:
         - New parameter to include ORDS modules
-        - Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
+        - Object DDL: Comments for tables and views are now included
+        - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
         - Fixed: Unable to export JAVA objects on systems with 30 character object names
-        - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty 
+        - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
+        - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
 - 2.0.2 (2019-08-16)
     - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
