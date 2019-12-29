@@ -1,8 +1,10 @@
-SET DEFINE OFF FEEDBACK OFF
-WHENEVER SQLERROR EXIT sql.sqlcode ROLLBACK
+set define off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
 prompt
 prompt Installing PL/SQL Export Utilities
 prompt ==================================
+
 prompt Set compiler flags
 DECLARE
   v_apex_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
@@ -23,15 +25,16 @@ BEGIN
     v_ords_installed := 'TRUE';
   END LOOP;
   -- Show unset compiler flags as errors (results for example in errors like "PLW-06003: unknown inquiry directive '$$UTILS_PUBLIC'")
-  EXECUTE IMMEDIATE 'ALTER SESSION SET plsql_warnings = ''ENABLE:6003''';
+  EXECUTE IMMEDIATE 'alter session set plsql_warnings = ''ENABLE:6003''';
   -- Finally set compiler flags
-  EXECUTE IMMEDIATE 'ALTER SESSION SET plsql_ccflags = '''
+  EXECUTE IMMEDIATE 'alter session set plsql_ccflags = '''
     || 'apex_installed:' || v_apex_installed || ','
     || 'ords_installed:' || v_ords_installed || ','
     || 'utils_public:'   || v_utils_public   || ','
     || 'debug_on:'       || v_debug_on       || '''';
 END;
 /
+
 prompt Compile package plex (spec)
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
@@ -81,6 +84,7 @@ CHANGELOG
         - Fixed: Unable to export JAVA objects on systems with 30 character object names
         - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
         - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
+    - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
 - 2.0.2 (2019-08-16)
     - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
@@ -575,11 +579,12 @@ $end
 END plex;
 /
 show errors
+
 prompt Compile package plex (body)
 CREATE OR REPLACE PACKAGE BODY plex IS
 
 --------------------------------------------------------------------------------------------------------------------------------
--- CONSTANTS, TYPES
+-- CONSTANTS, TYPES, GLOBALS
 --------------------------------------------------------------------------------------------------------------------------------
 
 c_tab                          CONSTANT VARCHAR2(1) := chr(9);
@@ -591,8 +596,8 @@ c_at                           CONSTANT VARCHAR2(1) := '@';
 c_hash                         CONSTANT VARCHAR2(1) := '#';
 c_slash                        CONSTANT VARCHAR2(1) := '/';
 c_vc2_max_size                 CONSTANT PLS_INTEGER := 32767;
-c_zip_local_file_header        CONSTANT RAW(4) := hextoraw('504B0304');
-c_zip_end_of_central_directory CONSTANT RAW(4) := hextoraw('504B0506');
+c_zip_local_file_header        CONSTANT RAW(4)      := hextoraw('504B0304');
+c_zip_end_of_central_directory CONSTANT RAW(4)      := hextoraw('504B0506');
 
 TYPE tab_errlog IS TABLE OF rec_error_log INDEX BY BINARY_INTEGER;
 
@@ -613,9 +618,9 @@ TYPE rec_runlog IS RECORD (
   unmeasured_time NUMBER,
   data            tab_runlog_step);
 TYPE rec_queries IS RECORD (--
-  query       VARCHAR2(32767 CHAR),
-  file_name   VARCHAR2(256 CHAR),
-  max_rows    NUMBER DEFAULT 100000);
+  query     VARCHAR2(32767 CHAR),
+  file_name VARCHAR2(256 CHAR),
+  max_rows  NUMBER DEFAULT 100000);
 TYPE tab_queries IS TABLE OF rec_queries INDEX BY BINARY_INTEGER;
 
 TYPE tab_file_list_lookup IS TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
@@ -638,13 +643,11 @@ TYPE rec_ddl_files IS RECORD (
   grants_          tab_vc1k,
   other_objects_   tab_vc1k);
 
-
--- GLOBAL VARIABLES
-g_clob          CLOB;
-g_clob_vc_cache VARCHAR2(32767char);
-g_errlog        tab_errlog;
-g_runlog        rec_runlog;
-g_queries       tab_queries;
+g_clob    CLOB;
+g_cache   VARCHAR2(32767char);
+g_errlog  tab_errlog;
+g_runlog  rec_runlog;
+g_queries tab_queries;
 
 
 
@@ -1275,15 +1278,15 @@ END util_log_calc_runtimes;
 
 PROCEDURE util_clob_append (p_content IN VARCHAR2) IS
 BEGIN
-  g_clob_vc_cache := g_clob_vc_cache || p_content;
+  g_cache := g_cache || p_content;
 EXCEPTION
   WHEN value_error THEN
     IF g_clob IS NULL THEN
-      g_clob := g_clob_vc_cache;
+      g_clob := g_cache;
     ELSE
-      dbms_lob.writeappend(g_clob, length(g_clob_vc_cache), g_clob_vc_cache);
+      dbms_lob.writeappend(g_clob, length(g_cache), g_cache);
     END IF;
-    g_clob_vc_cache := p_content;
+    g_cache := p_content;
 END util_clob_append;
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -1304,13 +1307,13 @@ END util_clob_append;
 
 PROCEDURE util_clob_flush_cache IS
 BEGIN
-  IF g_clob_vc_cache IS NOT NULL THEN
+  IF g_cache IS NOT NULL THEN
     IF g_clob IS NULL THEN
-      g_clob := g_clob_vc_cache;
+      g_clob := g_cache;
     ELSE
-      dbms_lob.writeappend(g_clob, length(g_clob_vc_cache), g_clob_vc_cache);
+      dbms_lob.writeappend(g_clob, length(g_cache), g_cache);
     END IF;
-    g_clob_vc_cache := NULL;
+    g_cache := NULL;
   END IF;
 END util_clob_flush_cache;
 
@@ -2046,9 +2049,6 @@ SELECT object_type,
   END LOOP;
 END;
 {{/}}
-
--- Put your ALTER statements below in the same style as before to ensure that
--- the script is restartable.
 ^'            ,
               '{{/}}',
               c_slash));
@@ -2401,9 +2401,9 @@ SELECT table_name,
 
   PROCEDURE create_template_files IS
     v_file_template VARCHAR2(32767 CHAR);
-  BEGIN
-    -- the readme template
-    v_file_template := q'^Your Global README File
+    PROCEDURE readme_file IS
+    BEGIN
+      v_file_template := q'^Your Global README File
 =======================
 
 It is a good practice to have a README file in the root of your project with
@@ -2442,20 +2442,22 @@ If you want to use these files please make a copy into the scripts directory
 and modify it to your needs. Doing it this way your changes are overwrite save.
 
 [Feedback is welcome]({{PLEX_URL}}/issues/new)
-^'  ;
-    v_file_path := 'plex_README.md';
-    util_log_start(v_file_path);
-    util_clob_append(replace(
-      v_file_template,
-      '{{PLEX_URL}}',
-      c_plex_url));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
+^'    ;
+      v_file_path := 'plex_README.md';
+      util_log_start(v_file_path);
+      util_clob_append(replace(
+        v_file_template,
+        '{{PLEX_URL}}',
+        c_plex_url));
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END readme_file;
 
-    -- export batch template - used by one file
-    v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
+    PROCEDURE export_batch_file IS
+    BEGIN
+      v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
 
 {{@}}echo off
@@ -2529,27 +2531,45 @@ echo(
 rem Remove "pause" for fully automated setup:
 pause
 if %errorlevel% neq 0 exit /b %errorlevel% 
-^'  ;
-    v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}',  c_plex_version,
-      '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'DEV',
-      $if $$apex_installed $then
-      '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_ID}}',        p_app_id,
-      $end
-      '{{@}}',             c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
+^'    ;
+      v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
+      util_log_start(v_file_path);
+      util_clob_append(util_multi_replace(
+        v_file_template,
+        '{{PLEX_VERSION}}',  c_plex_version,
+        '{{PLEX_URL}}',      c_plex_url,
+        '{{SYSTEMROLE}}',    'DEV',
+        $if $$apex_installed $then
+        '{{APP_OWNER}}',     v_app_owner,
+        '{{APP_ID}}',        p_app_id,
+        $end
+        '{{@}}',             c_at));
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END export_batch_file;
 
-    -- export app custom code template
-    v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
--- More infos here: {{PLEX_URL}}
+    PROCEDURE export_sq_file IS
+    BEGIN    
+      v_file_template := q'^/*******************************************************************************
+Template generated by PLEX version {{PLEX_VERSION}}
+More infos here: {{PLEX_URL}}
+
+You need to provide three parameters:
+- logfile: path to the logfile for the script console output
+- zipfile: path to the export zip file - this will be created with the spool command
+- app_id: the APEX app ID you want to export - only relevant when you have APEX installed
+
+Example call for Windows (for Linux or Mac replace ^ with \):
+
+    echo exit | sqlplus -S app_schema/password@connection ^
+    {{@}}export_app_custom_code.sql ^
+    my_logfile.log ^
+    my_zipfile.zip ^
+    100
+
+*******************************************************************************/
 
 set timing on
 timing start EXPORT_APP
@@ -2631,22 +2651,24 @@ timing stop EXPORT_APP
 prompt =========================================================================
 prompt Export DONE :-)
 prompt
-^'  ;
-    v_file_path := 'scripts/templates/export_app_custom_code.sql';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}', c_plex_version,
-      '{{PLEX_URL}}',     c_plex_url,
-      '{{/}}',            c_slash,
-      '{{@}}',            c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
+^'    ;
+      v_file_path := 'scripts/templates/export_app_custom_code.sql';
+      util_log_start(v_file_path);
+      util_clob_append(util_multi_replace(
+        v_file_template,
+        '{{PLEX_VERSION}}', c_plex_version,
+        '{{PLEX_URL}}',     c_plex_url,
+        '{{/}}',            c_slash,
+        '{{@}}',            c_at));
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END export_sq_file;
 
-    -- import batch template - used by two files
-    v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
+    PROCEDURE install_batch_files IS
+    BEGIN    
+      v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
 
 {{@}}echo off
@@ -2690,47 +2712,49 @@ if %errorlevel% neq 0 echo ERROR: SQL script finished with return code %errorlev
 rem Remove "pause" for fully automated setup:
 pause
 if %errorlevel% neq 0 exit /b %errorlevel%
-^'  ;
-    v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}',  c_plex_version,
-      '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'INT',
-      $if $$apex_installed $then
-      '{{APP_ID}}',        p_app_id,
-      '{{APP_ALIAS}}',     v_app_alias,
-      '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_WORKSPACE}}', v_app_workspace,
-      $end
-      '{{@}}',             c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
+^'    ;
+      v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
+      util_log_start(v_file_path);
+      util_clob_append(util_multi_replace(
+        v_file_template,
+        '{{PLEX_VERSION}}',  c_plex_version,
+        '{{PLEX_URL}}',      c_plex_url,
+        '{{SYSTEMROLE}}',    'INT',
+        $if $$apex_installed $then
+        '{{APP_ID}}',        p_app_id,
+        '{{APP_ALIAS}}',     v_app_alias,
+        '{{APP_OWNER}}',     v_app_owner,
+        '{{APP_WORKSPACE}}', v_app_workspace,
+        $end
+        '{{@}}',             c_at));
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
 
-    v_file_path := 'scripts/templates/3_install_app_into_PROD.bat';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}',  c_plex_version,
-      '{{PLEX_URL}}',      c_plex_url,
-      '{{SYSTEMROLE}}',    'PROD',
-      $if $$apex_installed $then
-      '{{APP_ID}}',        p_app_id,
-      '{{APP_ALIAS}}',     v_app_alias,
-      '{{APP_OWNER}}',     v_app_owner,
-      '{{APP_WORKSPACE}}', v_app_workspace,
-      $end
-      '{{@}}',             c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
+      v_file_path := 'scripts/templates/3_install_app_into_PROD.bat';
+      util_log_start(v_file_path);
+      util_clob_append(util_multi_replace(
+        v_file_template,
+        '{{PLEX_VERSION}}',  c_plex_version,
+        '{{PLEX_URL}}',      c_plex_url,
+        '{{SYSTEMROLE}}',    'PROD',
+        $if $$apex_installed $then
+        '{{APP_ID}}',        p_app_id,
+        '{{APP_ALIAS}}',     v_app_alias,
+        '{{APP_OWNER}}',     v_app_owner,
+        '{{APP_WORKSPACE}}', v_app_workspace,
+        $end
+        '{{@}}',             c_at));
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END install_batch_files;
 
-    -- install app custom code template
-    v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
+    PROCEDURE install_sql_file IS
+    BEGIN    
+      v_file_template := q'^-- Template generated by PLEX version {{PLEX_VERSION}}
 -- More infos here: {{PLEX_URL}}
 
 set timing on define on 
@@ -2806,19 +2830,27 @@ timing stop INSTALL_APP
 prompt =========================================================================
 prompt Installation DONE :-)
 prompt
-^'  ;
-    v_file_path := 'scripts/templates/install_app_custom_code.sql';
-    util_log_start(v_file_path);
-    util_clob_append(util_multi_replace(
-      v_file_template,
-      '{{PLEX_VERSION}}', c_plex_version,
-      '{{PLEX_URL}}',     c_plex_url,
-      '{{/}}',            c_slash,
-      '{{@}}',            c_at));
-    util_clob_add_to_export_files(
-      p_export_files => v_export_files,
-      p_name         => v_file_path);
-    util_log_stop;
+^'    ;
+      v_file_path := 'scripts/templates/install_app_custom_code.sql';
+      util_log_start(v_file_path);
+      util_clob_append(util_multi_replace(
+        v_file_template,
+        '{{PLEX_VERSION}}', c_plex_version,
+        '{{PLEX_URL}}',     c_plex_url,
+        '{{/}}',            c_slash,
+        '{{@}}',            c_at));
+      util_clob_add_to_export_files(
+        p_export_files => v_export_files,
+        p_name         => v_file_path);
+      util_log_stop;
+    END install_sql_file;
+
+  BEGIN
+    readme_file;
+    export_batch_file;
+    export_sq_file;
+    install_batch_files;
+    install_sql_file;
   END create_template_files;
 
   PROCEDURE create_directory_keepers IS
@@ -3048,6 +3080,7 @@ BEGIN
 END plex;
 /
 show errors
+
 prompt ==================================
 prompt Installation Done
 prompt
