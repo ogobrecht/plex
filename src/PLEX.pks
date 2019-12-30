@@ -166,10 +166,11 @@ DECLARE
   l_file_collection plex.tab_export_files;
 BEGIN
   l_file_collection := plex.backapp(
-    p_app_id               => 100,   -- parameter only available when APEX is installed
-    p_include_ords_modules => false, -- parameter only available when ORDS is installed
+    p_app_id               => 100,  -- parameter only available when APEX is installed
+    p_include_ords_modules => true, -- parameter only available when ORDS is installed
     p_include_object_ddl   => false,
-    p_include_data         => false);
+    p_include_data         => false,
+    p_include_templates    => false);
 
   -- do something with the file collection
   FOR i IN 1..l_file_collection.count LOOP
@@ -191,7 +192,8 @@ BEGIN
     p_app_id               => 100,  -- parameter only available when APEX is installed
     p_include_ords_modules => true, -- parameter only available when ORDS is installed
     p_include_object_ddl   => true,
-    p_include_data         => false));
+    p_include_data         => false,
+    p_include_templates    => true));
   -- do something with the zip file
   -- Your code here...
 END;
@@ -207,45 +209,42 @@ WITH
   FUNCTION backapp RETURN BLOB IS
   BEGIN
     RETURN plex.to_zip(plex.backapp(
-      -- All parameters are optional and shown with their defaults
-      -- APEX App (only available, when APEX is installed):
-      p_app_id                    => NULL,
-      p_app_date                  => true,
-      p_app_public_reports        => true,
-      p_app_private_reports       => false,
-      p_app_notifications         => false,
-      p_app_translations          => true,
-      p_app_pkg_app_mapping       => false,
-      p_app_original_ids          => false,
-      p_app_subscriptions         => true,
-      p_app_comments              => true,
-      p_app_supporting_objects    => NULL,
-      p_app_include_single_file   => false,
-      p_app_build_status_run_only => false,
-      -- ORDS Modules (only available, when ORDS is installed):
-      p_include_ords_modules      => false,
-      -- Schema Objects:
-      p_include_object_ddl        => false,
-      p_object_type_like          => NULL,
-      p_object_type_not_like      => NULL,
-      p_object_name_like          => NULL,
-      p_object_name_not_like      => NULL,
-      -- Table Data:
-      p_include_data              => false,
-      p_data_as_of_minutes_ago    => 0,
-      p_data_max_rows             => 1000,
-      p_data_table_name_like      => NULL,
-      p_data_table_name_not_like  => NULL,
-      -- General options:
-      p_include_templates         => true,
-      p_include_runtime_log       => true,
-      p_include_error_log         => true,
-      p_base_path_backend         => 'app_backend',
-      p_base_path_frontend        => 'app_frontend',
-      p_base_path_web_services    => 'app_web_services',
-      p_base_path_data            => 'app_data'));
+      p_app_id               => 100,  -- parameter only available when APEX is installed
+      p_include_ords_modules => true, -- parameter only available when ORDS is installed
+      p_include_object_ddl   => true,
+      p_include_data         => false,
+      p_include_templates    => true));
   END backapp;
 SELECT backapp FROM dual;
+```
+
+EXAMPLE ZIP FILE SQL*Plus
+
+```sql
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
+-- for spooling the content to the client disk. You need to decode the base64 
+-- encoded file before you are able to unzip the content. Also see this blog 
+-- post how to do this on the different operating systems:
+-- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
+-- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
+-- Example Mac: base64 -D -i app_100.zip.base64 -o app_100.zip
+-- Example Linux: base64 -d app_100.zip.base64 > app_100.zip
+set verify off feedback off heading off termout off
+set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
+whenever sqlerror exit sql.sqlcode rollback
+variable contents clob
+BEGIN
+  :contents := plex.to_base64(plex.to_zip(plex.backapp(
+    p_app_id               => 100,  -- parameter only available when APEX is installed
+    p_include_ords_modules => true, -- parameter only available when ORDS is installed
+    p_include_object_ddl   => true,
+    p_include_data         => false,
+    p_include_templates    => true)));
+END;
+{{/}}
+spool "app_100.zip.base64"
+print contents
+spool off 
 ```
 **/
 
