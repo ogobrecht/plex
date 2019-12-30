@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.0.2';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -38,12 +38,13 @@ INSTALLATION
 
 CHANGELOG
 
-- 2.1.0 (2019-xx-xx)
+- 2.1.0 (2019-12-30)
     - Function BackApp:
-        - New parameter to include ORDS modules
+        - New parameter to include ORDS modules (p_include_ords_modules)
+        - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
         - Object DDL: Comments for tables and views are now included
         - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
-        - Fixed: Unable to export JAVA objects on systems with 30 character object names
+        - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
         - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
         - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
     - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus

@@ -1,4 +1,3 @@
 *.zip
 node_modules
-plex_test.sql
 test_export
