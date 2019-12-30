@@ -6,8 +6,9 @@
     "url": "https://github.com/ogobrecht/plex.git"
   },
   "scripts": {
+    "prebuild": "npx ploc --in src/PLEX.pks --out README.md",
     "build": "node src/build.js",
-    "postbuild": "npx ploc --in src/PLEX.pks --out README.md",
+    "postbuild": "echo exit | sqlplus -S demo/oracle@localhost:1521/xepdb1 @plex_install.sql",
     "watch": "chokidar src/PLEX.pks src/PLEX.pkb src/plex_install.sql --initial -c \"npm run build\""
   },
   "dependencies": {
