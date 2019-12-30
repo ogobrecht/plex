@@ -307,7 +307,7 @@ END;
 {{/}}
 ```
 
-EXPORT EXPORT ZIP FILE PL/SQL
+EXAMPLE EXPORT ZIP FILE PL/SQL
 
 ```sql
 DECLARE
@@ -347,6 +347,39 @@ WITH
     RETURN v_return;
   END queries_to_csv_zip;
 SELECT queries_to_csv_zip FROM dual;
+```
+
+EXAMPLE ZIP FILE SQL*Plus
+
+```sql
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
+-- for spooling the content to the client disk. You need to decode the base64 
+-- encoded file before you are able to unzip the content. Also see this blog 
+-- post how to do this on the different operating systems:
+-- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
+-- Example Windows: certutil -decode metadata.zip.base64 metadata.zip
+-- Example Mac: base64 -D -i metadata.zip.base64 -o metadata.zip
+-- Example Linux: base64 -d metadata.zip.base64 > metadata.zip
+set verify off feedback off heading off termout off
+set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
+whenever sqlerror exit sql.sqlcode rollback
+variable contents clob
+BEGIN
+  --fill the queries array
+  plex.add_query(
+    p_query     => 'select * from user_tables',
+    p_file_name => 'user_tables');
+  plex.add_query(
+    p_query     => 'select * from user_tab_columns',
+    p_file_name => 'user_tab_columns',
+    p_max_rows  => 10000);
+  -- process the queries
+  :contents := plex.to_base64(plex.to_zip(plex.queries_to_csv));
+END;
+{{/}}
+spool "metadata.zip.base64"
+print contents
+spool off 
 ```
 **/
 
