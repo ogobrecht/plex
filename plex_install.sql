@@ -567,6 +567,10 @@ PROCEDURE util_setup_dbms_metadata (
 
 PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
 
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN;
+
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on global private package variables
 --------------------------------------------------------------------------------------------------------------------------------
@@ -766,6 +770,9 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
 
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN NUMBER;
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_runlog and g_queries
@@ -1222,6 +1229,16 @@ BEGIN
   END LOOP;
   util_log_stop;
 END util_ensure_unique_file_names;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+-- https://community.oracle.com/message/1638237
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN NUMBER IS
+BEGIN
+    return p_date - date '1900-01-01' + 2;
+END;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
