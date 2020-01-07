@@ -3,7 +3,7 @@ whenever sqlerror exit sql.sqlcode rollback
 
 prompt
 prompt Installing PL/SQL Export Utilities
-prompt ==================================
+prompt ============================================================
 
 prompt Set compiler flags
 DECLARE
@@ -3100,7 +3100,7 @@ END to_zip;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
--- copyright by Tim Hall, see https://oracle-base.com/dba/miscellaneous/base64encode.sql
+-- copyright by Tim Hall, see https://oracle-base.com/dba/script?category=miscellaneous&file=base64encode.sql
 FUNCTION to_base64(p_blob IN BLOB) RETURN CLOB IS
   v_bas64 CLOB;
   v_step PLS_INTEGER := 14400; -- make sure you set a multiple of 3 not higher than 24573
@@ -3151,6 +3151,6 @@ END plex;
 /
 show errors
 
-prompt ==================================
+prompt ============================================================
 prompt Installation Done
 prompt

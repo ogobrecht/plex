@@ -3,7 +3,7 @@ whenever sqlerror exit sql.sqlcode rollback
 
 prompt
 prompt Installing PL/SQL Export Utilities
-prompt ==================================
+prompt ============================================================
 
 prompt Set compiler flags
 DECLARE
@@ -43,6 +43,6 @@ prompt Compile package plex (body)
 @plex.pkb
 show errors
 
-prompt ==================================
+prompt ============================================================
 prompt Installation Done
 prompt

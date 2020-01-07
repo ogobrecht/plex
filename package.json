@@ -1,6 +1,7 @@
 {
   "name": "plex",
   "license": "MIT",
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/ogobrecht/plex.git"
@@ -11,8 +12,8 @@
     "postbuild": "echo exit | sqlplus -S demo/oracle@localhost:1521/xepdb1 @plex_install.sql",
     "watch": "chokidar src/PLEX.pks src/PLEX.pkb src/plex_install.sql --initial -c \"npm run build\""
   },
-  "dependencies": {
-    "chokidar-cli": "^1.2.2",
+  "devDependencies": {
+    "chokidar-cli": "^2.1.0",
     "ploc": "^0.6.1"
   }
 }
