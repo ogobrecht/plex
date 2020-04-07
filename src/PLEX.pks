@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0.1';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -221,9 +221,9 @@ SELECT backapp FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
 -- post how to do this on the different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
@@ -244,7 +244,7 @@ END;
 {{/}}
 spool "app_100.zip.base64"
 print contents
-spool off 
+spool off
 ```
 **/
 
@@ -352,9 +352,9 @@ SELECT queries_to_csv_zip FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
 -- post how to do this on the different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode metadata.zip.base64 metadata.zip
@@ -379,7 +379,7 @@ END;
 {{/}}
 spool "metadata.zip.base64"
 print contents
-spool off 
+spool off
 ```
 **/
 
@@ -525,7 +525,7 @@ PROCEDURE util_setup_dbms_metadata (
   p_segment_attributes   IN BOOLEAN DEFAULT false,
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
-  p_emit_schema          IN BOOLEAN DEFAULT false);  
+  p_emit_schema          IN BOOLEAN DEFAULT false);
 
 PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
 
@@ -568,6 +568,10 @@ PROCEDURE util_clob_query_to_csv (
   p_delimiter     IN VARCHAR2 DEFAULT ',',
   p_quote_mark    IN VARCHAR2 DEFAULT '"',
   p_header_prefix IN VARCHAR2 DEFAULT NULL);
+
+PROCEDURE util_clob_table_to_forallinsert (
+  p_table_name IN VARCHAR2,
+  p_max_rows   IN NUMBER DEFAULT 1000);
 
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 

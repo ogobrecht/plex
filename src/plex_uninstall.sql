@@ -1,5 +1,6 @@
-SET DEFINE OFF FEEDBACK OFF
-WHENEVER SQLERROR EXIT sql.sqlcode ROLLBACK
+set define off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
 prompt
 prompt Uninstalling PL/SQL Export Utilities
 prompt ====================================

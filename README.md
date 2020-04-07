@@ -81,7 +81,7 @@ SIGNATURE
 ```sql
 PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0.1';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -161,9 +161,9 @@ SELECT backapp FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
 -- post how to do this on the different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
@@ -184,7 +184,7 @@ END;
 /
 spool "app_100.zip.base64"
 print contents
-spool off 
+spool off
 ```
 
 SIGNATURE
@@ -338,9 +338,9 @@ SELECT queries_to_csv_zip FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
 -- post how to do this on the different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode metadata.zip.base64 metadata.zip
@@ -365,7 +365,7 @@ END;
 /
 spool "metadata.zip.base64"
 print contents
-spool off 
+spool off
 ```
 
 SIGNATURE
