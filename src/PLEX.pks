@@ -224,11 +224,11 @@ EXAMPLE ZIP FILE SQL*Plus
 -- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
 -- for spooling the content to the client disk. You need to decode the base64
 -- encoded file before you are able to unzip the content. Also see this blog
--- post how to do this on the different operating systems:
+-- post how to do this on different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
--- Example Mac: base64 -D -i app_100.zip.base64 -o app_100.zip
--- Example Linux: base64 -d app_100.zip.base64 > app_100.zip
+-- Example Mac:     base64 -D -i app_100.zip.base64 -o app_100.zip
+-- Example Linux:   base64 -d app_100.zip.base64 > app_100.zip
 set verify off feedback off heading off termout off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
@@ -276,7 +276,7 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true)   -- If true, generate file plex_error_log.md with detailed error messages.
+  p_include_error_log         IN BOOLEAN  DEFAULT true)  -- If true, generate file plex_error_log.md with detailed error messages.
 RETURN tab_export_files;
 /**
 Export one or more queries as CSV data within a file collection.
@@ -531,7 +531,7 @@ PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files)
 
 FUNCTION util_to_xlsx_datetime (
     p_date IN DATE)
-RETURN;
+RETURN NUMBER;
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on global private package variables
@@ -569,7 +569,7 @@ PROCEDURE util_clob_query_to_csv (
   p_quote_mark    IN VARCHAR2 DEFAULT '"',
   p_header_prefix IN VARCHAR2 DEFAULT NULL);
 
-PROCEDURE util_clob_table_to_forallinsert (
+PROCEDURE util_clob_table_to_insert (
   p_table_name IN VARCHAR2,
   p_max_rows   IN NUMBER DEFAULT 1000);
 
