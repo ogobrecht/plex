@@ -85,8 +85,11 @@ INSTALLATION
 
 CHANGELOG
 
-- 2.1.1 (2020-10-22)
-  - Fixed: #5 - function BackApp raises "ORA-03113: end-of-file on communication channel" in Oracle 19.6 (collection specific code was running fine in 12.2)
+- 2.2.0 (2020-10-xx)
+  - Function BackApp:
+    - Fixed: #4 - plex.backapp throws "ORA-00904: DBMS_JAVA.LONGNAME: invalid identifier" in Oracle instances without a JVM
+    - Fixed: #5 - plex.backapp throws "ORA-03113: end-of-file on communication channel" in Oracle 19.6
+    - Table data can now be exported in two formats: CSV and INSERT (p_data_format)
 - 2.1.0 (2019-12-30)
   - Function BackApp:
     - New parameter to include ORDS modules (p_include_ords_modules)
