@@ -38,7 +38,7 @@ END;
 prompt Compile package plex (spec)
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0.1';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.1.1';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -76,36 +76,38 @@ INSTALLATION
 
 CHANGELOG
 
+- 2.1.1 (2020-10-22)
+  - Fixed: #5 - function BackApp raises "ORA-03113: end-of-file on communication channel" in Oracle 19.6 (collection specific code was running fine in 12.2)
 - 2.1.0 (2019-12-30)
-    - Function BackApp:
-        - New parameter to include ORDS modules (p_include_ords_modules)
-        - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
-        - Object DDL: Comments for tables and views are now included
-        - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
-        - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
-        - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
-        - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
-    - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
+  - Function BackApp:
+    - New parameter to include ORDS modules (p_include_ords_modules)
+    - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
+    - Object DDL: Comments for tables and views are now included
+    - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
+    - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
+    - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
+    - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
+  - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
 - 2.0.2 (2019-08-16)
-    - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
+  - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
-    - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
+  - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
 - 2.0.0 (2019-06-20)
-    - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
-        - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
-    - Function BackApp:
-        - New parameters to filter for object types
-        - New parameters to change base paths for backend, frontend and data
+  - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
+    - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
+  - Function BackApp:
+    - New parameters to filter for object types
+    - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
-    - Fixed: Script templates for function BackApp used old/invalid parameters
-    - Add install and uninstall scripts for PLEX itself
+  - Fixed: Script templates for function BackApp used old/invalid parameters
+  - Add install and uninstall scripts for PLEX itself
 - 1.2.0 (2018-10-31)
-    - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
-    - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
+  - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
+  - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
 - 1.1.0 (2018-09-23)
-    - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
+  - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
 - 1.0.0 (2018-08-26)
-    - First public release
+  - First public release
 **/
 
 
@@ -565,7 +567,7 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
 
 FUNCTION util_to_xlsx_datetime (
     p_date IN DATE)
@@ -807,7 +809,7 @@ PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_
 
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
 
 PROCEDURE util_log_init (p_module IN VARCHAR2);
 
@@ -1184,7 +1186,7 @@ END util_setup_dbms_metadata;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files) IS
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files) IS
   v_file_list_lookup     tab_file_list_lookup;
   v_apex_install_file_id PLS_INTEGER;
   v_file_name            VARCHAR2(256);
@@ -1959,6 +1961,7 @@ RETURN tab_export_files IS
   $if $$apex_installed $then
   PROCEDURE process_apex_app IS
     v_apex_files apex_t_export_files;
+    v_clob       CLOB;
   BEGIN
     -- save as individual files
     util_log_start(p_base_path_frontend || '/APEX_EXPORT:individual_files');
@@ -1989,12 +1992,17 @@ RETURN tab_export_files IS
         'prompt --' || p_base_path_frontend || '/');
       -- special handling for install file
       IF v_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
-        v_export_files(i).name     := 'scripts/install_frontend_generated_by_apex.sql';
-        v_export_files(i).contents := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
+        v_export_files(i).name := 'scripts/install_frontend_generated_by_apex.sql';
+        -- We need the clob as temporary container.
+        -- When we use v_export_files(i).contents := 'someText' || replace(replace(v_export_files(i).contents, ...) ...),
+        -- then Oracle 19.6 will raise "ORA-03113: end-of-file on communication channel".
+        -- This was running without issues in Oracle 12.2.
+        v_clob := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
           || c_lf || c_lf
           || replace(replace(v_export_files(i).contents,
               '@application/', '@../' || p_base_path_frontend || '/'),
               'prompt --install', 'prompt --install_frontend_generated_by_apex');
+        v_export_files(i).contents := v_clob;
       END IF;
       -- handle build status RUN_ONLY
       IF v_export_files(i).name = p_base_path_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN

@@ -1335,6 +1335,7 @@ RETURN tab_export_files IS
   $if $$apex_installed $then
   PROCEDURE process_apex_app IS
     v_apex_files apex_t_export_files;
+    v_clob       CLOB;
   BEGIN
     -- save as individual files
     util_log_start(p_base_path_frontend || '/APEX_EXPORT:individual_files');
@@ -1365,12 +1366,17 @@ RETURN tab_export_files IS
         'prompt --' || p_base_path_frontend || '/');
       -- special handling for install file
       IF v_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
-        v_export_files(i).name     := 'scripts/install_frontend_generated_by_apex.sql';
-        v_export_files(i).contents := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
+        v_export_files(i).name := 'scripts/install_frontend_generated_by_apex.sql';
+        -- We need the clob as temporary container.
+        -- When we use v_export_files(i).contents := 'someText' || replace(replace(v_export_files(i).contents, ...) ...),
+        -- then Oracle 19.6 will raise "ORA-03113: end-of-file on communication channel".
+        -- This was running without issues in Oracle 12.2.
+        v_clob := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
           || c_lf || c_lf
           || replace(replace(v_export_files(i).contents,
               '@application/', '@../' || p_base_path_frontend || '/'),
               'prompt --install', 'prompt --install_frontend_generated_by_apex');
+        v_export_files(i).contents := v_clob;
       END IF;
       -- handle build status RUN_ONLY
       IF v_export_files(i).name = p_base_path_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN

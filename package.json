@@ -9,12 +9,12 @@
   "scripts": {
     "prebuild": "npx ploc --in src/PLEX.pks --out README.md",
     "build": "node src/build.js",
-    "postbuild": "echo exit | sqlplus -S /@cloud_playground_data @plex_install.sql",
+    "postbuild": "echo exit | sqlplus -S /@playground @plex_install.sql",
     "watch": "chokidar src/PLEX.pks src/PLEX.pkb src/plex_install.sql --initial -c \"npm run build\"",
-    "test-ccflags": "echo exit | sqlplus -S /@cloud_playground_data @plex_install_dev_test_ccflags.sql"
+    "test-ccflags": "echo exit | sqlplus -S /@playground @plex_install_dev_test_ccflags.sql"
   },
   "devDependencies": {
     "chokidar-cli": "^2.1.0",
-    "ploc": "^0.6.1"
+    "ploc": "^0.6.2"
   }
 }
