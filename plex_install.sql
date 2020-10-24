@@ -9,27 +9,36 @@ prompt Set compiler flags
 DECLARE
   v_apex_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_ords_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
+  v_java_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_utils_public   VARCHAR2(5) := 'FALSE'; -- Make utilities public available (for testing or other usages).
   v_debug_on       VARCHAR2(5) := 'FALSE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
 BEGIN
-  FOR i IN (SELECT *
+  FOR i IN (SELECT 1
               FROM all_objects
              WHERE object_type = 'SYNONYM'
                AND object_name = 'APEX_EXPORT') LOOP
     v_apex_installed := 'TRUE';
   END LOOP;
-  FOR i IN (SELECT *
+  FOR i IN (SELECT 1
               FROM all_objects
              WHERE object_type = 'SYNONYM'
                AND object_name = 'ORDS_EXPORT') LOOP
     v_ords_installed := 'TRUE';
   END LOOP;
+  FOR i IN (SELECT 1
+              FROM all_objects
+             WHERE object_type = 'SYNONYM'
+               AND object_name = 'DBMS_JAVA') LOOP
+    v_java_installed := 'TRUE';
+  END LOOP;
+
   -- Show unset compiler flags as errors (results for example in errors like "PLW-06003: unknown inquiry directive '$$UTILS_PUBLIC'")
   EXECUTE IMMEDIATE 'alter session set plsql_warnings = ''ENABLE:6003''';
   -- Finally set compiler flags
   EXECUTE IMMEDIATE 'alter session set plsql_ccflags = '''
     || 'apex_installed:' || v_apex_installed || ','
     || 'ords_installed:' || v_ords_installed || ','
+    || 'java_installed:' || v_java_installed || ','
     || 'utils_public:'   || v_utils_public   || ','
     || 'debug_on:'       || v_debug_on       || '''';
 END;
@@ -38,7 +47,7 @@ END;
 prompt Compile package plex (spec)
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.1.1';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.2.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -182,6 +191,7 @@ FUNCTION backapp (
   p_data_max_rows               IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
   p_data_table_name_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
   p_data_table_name_not_like    IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
+  p_data_format                 IN VARCHAR2 DEFAULT 'csv', -- A comma separated list of formats - currently supported formats are CSV and INSERT - eaxample: 'csv,insert' will export for each table a csv file and a sql file with insert statements.
   -- General Options:
   p_include_templates           IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
@@ -641,6 +651,34 @@ c_slash                        CONSTANT VARCHAR2(1) := '/';
 c_vc2_max_size                 CONSTANT PLS_INTEGER := 32767;
 c_zip_local_file_header        CONSTANT RAW(4)      := hextoraw('504B0304');
 c_zip_end_of_central_directory CONSTANT RAW(4)      := hextoraw('504B0506');
+-- numeric type identfiers
+c_number                       CONSTANT PLS_INTEGER := 2; -- FLOAT
+c_binary_float                 CONSTANT PLS_INTEGER := 100;
+c_binary_double                CONSTANT PLS_INTEGER := 101;
+-- string type identfiers
+c_char                         CONSTANT PLS_INTEGER := 96; -- NCHAR
+c_varchar2                     CONSTANT PLS_INTEGER := 1; -- NVARCHAR2
+c_long                         CONSTANT PLS_INTEGER := 8;
+c_clob                         CONSTANT PLS_INTEGER := 112; -- NCLOB
+c_xmltype                      CONSTANT PLS_INTEGER := 109; -- ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
+c_rowid                        CONSTANT PLS_INTEGER := 11;
+c_urowid                       CONSTANT PLS_INTEGER := 208;
+-- binary type identfiers
+c_raw                          CONSTANT PLS_INTEGER := 23;
+c_long_raw                     CONSTANT PLS_INTEGER := 24;
+c_blob                         CONSTANT PLS_INTEGER := 113;
+c_bfile                        CONSTANT PLS_INTEGER := 114;
+-- date type identfiers
+c_date                         CONSTANT PLS_INTEGER := 12;
+c_timestamp                    CONSTANT PLS_INTEGER := 180;
+c_timestamp_with_time_zone     CONSTANT PLS_INTEGER := 181;
+c_timestamp_with_local_tz      CONSTANT PLS_INTEGER := 231;
+-- interval type identfiers
+c_interval_year_to_month       CONSTANT PLS_INTEGER := 182;
+c_interval_day_to_second       CONSTANT PLS_INTEGER := 183;
+-- cursor type identfiers
+c_ref                          CONSTANT PLS_INTEGER := 111;
+c_ref_cursor                   CONSTANT PLS_INTEGER := 102; -- same identfiers for strong and weak ref cursor
 
 TYPE tab_errlog IS TABLE OF rec_error_log INDEX BY BINARY_INTEGER;
 
@@ -1413,34 +1451,6 @@ IS
   v_buffer_xmltype           XMLTYPE;
   v_buffer_long              LONG;
   v_buffer_long_length       PLS_INTEGER;
-  -- numeric type identfiers
-  c_number                   CONSTANT PLS_INTEGER := 2; -- FLOAT
-  c_binary_float             CONSTANT PLS_INTEGER := 100;
-  c_binary_double            CONSTANT PLS_INTEGER := 101;
-  -- string type identfiers
-  c_char                     CONSTANT PLS_INTEGER := 96; -- NCHAR
-  c_varchar2                 CONSTANT PLS_INTEGER := 1; -- NVARCHAR2
-  c_long                     CONSTANT PLS_INTEGER := 8;
-  c_clob                     CONSTANT PLS_INTEGER := 112; -- NCLOB
-  c_xmltype                  CONSTANT PLS_INTEGER := 109; -- ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
-  c_rowid                    CONSTANT PLS_INTEGER := 11;
-  c_urowid                   CONSTANT PLS_INTEGER := 208;
-  -- binary type identfiers
-  c_raw                      CONSTANT PLS_INTEGER := 23;
-  c_long_raw                 CONSTANT PLS_INTEGER := 24;
-  c_blob                     CONSTANT PLS_INTEGER := 113;
-  c_bfile                    CONSTANT PLS_INTEGER := 114;
-  -- date type identfiers
-  c_date                     CONSTANT PLS_INTEGER := 12;
-  c_timestamp                CONSTANT PLS_INTEGER := 180;
-  c_timestamp_with_time_zone CONSTANT PLS_INTEGER := 181;
-  c_timestamp_with_local_tz  CONSTANT PLS_INTEGER := 231;
-  -- interval type identfiers
-  c_interval_year_to_month   CONSTANT PLS_INTEGER := 182;
-  c_interval_day_to_second   CONSTANT PLS_INTEGER := 183;
-  -- cursor type identfiers
-  c_ref                      CONSTANT PLS_INTEGER := 111;
-  c_ref_cursor               CONSTANT PLS_INTEGER := 102; -- same identfiers for strong and weak ref cursor
 
   PROCEDURE escape_varchar2_buffer_for_csv IS
   BEGIN
@@ -1566,34 +1576,6 @@ IS
   v_buffer_xmltype           XMLTYPE;
   v_buffer_long              LONG;
   v_buffer_long_length       PLS_INTEGER;
-  -- numeric type identfiers
-  c_number                   CONSTANT PLS_INTEGER := 2; -- FLOAT
-  c_binary_float             CONSTANT PLS_INTEGER := 100;
-  c_binary_double            CONSTANT PLS_INTEGER := 101;
-  -- string type identfiers
-  c_char                     CONSTANT PLS_INTEGER := 96; -- NCHAR
-  c_varchar2                 CONSTANT PLS_INTEGER := 1; -- NVARCHAR2
-  c_long                     CONSTANT PLS_INTEGER := 8;
-  c_clob                     CONSTANT PLS_INTEGER := 112; -- NCLOB
-  c_xmltype                  CONSTANT PLS_INTEGER := 109; -- ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
-  c_rowid                    CONSTANT PLS_INTEGER := 11;
-  c_urowid                   CONSTANT PLS_INTEGER := 208;
-  -- binary type identfiers
-  c_raw                      CONSTANT PLS_INTEGER := 23;
-  c_long_raw                 CONSTANT PLS_INTEGER := 24;
-  c_blob                     CONSTANT PLS_INTEGER := 113;
-  c_bfile                    CONSTANT PLS_INTEGER := 114;
-  -- date type identfiers
-  c_date                     CONSTANT PLS_INTEGER := 12;
-  c_timestamp                CONSTANT PLS_INTEGER := 180;
-  c_timestamp_with_time_zone CONSTANT PLS_INTEGER := 181;
-  c_timestamp_with_local_tz  CONSTANT PLS_INTEGER := 231;
-  -- interval type identfiers
-  c_interval_year_to_month   CONSTANT PLS_INTEGER := 182;
-  c_interval_day_to_second   CONSTANT PLS_INTEGER := 183;
-  -- cursor type identfiers
-  c_ref                      CONSTANT PLS_INTEGER := 111;
-  c_ref_cursor               CONSTANT PLS_INTEGER := 102; -- same identfiers for strong and weak ref cursor
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -1647,7 +1629,7 @@ IS
           from
             user_tab_cols
           where
-            table_name = 'DRS_FILM'
+            table_name = p_table_name
             and data_type in ('NUMBER','VARCHAR2','DATE')
           order by
             column_id
@@ -1693,25 +1675,24 @@ BEGIN
     util_clob_append('-- Script generated by PLEX version ' || c_plex_version || c_crlf);
     util_clob_append('-- More infos here: ' || c_plex_url || c_crlf);
     util_clob_append('' || c_crlf);
-    util_clob_append('prompt - insert into ' || p_table_name || c_crlf);
-    util_clob_append('set define off feedback off' || c_crlf);
+    util_clob_append('set define off feedback off timing on' || c_crlf);
+    util_clob_append('prompt Insert into ' || p_table_name || c_crlf);
     util_clob_append('' || c_crlf);
-    util_clob_append('declare' || c_crlf);
-    util_clob_append('type  r_t is table of drs_film%rowtype index by pls_integer;' || c_crlf);
-    util_clob_append('r     r_t;' || c_crlf);
-    util_clob_append('start pls_integer := dbms_utility.get_time;' || c_crlf);
-    util_clob_append('begin' || c_crlf);
+    util_clob_append('DECLARE' || c_crlf);
+    util_clob_append('  TYPE  row_collection IS TABLE OF ' || p_table_name || '%rowtype INDEX BY PLS_INTEGER;' || c_crlf);
+    util_clob_append('  t     row_collection;' || c_crlf);
+    util_clob_append('BEGIN' || c_crlf);
 
     -- create data
     LOOP
       EXIT WHEN dbms_sql.fetch_rows(v_cursor) = 0 OR v_data_count = p_max_rows;
       v_data_count := v_data_count + 1;
       -- start new table row
-      util_clob_append('--' || c_crlf);
+      util_clob_append('  --' || c_crlf);
 
       FOR i IN 1..v_col_cnt LOOP
         -- start column
-        util_clob_append('r(' || v_data_count || ').' || v_desc_tab(i).col_name || ' := ');
+        util_clob_append('  t(' || v_data_count || ').' || v_desc_tab(i).col_name || ' := ');
 
         IF v_desc_tab(i).col_type = c_clob THEN
           dbms_sql.column_value(v_cursor, i, v_buffer_clob);
@@ -1757,34 +1738,29 @@ BEGIN
 
     -- create forall insert
     if  v_data_count = 0 then
-      util_clob_append('-- No data found in table :-(' || c_crlf);
-      util_clob_append('end;' || c_crlf);
+      util_clob_append('  NULL; -- No data found in table :-(' || c_crlf);
+      util_clob_append('END;' || c_crlf);
       util_clob_append('/' || c_crlf);
     else
-      util_clob_append('--' || c_crlf);
-      util_clob_append('forall i in 1..r.count' || c_crlf);
-      util_clob_append('  insert into "' || p_table_name || '" (' || c_crlf);
+      util_clob_append('  --' || c_crlf);
+      util_clob_append('  FORALL i IN 1..t.count' || c_crlf);
+      util_clob_append('    INSERT INTO "' || p_table_name || '" (' || c_crlf);
       FOR i IN 1..v_col_cnt LOOP
-        util_clob_append('    "' || v_desc_tab(i).col_name || '"'
+        util_clob_append('      "' || v_desc_tab(i).col_name || '"'
                           || case when i != v_col_cnt then ',' end
                           || c_crlf);
       end loop;
-      util_clob_append('  ) values (' || c_crlf);
+      util_clob_append('    ) VALUES (' || c_crlf);
       FOR i IN 1..v_col_cnt LOOP
-        util_clob_append('    r(i)."' || v_desc_tab(i).col_name || '"'
+        util_clob_append('      t(i)."' || v_desc_tab(i).col_name || '"'
                           || case when i != v_col_cnt then ',' end
                           || c_crlf);
       end loop;
         util_clob_append('  );' || c_crlf);
-        util_clob_append('' || c_crlf);
-        util_clob_append(q'[dbms_output.put_line('- ']' || c_crlf);
-        util_clob_append(q'[                      ||(dbms_utility.get_time - start) / 100]' || c_crlf);
-        util_clob_append(q'[                      || ' seconds');]' || c_crlf);
-        util_clob_append('' || c_crlf);
-        util_clob_append('end;' || c_crlf);
+        util_clob_append('END;' || c_crlf);
         util_clob_append('/' || c_crlf);
         util_clob_append('' || c_crlf);
-        util_clob_append('commit;' || c_crlf);
+        util_clob_append('COMMIT;' || c_crlf);
         util_clob_append('' || c_crlf);
     end if;
   END IF;
@@ -1884,6 +1860,7 @@ FUNCTION backapp (
   p_data_max_rows               IN NUMBER   DEFAULT 1000,
   p_data_table_name_like        IN VARCHAR2 DEFAULT NULL,
   p_data_table_name_not_like    IN VARCHAR2 DEFAULT NULL,
+  p_data_format                 IN VARCHAR2 DEFAULT 'csv',
   p_include_templates           IN BOOLEAN  DEFAULT true,
   p_include_runtime_log         IN BOOLEAN  DEFAULT true,
   p_include_error_log           IN BOOLEAN  DEFAULT true,
@@ -2219,13 +2196,18 @@ WITH t AS (
            WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
            WHEN 'TYPE'                 THEN 'TYPE_SPEC'
            ELSE object_type
-         END AS object_type,
+         END AS object_type,^'
+$if $$java_installed
+$then || q'^
          CASE
            WHEN object_type like 'JAVA%' AND substr(object_name, 1, 1) = '/' THEN
              dbms_java.longname(object_name)
            ELSE
              object_name
-         END AS object_name
+         END AS object_name^'
+$else || q'^
+         object_name^'
+$end || q'^
     FROM ^'
 $if NOT $$debug_on
 $then || 'user_objects'
@@ -2684,39 +2666,43 @@ SELECT table_name,
       EXIT WHEN v_cur%notfound;
 
       -- csv file
-      BEGIN
-        v_file_path := p_base_path_data || '/' || v_rec.table_name || '.csv';
-        util_log_start(v_file_path);
-        util_clob_query_to_csv(
-          p_query    => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
-                        CASE
-                          WHEN v_rec.pk_columns IS NOT NULL
-                          THEN ' ORDER BY ' || v_rec.pk_columns
-                          ELSE NULL
-                        END,
-          p_max_rows => p_data_max_rows);
-        util_clob_add_to_export_files(
-          p_export_files => v_export_files,
-          p_name         => v_file_path);
-        util_log_stop;
-      EXCEPTION
-        WHEN OTHERS THEN
-          util_log_error(v_file_path);
-      END;
+      IF lower(p_data_format) LIKE '%csv%' THEN
+        BEGIN
+          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.csv';
+          util_log_start(v_file_path);
+          util_clob_query_to_csv(
+            p_query    => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
+                          CASE
+                            WHEN v_rec.pk_columns IS NOT NULL
+                            THEN ' ORDER BY ' || v_rec.pk_columns
+                            ELSE NULL
+                          END,
+            p_max_rows => p_data_max_rows);
+          util_clob_add_to_export_files(
+            p_export_files => v_export_files,
+            p_name         => v_file_path);
+          util_log_stop;
+        EXCEPTION
+          WHEN OTHERS THEN
+            util_log_error(v_file_path);
+        END;
+      END IF;
 
-      -- forall insert script
-      BEGIN
-        v_file_path := p_base_path_data || '/' || v_rec.table_name || '.sql';
-        util_log_start(v_file_path);
-        util_clob_table_to_insert(p_table_name => v_rec.table_name);
-        util_clob_add_to_export_files(
-          p_export_files => v_export_files,
-          p_name         => v_file_path);
-        util_log_stop;
-      EXCEPTION
-        WHEN OTHERS THEN
-          util_log_error(v_file_path);
-      END;
+      -- insert script
+      IF lower(p_data_format) LIKE '%insert%' THEN
+        BEGIN
+          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.sql';
+          util_log_start(v_file_path);
+          util_clob_table_to_insert(p_table_name => v_rec.table_name);
+          util_clob_add_to_export_files(
+            p_export_files => v_export_files,
+            p_name         => v_file_path);
+          util_log_stop;
+        EXCEPTION
+          WHEN OTHERS THEN
+            util_log_error(v_file_path);
+        END;
+      END IF;
     END LOOP;
     CLOSE v_cur;
 
