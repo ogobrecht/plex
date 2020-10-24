@@ -527,7 +527,7 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
 
 FUNCTION util_to_xlsx_datetime (
     p_date IN DATE)

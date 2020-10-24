@@ -183,7 +183,7 @@ PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_
 
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
 
 PROCEDURE util_log_init (p_module IN VARCHAR2);
 
@@ -560,7 +560,7 @@ END util_setup_dbms_metadata;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files) IS
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files) IS
   v_file_list_lookup     tab_file_list_lookup;
   v_apex_install_file_id PLS_INTEGER;
   v_file_name            VARCHAR2(256);
