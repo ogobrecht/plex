@@ -85,7 +85,7 @@ INSTALLATION
 
 CHANGELOG
 
-- 2.2.0 (2020-10-xx)
+- 2.2.0 (2020-10-25)
   - Function BackApp:
     - Fixed: #4 - plex.backapp throws "ORA-00904: DBMS_JAVA.LONGNAME: invalid identifier" in Oracle instances without a JVM
     - Fixed: #5 - plex.backapp throws "ORA-03113: end-of-file on communication channel" in Oracle 19.6
