@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.2.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -38,36 +38,41 @@ INSTALLATION
 
 CHANGELOG
 
+- 2.2.0 (2020-10-25)
+  - Function BackApp:
+    - Fixed: #4 - plex.backapp throws "ORA-00904: DBMS_JAVA.LONGNAME: invalid identifier" in Oracle instances without a JVM
+    - Fixed: #5 - plex.backapp throws "ORA-03113: end-of-file on communication channel" in Oracle 19.6
+    - Table data can now be exported in two formats: CSV and INSERT (p_data_format)
 - 2.1.0 (2019-12-30)
-    - Function BackApp:
-        - New parameter to include ORDS modules (p_include_ords_modules)
-        - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
-        - Object DDL: Comments for tables and views are now included
-        - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
-        - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
-        - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
-        - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
-    - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
+  - Function BackApp:
+    - New parameter to include ORDS modules (p_include_ords_modules)
+    - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
+    - Object DDL: Comments for tables and views are now included
+    - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
+    - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
+    - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
+    - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
+  - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
 - 2.0.2 (2019-08-16)
-    - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
+  - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
-    - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
+  - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
 - 2.0.0 (2019-06-20)
-    - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
-        - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
-    - Function BackApp:
-        - New parameters to filter for object types
-        - New parameters to change base paths for backend, frontend and data
+  - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
+    - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
+  - Function BackApp:
+    - New parameters to filter for object types
+    - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
-    - Fixed: Script templates for function BackApp used old/invalid parameters
-    - Add install and uninstall scripts for PLEX itself
+  - Fixed: Script templates for function BackApp used old/invalid parameters
+  - Add install and uninstall scripts for PLEX itself
 - 1.2.0 (2018-10-31)
-    - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
-    - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
+  - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
+  - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
 - 1.1.0 (2018-09-23)
-    - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
+  - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
 - 1.0.0 (2018-08-26)
-    - First public release
+  - First public release
 **/
 
 
@@ -142,6 +147,7 @@ FUNCTION backapp (
   p_data_max_rows               IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
   p_data_table_name_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
   p_data_table_name_not_like    IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
+  p_data_format                 IN VARCHAR2 DEFAULT 'csv', -- A comma separated list of formats - currently supported formats are CSV and INSERT - eaxample: 'csv,insert' will export for each table a csv file and a sql file with insert statements.
   -- General Options:
   p_include_templates           IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
@@ -221,14 +227,14 @@ SELECT backapp FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
--- post how to do this on the different operating systems:
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
+-- post how to do this on different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
--- Example Mac: base64 -D -i app_100.zip.base64 -o app_100.zip
--- Example Linux: base64 -d app_100.zip.base64 > app_100.zip
+-- Example Mac:     base64 -D -i app_100.zip.base64 -o app_100.zip
+-- Example Linux:   base64 -d app_100.zip.base64 > app_100.zip
 set verify off feedback off heading off termout off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
@@ -244,7 +250,7 @@ END;
 {{/}}
 spool "app_100.zip.base64"
 print contents
-spool off 
+spool off
 ```
 **/
 
@@ -276,7 +282,7 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true)   -- If true, generate file plex_error_log.md with detailed error messages.
+  p_include_error_log         IN BOOLEAN  DEFAULT true)  -- If true, generate file plex_error_log.md with detailed error messages.
 RETURN tab_export_files;
 /**
 Export one or more queries as CSV data within a file collection.
@@ -352,9 +358,9 @@ SELECT queries_to_csv_zip FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
 -- post how to do this on the different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode metadata.zip.base64 metadata.zip
@@ -379,7 +385,7 @@ END;
 {{/}}
 spool "metadata.zip.base64"
 print contents
-spool off 
+spool off
 ```
 **/
 
@@ -525,9 +531,13 @@ PROCEDURE util_setup_dbms_metadata (
   p_segment_attributes   IN BOOLEAN DEFAULT false,
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
-  p_emit_schema          IN BOOLEAN DEFAULT false);  
+  p_emit_schema          IN BOOLEAN DEFAULT false);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
+
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN NUMBER;
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on global private package variables
@@ -564,6 +574,10 @@ PROCEDURE util_clob_query_to_csv (
   p_delimiter     IN VARCHAR2 DEFAULT ',',
   p_quote_mark    IN VARCHAR2 DEFAULT '"',
   p_header_prefix IN VARCHAR2 DEFAULT NULL);
+
+PROCEDURE util_clob_table_to_insert (
+  p_table_name IN VARCHAR2,
+  p_max_rows   IN NUMBER DEFAULT 1000);
 
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 

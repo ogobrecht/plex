@@ -3,33 +3,42 @@ whenever sqlerror exit sql.sqlcode rollback
 
 prompt
 prompt Installing PL/SQL Export Utilities
-prompt ==================================
+prompt ============================================================
 
 prompt Set compiler flags
 DECLARE
   v_apex_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_ords_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
+  v_java_installed VARCHAR2(5) := 'FALSE'; -- Do not change (is set dynamically).
   v_utils_public   VARCHAR2(5) := 'FALSE'; -- Make utilities public available (for testing or other usages).
   v_debug_on       VARCHAR2(5) := 'FALSE'; -- Object DDL: extract only one object per type to find problematic ones and save time in big schemas like APEX_XXX.
 BEGIN
-  FOR i IN (SELECT *
+  FOR i IN (SELECT 1
               FROM all_objects
              WHERE object_type = 'SYNONYM'
                AND object_name = 'APEX_EXPORT') LOOP
     v_apex_installed := 'TRUE';
   END LOOP;
-  FOR i IN (SELECT *
+  FOR i IN (SELECT 1
               FROM all_objects
              WHERE object_type = 'SYNONYM'
                AND object_name = 'ORDS_EXPORT') LOOP
     v_ords_installed := 'TRUE';
   END LOOP;
+  FOR i IN (SELECT 1
+              FROM all_objects
+             WHERE object_type = 'SYNONYM'
+               AND object_name = 'DBMS_JAVA') LOOP
+    v_java_installed := 'TRUE';
+  END LOOP;
+
   -- Show unset compiler flags as errors (results for example in errors like "PLW-06003: unknown inquiry directive '$$UTILS_PUBLIC'")
   EXECUTE IMMEDIATE 'alter session set plsql_warnings = ''ENABLE:6003''';
   -- Finally set compiler flags
   EXECUTE IMMEDIATE 'alter session set plsql_ccflags = '''
     || 'apex_installed:' || v_apex_installed || ','
     || 'ords_installed:' || v_ords_installed || ','
+    || 'java_installed:' || v_java_installed || ','
     || 'utils_public:'   || v_utils_public   || ','
     || 'debug_on:'       || v_debug_on       || '''';
 END;
@@ -38,7 +47,7 @@ END;
 prompt Compile package plex (spec)
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.1.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.2.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -76,36 +85,41 @@ INSTALLATION
 
 CHANGELOG
 
+- 2.2.0 (2020-10-25)
+  - Function BackApp:
+    - Fixed: #4 - plex.backapp throws "ORA-00904: DBMS_JAVA.LONGNAME: invalid identifier" in Oracle instances without a JVM
+    - Fixed: #5 - plex.backapp throws "ORA-03113: end-of-file on communication channel" in Oracle 19.6
+    - Table data can now be exported in two formats: CSV and INSERT (p_data_format)
 - 2.1.0 (2019-12-30)
-    - Function BackApp:
-        - New parameter to include ORDS modules (p_include_ords_modules)
-        - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
-        - Object DDL: Comments for tables and views are now included
-        - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
-        - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
-        - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
-        - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
-    - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
+  - Function BackApp:
+    - New parameter to include ORDS modules (p_include_ords_modules)
+    - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
+    - Object DDL: Comments for tables and views are now included
+    - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
+    - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
+    - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
+    - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
+  - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
 - 2.0.2 (2019-08-16)
-    - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
+  - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
 - 2.0.1 (2019-07-09)
-    - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
+  - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
 - 2.0.0 (2019-06-20)
-    - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
-        - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
-    - Function BackApp:
-        - New parameters to filter for object types
-        - New parameters to change base paths for backend, frontend and data
+  - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
+    - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
+  - Function BackApp:
+    - New parameters to filter for object types
+    - New parameters to change base paths for backend, frontend and data
 - 1.2.1 (2019-03-13)
-    - Fixed: Script templates for function BackApp used old/invalid parameters
-    - Add install and uninstall scripts for PLEX itself
+  - Fixed: Script templates for function BackApp used old/invalid parameters
+  - Add install and uninstall scripts for PLEX itself
 - 1.2.0 (2018-10-31)
-    - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
-    - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
+  - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
+  - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
 - 1.1.0 (2018-09-23)
-    - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
+  - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
 - 1.0.0 (2018-08-26)
-    - First public release
+  - First public release
 **/
 
 
@@ -180,6 +194,7 @@ FUNCTION backapp (
   p_data_max_rows               IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
   p_data_table_name_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
   p_data_table_name_not_like    IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
+  p_data_format                 IN VARCHAR2 DEFAULT 'csv', -- A comma separated list of formats - currently supported formats are CSV and INSERT - eaxample: 'csv,insert' will export for each table a csv file and a sql file with insert statements.
   -- General Options:
   p_include_templates           IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
@@ -259,14 +274,14 @@ SELECT backapp FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
--- post how to do this on the different operating systems:
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
+-- post how to do this on different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
--- Example Mac: base64 -D -i app_100.zip.base64 -o app_100.zip
--- Example Linux: base64 -d app_100.zip.base64 > app_100.zip
+-- Example Mac:     base64 -D -i app_100.zip.base64 -o app_100.zip
+-- Example Linux:   base64 -d app_100.zip.base64 > app_100.zip
 set verify off feedback off heading off termout off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
@@ -282,7 +297,7 @@ END;
 {{/}}
 spool "app_100.zip.base64"
 print contents
-spool off 
+spool off
 ```
 **/
 
@@ -314,7 +329,7 @@ FUNCTION queries_to_csv (
   p_quote_mark                IN VARCHAR2 DEFAULT '"',   -- Used when the data contains the delimiter character.
   p_header_prefix             IN VARCHAR2 DEFAULT NULL,  -- Prefix the header line with this text.
   p_include_runtime_log       IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with runtime statistics.
-  p_include_error_log         IN BOOLEAN  DEFAULT true)   -- If true, generate file plex_error_log.md with detailed error messages.
+  p_include_error_log         IN BOOLEAN  DEFAULT true)  -- If true, generate file plex_error_log.md with detailed error messages.
 RETURN tab_export_files;
 /**
 Export one or more queries as CSV data within a file collection.
@@ -390,9 +405,9 @@ SELECT queries_to_csv_zip FROM dual;
 EXAMPLE ZIP FILE SQL*Plus
 
 ```sql
--- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB 
--- for spooling the content to the client disk. You need to decode the base64 
--- encoded file before you are able to unzip the content. Also see this blog 
+-- SQL*Plus can only handle CLOBs, no BLOBs - so we are forced to create a CLOB
+-- for spooling the content to the client disk. You need to decode the base64
+-- encoded file before you are able to unzip the content. Also see this blog
 -- post how to do this on the different operating systems:
 -- https://www.igorkromin.net/index.php/2017/04/26/base64-encode-or-decode-on-the-command-line-without-installing-extra-tools-on-linux-windows-or-macos/
 -- Example Windows: certutil -decode metadata.zip.base64 metadata.zip
@@ -417,7 +432,7 @@ END;
 {{/}}
 spool "metadata.zip.base64"
 print contents
-spool off 
+spool off
 ```
 **/
 
@@ -563,9 +578,13 @@ PROCEDURE util_setup_dbms_metadata (
   p_segment_attributes   IN BOOLEAN DEFAULT false,
   p_sqlterminator        IN BOOLEAN DEFAULT true,
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
-  p_emit_schema          IN BOOLEAN DEFAULT false);  
+  p_emit_schema          IN BOOLEAN DEFAULT false);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
+
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN NUMBER;
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on global private package variables
@@ -603,6 +622,10 @@ PROCEDURE util_clob_query_to_csv (
   p_quote_mark    IN VARCHAR2 DEFAULT '"',
   p_header_prefix IN VARCHAR2 DEFAULT NULL);
 
+PROCEDURE util_clob_table_to_insert (
+  p_table_name IN VARCHAR2,
+  p_max_rows   IN NUMBER DEFAULT 1000);
+
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
 PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
@@ -631,6 +654,34 @@ c_slash                        CONSTANT VARCHAR2(1) := '/';
 c_vc2_max_size                 CONSTANT PLS_INTEGER := 32767;
 c_zip_local_file_header        CONSTANT RAW(4)      := hextoraw('504B0304');
 c_zip_end_of_central_directory CONSTANT RAW(4)      := hextoraw('504B0506');
+-- numeric type identfiers
+c_number                       CONSTANT PLS_INTEGER := 2; -- FLOAT
+c_binary_float                 CONSTANT PLS_INTEGER := 100;
+c_binary_double                CONSTANT PLS_INTEGER := 101;
+-- string type identfiers
+c_char                         CONSTANT PLS_INTEGER := 96; -- NCHAR
+c_varchar2                     CONSTANT PLS_INTEGER := 1; -- NVARCHAR2
+c_long                         CONSTANT PLS_INTEGER := 8;
+c_clob                         CONSTANT PLS_INTEGER := 112; -- NCLOB
+c_xmltype                      CONSTANT PLS_INTEGER := 109; -- ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
+c_rowid                        CONSTANT PLS_INTEGER := 11;
+c_urowid                       CONSTANT PLS_INTEGER := 208;
+-- binary type identfiers
+c_raw                          CONSTANT PLS_INTEGER := 23;
+c_long_raw                     CONSTANT PLS_INTEGER := 24;
+c_blob                         CONSTANT PLS_INTEGER := 113;
+c_bfile                        CONSTANT PLS_INTEGER := 114;
+-- date type identfiers
+c_date                         CONSTANT PLS_INTEGER := 12;
+c_timestamp                    CONSTANT PLS_INTEGER := 180;
+c_timestamp_with_time_zone     CONSTANT PLS_INTEGER := 181;
+c_timestamp_with_local_tz      CONSTANT PLS_INTEGER := 231;
+-- interval type identfiers
+c_interval_year_to_month       CONSTANT PLS_INTEGER := 182;
+c_interval_day_to_second       CONSTANT PLS_INTEGER := 183;
+-- cursor type identfiers
+c_ref                          CONSTANT PLS_INTEGER := 111;
+c_ref_cursor                   CONSTANT PLS_INTEGER := 102; -- same identfiers for strong and weak ref cursor
 
 TYPE tab_errlog IS TABLE OF rec_error_log INDEX BY BINARY_INTEGER;
 
@@ -766,6 +817,9 @@ PROCEDURE util_setup_dbms_metadata (
   p_constraints_as_alter IN BOOLEAN DEFAULT false,
   p_emit_schema          IN BOOLEAN DEFAULT false);
 
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN NUMBER;
 
 --------------------------------------------------------------------------------------------------------------------------------
 -- The following tools are working on the global private package variables g_clob, g_clob_varchar_cache, g_runlog and g_queries
@@ -788,11 +842,15 @@ PROCEDURE util_clob_query_to_csv (
   p_quote_mark    IN VARCHAR2 DEFAULT '"',
   p_header_prefix IN VARCHAR2 DEFAULT NULL);
 
+PROCEDURE util_clob_table_to_insert (
+  p_table_name IN VARCHAR2,
+  p_max_rows   IN NUMBER DEFAULT 1000);
+
 PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
 
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files);
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
 
 PROCEDURE util_log_init (p_module IN VARCHAR2);
 
@@ -1169,7 +1227,7 @@ END util_setup_dbms_metadata;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT tab_export_files) IS
+PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files) IS
   v_file_list_lookup     tab_file_list_lookup;
   v_apex_install_file_id PLS_INTEGER;
   v_file_name            VARCHAR2(256);
@@ -1222,6 +1280,16 @@ BEGIN
   END LOOP;
   util_log_stop;
 END util_ensure_unique_file_names;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+-- https://community.oracle.com/message/1638237
+FUNCTION util_to_xlsx_datetime (
+    p_date IN DATE)
+RETURN NUMBER IS
+BEGIN
+    return p_date - date '1900-01-01' + 2;
+END;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -1376,9 +1444,8 @@ PROCEDURE util_clob_query_to_csv (
   p_header_prefix IN VARCHAR2 DEFAULT NULL)
 IS
   -- inspired by Tim Hall: https://oracle-base.com/dba/script?category=miscellaneous&file=csv.sql
-  v_line_terminator          VARCHAR2(2) := c_crlf; -- to be compatible with Excel we need to use crlf here (multiline text uses lf and is wrapped in quotes)
   v_cursor                   PLS_INTEGER;
-  v_ignore_me                   PLS_INTEGER;
+  v_ignore_me                PLS_INTEGER;
   v_data_count               PLS_INTEGER := 0;
   v_col_cnt                  PLS_INTEGER;
   v_desc_tab                 dbms_sql.desc_tab3;
@@ -1387,34 +1454,6 @@ IS
   v_buffer_xmltype           XMLTYPE;
   v_buffer_long              LONG;
   v_buffer_long_length       PLS_INTEGER;
-  -- numeric type identfiers
-  c_number                   CONSTANT PLS_INTEGER := 2; -- FLOAT
-  c_binary_float             CONSTANT PLS_INTEGER := 100;
-  c_binary_double            CONSTANT PLS_INTEGER := 101;
-  -- string type identfiers
-  c_char                     CONSTANT PLS_INTEGER := 96; -- NCHAR
-  c_varchar2                 CONSTANT PLS_INTEGER := 1; -- NVARCHAR2
-  c_long                     CONSTANT PLS_INTEGER := 8;
-  c_clob                     CONSTANT PLS_INTEGER := 112; -- NCLOB
-  c_xmltype                  CONSTANT PLS_INTEGER := 109; -- ANYDATA, ANYDATASET, ANYTYPE, Object type, VARRAY, Nested table
-  c_rowid                    CONSTANT PLS_INTEGER := 11;
-  c_urowid                   CONSTANT PLS_INTEGER := 208;
-  -- binary type identfiers
-  c_raw                      CONSTANT PLS_INTEGER := 23;
-  c_long_raw                 CONSTANT PLS_INTEGER := 24;
-  c_blob                     CONSTANT PLS_INTEGER := 113;
-  c_bfile                    CONSTANT PLS_INTEGER := 114;
-  -- date type identfiers
-  c_date                     CONSTANT PLS_INTEGER := 12;
-  c_timestamp                CONSTANT PLS_INTEGER := 180;
-  c_timestamp_with_time_zone CONSTANT PLS_INTEGER := 181;
-  c_timestamp_with_local_tz  CONSTANT PLS_INTEGER := 231;
-  -- interval type identfiers
-  c_interval_year_to_month   CONSTANT PLS_INTEGER := 182;
-  c_interval_day_to_second   CONSTANT PLS_INTEGER := 183;
-  -- cursor type identfiers
-  c_ref                      CONSTANT PLS_INTEGER := 111;
-  c_ref_cursor               CONSTANT PLS_INTEGER := 102; -- same identfiers for strong and weak ref cursor
 
   PROCEDURE escape_varchar2_buffer_for_csv IS
   BEGIN
@@ -1424,9 +1463,9 @@ IS
         replace(v_buffer_varchar2, c_crlf, c_lf),
         c_cr,
         c_lf);
-      -- if we have the parameter p_force_quotes set to true or the delimiter character or
-      -- line feeds in the string then we have to wrap the text in quotes marks and escape
-      -- the quote marks inside the text by double them
+      -- if we have the delimiter character or line feeds in the string then we
+      -- have to wrap the text in quotes marks and escape the quote marks
+      -- inside the text by double them
       IF instr(v_buffer_varchar2, p_delimiter) > 0 OR instr(v_buffer_varchar2, c_lf) > 0 THEN
         v_buffer_varchar2 := p_quote_mark
           || replace(v_buffer_varchar2, p_quote_mark, p_quote_mark || p_quote_mark)
@@ -1462,6 +1501,8 @@ BEGIN
       END IF;
     END LOOP;
     v_ignore_me := dbms_sql.execute(v_cursor);
+
+    -- create header
     util_clob_append(p_header_prefix);
     FOR i IN 1..v_col_cnt LOOP
       IF i > 1 THEN
@@ -1471,7 +1512,8 @@ BEGIN
       escape_varchar2_buffer_for_csv;
       util_clob_append(v_buffer_varchar2);
     END LOOP;
-    util_clob_append(v_line_terminator);
+    util_clob_append(c_crlf);
+
     -- create data
     LOOP
       EXIT WHEN dbms_sql.fetch_rows(v_cursor) = 0 OR v_data_count = p_max_rows;
@@ -1516,12 +1558,216 @@ BEGIN
           util_clob_append(v_buffer_varchar2);
         END IF;
       END LOOP;
-      util_clob_append(v_line_terminator);
+      util_clob_append(c_crlf);
       v_data_count := v_data_count + 1;
     END LOOP;
     dbms_sql.close_cursor(v_cursor);
   END IF;
 END util_clob_query_to_csv;
+
+PROCEDURE util_clob_table_to_insert (
+  p_table_name IN VARCHAR2,
+  p_max_rows   IN NUMBER DEFAULT 1000)
+IS
+  v_cursor                   PLS_INTEGER;
+  v_ignore_me                PLS_INTEGER;
+  v_data_count               PLS_INTEGER := 0;
+  v_col_cnt                  PLS_INTEGER;
+  v_desc_tab                 dbms_sql.desc_tab3;
+  v_buffer_varchar2          VARCHAR2(32767 CHAR);
+  v_buffer_clob              CLOB;
+  v_buffer_xmltype           XMLTYPE;
+  v_buffer_long              LONG;
+  v_buffer_long_length       PLS_INTEGER;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+  PROCEDURE prepare_varchar2_buffer_for_scripting IS
+    c_single_quote constant varchar2(1) := q'[']';
+    c_double_quote constant varchar2(2) := q'['']';
+  BEGIN
+    IF v_buffer_varchar2 IS NOT NULL THEN
+      -- if we have the single quote character in the string then we
+      -- have to double them
+      v_buffer_varchar2 := c_single_quote ||
+        case when instr(v_buffer_varchar2, c_single_quote) > 0
+          then replace(v_buffer_varchar2, c_single_quote, c_double_quote)
+          else v_buffer_varchar2
+        end || c_single_quote;
+    END IF;
+  EXCEPTION
+    WHEN value_error THEN
+      v_buffer_varchar2 := 'Value skipped - escaped text larger then ' || c_vc2_max_size || ' characters';
+  END prepare_varchar2_buffer_for_scripting;
+
+  FUNCTION get_order_by_list RETURN VARCHAR2 IS
+    v_return varchar2(4000);
+  begin
+    -- try to use pk column list ...
+    for i in (
+      select
+        ( select
+            listagg(ucc.column_name, ', ') within group(order by position)
+          from
+            user_cons_columns ucc
+          where
+            ucc.constraint_name = uc.constraint_name
+        ) as order_by_list
+      from
+        user_constraints uc
+      where
+        table_name = p_table_name
+        and constraint_type = 'P'
+    ) loop
+      v_return := i.order_by_list;
+    end loop;
+
+    -- ... or fetch first three table columns as order by list
+    if v_return is null then
+      for i in (
+        with t as (
+          select
+            column_name,
+            column_id
+          from
+            user_tab_cols
+          where
+            table_name = p_table_name
+            and data_type in ('NUMBER','VARCHAR2','DATE')
+          order by
+            column_id
+          fetch first 3 rows only
+        )
+        select
+          listagg(column_name, ', ') within group (order by column_id) as order_by_list
+        from t
+      ) loop
+        v_return := i.order_by_list;
+      end loop;
+    end if;
+
+    return v_return;
+  end;
+
+BEGIN
+  IF p_table_name IS NOT NULL THEN
+    v_cursor := dbms_sql.open_cursor;
+    dbms_sql.parse(
+      v_cursor,
+      'select * from ' || p_table_name || ' order by ' || get_order_by_list,
+      dbms_sql.native);
+    -- https://support.esri.com/en/technical-article/000010110
+    -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
+    dbms_sql.describe_columns3(v_cursor, v_col_cnt, v_desc_tab);
+    FOR i IN 1..v_col_cnt LOOP
+      IF v_desc_tab(i).col_type = c_clob THEN
+        dbms_sql.define_column(v_cursor, i, v_buffer_clob);
+      ELSIF v_desc_tab(i).col_type = c_xmltype THEN
+        dbms_sql.define_column(v_cursor, i, v_buffer_xmltype);
+      ELSIF v_desc_tab(i).col_type = c_long THEN
+        dbms_sql.define_column_long(v_cursor, i);
+      ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
+        NULL; --> we ignore binary data types
+      ELSE
+        dbms_sql.define_column(v_cursor, i, v_buffer_varchar2, c_vc2_max_size);
+      END IF;
+    END LOOP;
+    v_ignore_me := dbms_sql.execute(v_cursor);
+
+    -- create header
+    util_clob_append('-- Script generated by PLEX version ' || c_plex_version || c_crlf);
+    util_clob_append('-- More infos here: ' || c_plex_url || c_crlf);
+    util_clob_append('' || c_crlf);
+    util_clob_append('set define off feedback off timing on' || c_crlf);
+    util_clob_append('prompt Insert into ' || p_table_name || c_crlf);
+    util_clob_append('' || c_crlf);
+    util_clob_append('DECLARE' || c_crlf);
+    util_clob_append('  TYPE  row_collection IS TABLE OF ' || p_table_name || '%rowtype INDEX BY PLS_INTEGER;' || c_crlf);
+    util_clob_append('  t     row_collection;' || c_crlf);
+    util_clob_append('BEGIN' || c_crlf);
+
+    -- create data
+    LOOP
+      EXIT WHEN dbms_sql.fetch_rows(v_cursor) = 0 OR v_data_count = p_max_rows;
+      v_data_count := v_data_count + 1;
+      -- start new table row
+      util_clob_append('  --' || c_crlf);
+
+      FOR i IN 1..v_col_cnt LOOP
+        -- start column
+        util_clob_append('  t(' || v_data_count || ').' || v_desc_tab(i).col_name || ' := ');
+
+        IF v_desc_tab(i).col_type = c_clob THEN
+          dbms_sql.column_value(v_cursor, i, v_buffer_clob);
+          IF length(v_buffer_clob) <= c_vc2_max_size THEN
+            v_buffer_varchar2 := substr(v_buffer_clob, 1, c_vc2_max_size);
+            prepare_varchar2_buffer_for_scripting;
+            util_clob_append(v_buffer_varchar2);
+          ELSE
+            v_buffer_varchar2 := 'CLOB value skipped - larger then ' || c_vc2_max_size || ' characters';
+            util_clob_append(v_buffer_varchar2);
+          END IF;
+        ELSIF v_desc_tab(i).col_type = c_xmltype THEN
+          dbms_sql.column_value(v_cursor, i, v_buffer_xmltype);
+          v_buffer_clob := v_buffer_xmltype.getclobval();
+          IF length(v_buffer_clob) <= c_vc2_max_size THEN
+            v_buffer_varchar2 := substr(v_buffer_clob, 1, c_vc2_max_size);
+            prepare_varchar2_buffer_for_scripting;
+            util_clob_append(v_buffer_varchar2);
+          ELSE
+            v_buffer_varchar2 := 'XML value skipped - larger then ' || c_vc2_max_size || ' characters';
+            util_clob_append(v_buffer_varchar2);
+          END IF;
+        ELSIF v_desc_tab(i).col_type = c_long THEN
+          dbms_sql.column_value_long(v_cursor, i, c_vc2_max_size, 0, v_buffer_varchar2, v_buffer_long_length);
+          IF v_buffer_long_length <= c_vc2_max_size THEN
+            prepare_varchar2_buffer_for_scripting;
+            util_clob_append(v_buffer_varchar2);
+          ELSE
+            util_clob_append('LONG value skipped - larger then ' || c_vc2_max_size || ' characters');
+          END IF;
+        ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
+          util_clob_append('Binary data type skipped - currently not supported');
+        ELSE
+          dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
+          prepare_varchar2_buffer_for_scripting;
+          util_clob_append(v_buffer_varchar2);
+        END IF;
+        -- end column
+        util_clob_append(';' || c_crlf);
+      END LOOP;
+    END LOOP;
+    dbms_sql.close_cursor(v_cursor);
+
+    -- create forall insert
+    if  v_data_count = 0 then
+      util_clob_append('  NULL; -- No data found in table :-(' || c_crlf);
+      util_clob_append('END;' || c_crlf);
+      util_clob_append('/' || c_crlf);
+    else
+      util_clob_append('  --' || c_crlf);
+      util_clob_append('  FORALL i IN 1..t.count' || c_crlf);
+      util_clob_append('    INSERT INTO "' || p_table_name || '" (' || c_crlf);
+      FOR i IN 1..v_col_cnt LOOP
+        util_clob_append('      "' || v_desc_tab(i).col_name || '"'
+                          || case when i != v_col_cnt then ',' end
+                          || c_crlf);
+      end loop;
+      util_clob_append('    ) VALUES (' || c_crlf);
+      FOR i IN 1..v_col_cnt LOOP
+        util_clob_append('      t(i)."' || v_desc_tab(i).col_name || '"'
+                          || case when i != v_col_cnt then ',' end
+                          || c_crlf);
+      end loop;
+        util_clob_append('  );' || c_crlf);
+        util_clob_append('END;' || c_crlf);
+        util_clob_append('/' || c_crlf);
+        util_clob_append('' || c_crlf);
+        util_clob_append('COMMIT;' || c_crlf);
+        util_clob_append('' || c_crlf);
+    end if;
+  END IF;
+END util_clob_table_to_insert;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -1611,12 +1857,13 @@ FUNCTION backapp (
   p_object_type_not_like        IN VARCHAR2 DEFAULT NULL,
   p_object_name_like            IN VARCHAR2 DEFAULT NULL,
   p_object_name_not_like        IN VARCHAR2 DEFAULT NULL,
-  p_object_view_remove_col_list IN BOOLEAN  DEFAULT true, 
+  p_object_view_remove_col_list IN BOOLEAN  DEFAULT true,
   p_include_data                IN BOOLEAN  DEFAULT false,
   p_data_as_of_minutes_ago      IN NUMBER   DEFAULT 0,
   p_data_max_rows               IN NUMBER   DEFAULT 1000,
   p_data_table_name_like        IN VARCHAR2 DEFAULT NULL,
   p_data_table_name_not_like    IN VARCHAR2 DEFAULT NULL,
+  p_data_format                 IN VARCHAR2 DEFAULT 'csv',
   p_include_templates           IN BOOLEAN  DEFAULT true,
   p_include_runtime_log         IN BOOLEAN  DEFAULT true,
   p_include_error_log           IN BOOLEAN  DEFAULT true,
@@ -1645,7 +1892,7 @@ RETURN tab_export_files IS
   BEGIN
     RETURN 'prompt --' || replace(p_file_path, '.sql', NULL)
       || c_lf || '@' || '../' || p_file_path || c_lf || c_lf;
-  END util_get_script_line; 
+  END util_get_script_line;
 
   PROCEDURE init IS
   BEGIN
@@ -1694,6 +1941,7 @@ RETURN tab_export_files IS
   $if $$apex_installed $then
   PROCEDURE process_apex_app IS
     v_apex_files apex_t_export_files;
+    v_clob       CLOB;
   BEGIN
     -- save as individual files
     util_log_start(p_base_path_frontend || '/APEX_EXPORT:individual_files');
@@ -1724,12 +1972,17 @@ RETURN tab_export_files IS
         'prompt --' || p_base_path_frontend || '/');
       -- special handling for install file
       IF v_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
-        v_export_files(i).name     := 'scripts/install_frontend_generated_by_apex.sql';
-        v_export_files(i).contents := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
+        v_export_files(i).name := 'scripts/install_frontend_generated_by_apex.sql';
+        -- We need the clob as temporary container.
+        -- When we use v_export_files(i).contents := 'someText' || replace(replace(v_export_files(i).contents, ...) ...),
+        -- then Oracle 19.6 will raise "ORA-03113: end-of-file on communication channel".
+        -- This was running without issues in Oracle 12.2.
+        v_clob := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
           || c_lf || c_lf
           || replace(replace(v_export_files(i).contents,
               '@application/', '@../' || p_base_path_frontend || '/'),
               'prompt --install', 'prompt --install_frontend_generated_by_apex');
+        v_export_files(i).contents := v_clob;
       END IF;
       -- handle build status RUN_ONLY
       IF v_export_files(i).name = p_base_path_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
@@ -1849,7 +2102,7 @@ END;
           --source string
           dbms_metadata.get_granted_ddl('ROLE_GRANT', v_current_user),
           --replace all leading whitespace
-          '^\s*', NULL, 1, 0, 'm'));      
+          '^\s*', NULL, 1, 0, 'm'));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -1914,7 +2167,7 @@ END;
       file_path     VARCHAR2(512));
     v_rec obj_rec_typ;
     no_comments_found EXCEPTION;
-    PRAGMA EXCEPTION_INIT(no_comments_found, -31608);    
+    PRAGMA EXCEPTION_INIT(no_comments_found, -31608);
   BEGIN
     util_log_start(p_base_path_backend || '/open_objects_cursor');
     v_query   := q'^
@@ -1946,13 +2199,18 @@ WITH t AS (
            WHEN 'TYPE BODY'            THEN 'TYPE_BODY'
            WHEN 'TYPE'                 THEN 'TYPE_SPEC'
            ELSE object_type
-         END AS object_type,
-         CASE 
+         END AS object_type,^'
+$if $$java_installed
+$then || q'^
+         CASE
            WHEN object_type like 'JAVA%' AND substr(object_name, 1, 1) = '/' THEN
              dbms_java.longname(object_name)
            ELSE
              object_name
-         END AS object_name
+         END AS object_name^'
+$else || q'^
+         object_name^'
+$end || q'^
     FROM ^'
 $if NOT $$debug_on
 $then || 'user_objects'
@@ -2409,27 +2667,48 @@ SELECT table_name,
     LOOP
       FETCH v_cur INTO v_rec;
       EXIT WHEN v_cur%notfound;
-      BEGIN
-        v_file_path := p_base_path_data || '/' || v_rec.table_name || '.csv';
-        util_log_start(v_file_path);
-        util_clob_query_to_csv(
-          p_query    => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
-                        CASE
-                          WHEN v_rec.pk_columns IS NOT NULL
-                          THEN ' ORDER BY ' || v_rec.pk_columns
-                          ELSE NULL
-                        END,
-          p_max_rows => p_data_max_rows);
-        util_clob_add_to_export_files(
-          p_export_files => v_export_files,
-          p_name         => v_file_path);
-        util_log_stop;
-      EXCEPTION
-        WHEN OTHERS THEN
-          util_log_error(v_file_path);
-      END;
+
+      -- csv file
+      IF lower(p_data_format) LIKE '%csv%' THEN
+        BEGIN
+          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.csv';
+          util_log_start(v_file_path);
+          util_clob_query_to_csv(
+            p_query    => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
+                          CASE
+                            WHEN v_rec.pk_columns IS NOT NULL
+                            THEN ' ORDER BY ' || v_rec.pk_columns
+                            ELSE NULL
+                          END,
+            p_max_rows => p_data_max_rows);
+          util_clob_add_to_export_files(
+            p_export_files => v_export_files,
+            p_name         => v_file_path);
+          util_log_stop;
+        EXCEPTION
+          WHEN OTHERS THEN
+            util_log_error(v_file_path);
+        END;
+      END IF;
+
+      -- insert script
+      IF lower(p_data_format) LIKE '%insert%' THEN
+        BEGIN
+          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.sql';
+          util_log_start(v_file_path);
+          util_clob_table_to_insert(p_table_name => v_rec.table_name);
+          util_clob_add_to_export_files(
+            p_export_files => v_export_files,
+            p_name         => v_file_path);
+          util_log_stop;
+        EXCEPTION
+          WHEN OTHERS THEN
+            util_log_error(v_file_path);
+        END;
+      END IF;
     END LOOP;
     CLOSE v_cur;
+
   END process_data;
 
   PROCEDURE create_template_files IS
@@ -2542,7 +2821,7 @@ if %errorlevel% neq 0 goto END
 del %zipfile%.base64
 
 echo Unzip file %zipfile% >> %logfile%
-echo Unzip file %zipfile% 
+echo Unzip file %zipfile%
 echo - For unzip details see %logfile%
 tar -xvf %zipfile% -C .. 2>> %logfile%
 if %errorlevel% neq 0 echo ERROR: Unable to unzip %zipfile% :-( >> %logfile%
@@ -2563,7 +2842,7 @@ echo(
 :END
 rem Remove "pause" for fully automated setup:
 pause
-if %errorlevel% neq 0 exit /b %errorlevel% 
+if %errorlevel% neq 0 exit /b %errorlevel%
 ^'    ;
       v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
       util_log_start(v_file_path);
@@ -2584,7 +2863,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
     END export_batch_file;
 
     PROCEDURE export_sq_file IS
-    BEGIN    
+    BEGIN
       v_file_template := q'^/*******************************************************************************
 Template generated by PLEX version {{PLEX_VERSION}}
 More infos here: {{PLEX_URL}}
@@ -2645,7 +2924,7 @@ BEGIN
     p_app_include_single_file   => false,
     p_app_build_status_run_only => false,^';
     $end
-    $if $$ords_installed $then      
+    $if $$ords_installed $then
     v_file_template := v_file_template || q'^
 
     p_include_ords_modules      => false,^';
@@ -2700,7 +2979,7 @@ prompt
     END export_sq_file;
 
     PROCEDURE install_batch_files IS
-    BEGIN    
+    BEGIN
       v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
 rem More infos here: {{PLEX_URL}}
 
@@ -2786,7 +3065,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
     END install_batch_files;
 
     PROCEDURE install_sql_file IS
-    BEGIN    
+    BEGIN
       v_file_template := q'^/*******************************************************************************
 Template generated by PLEX version {{PLEX_VERSION}}
 More infos here: {{PLEX_URL}}
@@ -2810,7 +3089,7 @@ Example call for Windows:
 
 *******************************************************************************/
 
-set timing on define on 
+set timing on define on
 timing start INSTALL_APP
 set timing off verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
@@ -2829,7 +3108,7 @@ BEGIN
 END;
 {{/}}
 set define off
- 
+
 
 prompt
 prompt Start Installation
@@ -3083,11 +3362,11 @@ END to_zip;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
--- copyright by Tim Hall, see https://oracle-base.com/dba/miscellaneous/base64encode.sql
+-- copyright by Tim Hall, see https://oracle-base.com/dba/script?category=miscellaneous&file=base64encode.sql
 FUNCTION to_base64(p_blob IN BLOB) RETURN CLOB IS
   v_bas64 CLOB;
   v_step PLS_INTEGER := 14400; -- make sure you set a multiple of 3 not higher than 24573
-  -- size of a whole multiple of 48 is beneficial to get NEW_LINE after each 64 characters 
+  -- size of a whole multiple of 48 is beneficial to get NEW_LINE after each 64 characters
 BEGIN
   util_log_start('post processing with to_base64');
   FOR i IN 0 .. TRUNC((DBMS_LOB.getlength(p_blob) - 1 ) / v_step) LOOP
@@ -3134,6 +3413,6 @@ END plex;
 /
 show errors
 
-prompt ==================================
+prompt ============================================================
 prompt Installation Done
 prompt

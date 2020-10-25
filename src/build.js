@@ -1,5 +1,4 @@
 var fs = require('fs');
-var spec = 
 
 fs.writeFileSync(
     'plex_install.sql',
