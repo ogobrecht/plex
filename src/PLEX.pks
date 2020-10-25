@@ -235,7 +235,7 @@ EXAMPLE ZIP FILE SQL*Plus
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
 -- Example Mac:     base64 -D -i app_100.zip.base64 -o app_100.zip
 -- Example Linux:   base64 -d app_100.zip.base64 > app_100.zip
-set verify off feedback off heading off termout off
+set verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 variable contents clob
@@ -248,9 +248,11 @@ BEGIN
     p_include_templates    => true)));
 END;
 {{/}}
+set termout off
 spool "app_100.zip.base64"
 print contents
 spool off
+set termout on
 ```
 **/
 

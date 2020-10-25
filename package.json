@@ -12,7 +12,8 @@
     "postbuild": "echo exit | sqlplus -S /@playground @plex_install.sql",
     "watch": "chokidar src/PLEX.pks src/PLEX.pkb src/plex_install.sql --initial -c \"npm run build\"",
     "test-ccflags": "cd src && echo exit | sqlplus -S /@playground @plex_test_ccflags.sql && cd ..",
-    "test-export": "cd src && echo exit | sqlplus -S /@playground @plex_test_export.sql && cd .."
+    "test-export": "cd src && echo exit | sqlplus -S /@playground @plex_test_export.sql && cd ..",
+    "test-types": "cd src && echo exit | sqlplus -S /@playground @plex_test_types.sql && cd .."
   },
   "devDependencies": {
     "chokidar-cli": "^2.1.0",

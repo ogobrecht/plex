@@ -282,7 +282,7 @@ EXAMPLE ZIP FILE SQL*Plus
 -- Example Windows: certutil -decode app_100.zip.base64 app_100.zip
 -- Example Mac:     base64 -D -i app_100.zip.base64 -o app_100.zip
 -- Example Linux:   base64 -d app_100.zip.base64 > app_100.zip
-set verify off feedback off heading off termout off
+set verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 variable contents clob
@@ -295,9 +295,11 @@ BEGIN
     p_include_templates    => true)));
 END;
 {{/}}
+set termout off
 spool "app_100.zip.base64"
 print contents
 spool off
+set termout on
 ```
 **/
 
@@ -844,6 +846,7 @@ PROCEDURE util_clob_query_to_csv (
 
 PROCEDURE util_clob_table_to_insert (
   p_table_name IN VARCHAR2,
+  p_data_scn   IN NUMBER,
   p_max_rows   IN NUMBER DEFAULT 1000);
 
 PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
@@ -1567,6 +1570,7 @@ END util_clob_query_to_csv;
 
 PROCEDURE util_clob_table_to_insert (
   p_table_name IN VARCHAR2,
+  p_data_scn   IN NUMBER,
   p_max_rows   IN NUMBER DEFAULT 1000)
 IS
   v_cursor                   PLS_INTEGER;
@@ -1654,7 +1658,7 @@ BEGIN
     v_cursor := dbms_sql.open_cursor;
     dbms_sql.parse(
       v_cursor,
-      'select * from ' || p_table_name || ' order by ' || get_order_by_list,
+      'select * from ' || p_table_name || ' as of scn ' || p_data_scn || ' order by ' || get_order_by_list,
       dbms_sql.native);
     -- https://support.esri.com/en/technical-article/000010110
     -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
@@ -1705,6 +1709,7 @@ BEGIN
             util_clob_append(v_buffer_varchar2);
           ELSE
             v_buffer_varchar2 := 'CLOB value skipped - larger then ' || c_vc2_max_size || ' characters';
+            prepare_varchar2_buffer_for_scripting;
             util_clob_append(v_buffer_varchar2);
           END IF;
         ELSIF v_desc_tab(i).col_type = c_xmltype THEN
@@ -1716,6 +1721,7 @@ BEGIN
             util_clob_append(v_buffer_varchar2);
           ELSE
             v_buffer_varchar2 := 'XML value skipped - larger then ' || c_vc2_max_size || ' characters';
+            prepare_varchar2_buffer_for_scripting;
             util_clob_append(v_buffer_varchar2);
           END IF;
         ELSIF v_desc_tab(i).col_type = c_long THEN
@@ -1724,10 +1730,14 @@ BEGIN
             prepare_varchar2_buffer_for_scripting;
             util_clob_append(v_buffer_varchar2);
           ELSE
-            util_clob_append('LONG value skipped - larger then ' || c_vc2_max_size || ' characters');
+            v_buffer_varchar2 := 'LONG value skipped - larger then ' || c_vc2_max_size || ' characters';
+            prepare_varchar2_buffer_for_scripting;
+            util_clob_append(v_buffer_varchar2);
           END IF;
         ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
-          util_clob_append('Binary data type skipped - currently not supported');
+            v_buffer_varchar2 := 'Binary data type skipped - currently not supported';
+            prepare_varchar2_buffer_for_scripting;
+            util_clob_append(v_buffer_varchar2);
         ELSE
           dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
           prepare_varchar2_buffer_for_scripting;
@@ -2696,7 +2706,10 @@ SELECT table_name,
         BEGIN
           v_file_path := p_base_path_data || '/' || v_rec.table_name || '.sql';
           util_log_start(v_file_path);
-          util_clob_table_to_insert(p_table_name => v_rec.table_name);
+          util_clob_table_to_insert(
+            p_table_name => v_rec.table_name,
+            p_data_scn   => v_data_scn,
+            p_max_rows   => p_data_max_rows);
           util_clob_add_to_export_files(
             p_export_files => v_export_files,
             p_name         => v_file_path);
