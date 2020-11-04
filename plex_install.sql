@@ -1579,6 +1579,7 @@ IS
   v_col_cnt                  PLS_INTEGER;
   v_desc_tab                 dbms_sql.desc_tab3;
   v_buffer_varchar2          VARCHAR2(32767 CHAR);
+  v_buffer_number            number;
   v_buffer_date              date;
   v_buffer_timestamp         timestamp;
   v_buffer_timestamp_tz      timestamp with time zone;
@@ -1668,7 +1669,9 @@ BEGIN
     -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
     dbms_sql.describe_columns3(v_cursor, v_col_cnt, v_desc_tab);
     FOR i IN 1..v_col_cnt LOOP
-      IF v_desc_tab(i).col_type = c_date THEN
+      IF v_desc_tab(i).col_type = c_number THEN
+        dbms_sql.define_column(v_cursor, i, v_buffer_number);
+      ELSIF v_desc_tab(i).col_type = c_date THEN
         dbms_sql.define_column(v_cursor, i, v_buffer_date);
       ELSIF v_desc_tab(i).col_type = c_timestamp THEN
         dbms_sql.define_column(v_cursor, i, v_buffer_timestamp);
@@ -1713,7 +1716,10 @@ BEGIN
         -- start column
         util_clob_append('  t(' || v_data_count || ').' || v_desc_tab(i).col_name || ' := ');
 
-        IF v_desc_tab(i).col_type = c_date THEN
+        IF v_desc_tab(i).col_type = c_number THEN
+          dbms_sql.column_value(v_cursor, i, v_buffer_number);
+          util_clob_append(to_char(v_buffer_number));
+        ELSIF v_desc_tab(i).col_type = c_date THEN
           dbms_sql.column_value(v_cursor, i, v_buffer_date);
           util_clob_append(q'^to_date('^' || to_char(v_buffer_date, 'yyyy-mm-dd hh24:mi:ss') || q'^','yyyy-mm-dd hh24:mi:ss')^');
         ELSIF v_desc_tab(i).col_type = c_timestamp THEN
