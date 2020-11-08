@@ -13,7 +13,12 @@
     "watch": "chokidar src/PLEX.pks src/PLEX.pkb src/plex_install.sql --initial -c \"npm run build\"",
     "test-ccflags": "cd src && echo exit | sqlplus -S /@playground @plex_test_ccflags.sql && cd ..",
     "test-export": "cd src && echo exit | sqlplus -S /@playground @plex_test_export.sql && cd ..",
-    "test-types": "cd src && echo exit | sqlplus -S /@playground @plex_test_types.sql && cd .."
+    "test-types-table": "cd src && echo exit | sqlplus -S /@playground @plex_test_types_1_table.sql && cd ..",
+    "test-types-data": "cd src && echo exit | sqlplus -S /@playground @plex_test_types_2_data.sql && cd ..",
+    "test-types-export": "cd src && echo exit | sqlplus -S /@playground @plex_test_types_3_export.sql && cd ..",
+    "test-types-import-connor": "cd src && echo exit | sqlplus -S /@playground @plex_test_types_4_import_connor.sql && cd ..",
+    "test-types-import-ottmar": "cd src && echo exit | sqlplus -S /@playground @plex_test_types_5_import_ottmar.sql && cd ..",
+    "test-types-import-sqldev": "cd src && echo exit | sqlplus -S /@playground @plex_test_types_6_import_sqldev.sql && cd .."
   },
   "devDependencies": {
     "chokidar-cli": "^2.1.0",
