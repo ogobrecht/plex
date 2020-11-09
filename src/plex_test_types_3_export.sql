@@ -16,7 +16,7 @@ BEGIN
       p_include_object_ddl   => false,
       p_include_ords_modules => false,
       p_include_data         => true,
-      p_data_format          => 'csv,insert',
+      p_data_format          => 'csv,insert:20',
       p_data_table_name_like => 'PLEX_TEST_MULTIPLE_DATATYPES',
       p_include_templates    => true)));
 END;
