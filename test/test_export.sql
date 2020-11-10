@@ -21,6 +21,9 @@ BEGIN
 END;
 /
 
+prompt Delete old zip file from previous test:
+host del app_100.zip
+
 set termout off
 spool "app_100.zip.base64"
 print zip

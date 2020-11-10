@@ -1098,8 +1098,8 @@ IS
         dbms_sql.define_column(v_cursor, i, v_buffer_xmltype);
       ELSIF v_desc_tab(i).col_type = c_long THEN
         dbms_sql.define_column_long(v_cursor, i);
-      ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
-        NULL; --> we ignore binary data types
+--      ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
+--        NULL; --> we ignore binary data types
       ELSE
         dbms_sql.define_column(v_cursor, i, v_buffer_varchar2, c_vc2_max_size);
       END IF;
@@ -1136,6 +1136,9 @@ IS
     LOOP
       EXIT WHEN dbms_sql.fetch_rows(v_cursor) = 0 OR v_data_count = p_max_rows;
       v_data_count  := v_data_count + 1;
+      if v_data_count = 1 then
+        create_header;
+      end if;
       if p_insert_all_size > 0 and mod(v_data_count, p_insert_all_size) = 1 then
         util_clob_append('insert all' || c_crlf);
       end if;
@@ -1170,8 +1173,15 @@ IS
             process_varchar2_buffer(p_quote_string => false);
           END IF;
         ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
-            v_buffer_varchar2 := 'NULL/*Binary data type skipped - currently not supported*/';
+          dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
+          if length(v_buffer_varchar2) = 0 then
+            v_buffer_varchar2 := 'NULL/*Binary data type skipped - too large*/';
             process_varchar2_buffer(p_quote_string => false);
+          end if;
+          util_clob_append('utl_raw.cast_to_raw(q''{');
+          util_clob_append(v_buffer_varchar2);
+          util_clob_append('}'')');
+          --process_varchar2_buffer(p_quote_string => true);
         ELSE
           dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
           process_varchar2_buffer(
@@ -1207,9 +1217,9 @@ IS
         util_clob_append('select * from dual;' || c_crlf);
       end if;
       util_clob_append('commit;' || c_crlf);
+      util_clob_append('alter session set cursor_sharing = exact;' || c_crlf);
+      util_clob_append('timing stop' || c_crlf);
     end if;
-    util_clob_append('alter session set cursor_sharing = exact;' || c_crlf);
-    util_clob_append('timing stop' || c_crlf);
     util_clob_append('' || c_crlf);
   END create_footer;
 
@@ -1219,7 +1229,6 @@ BEGIN
   IF p_table_name IS NOT NULL THEN
     set_session_nls_params;
     parse_query_and_describe_columns;
-    create_header;
     create_data;
     create_footer;
     recover_session_nls_params;
