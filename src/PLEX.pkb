@@ -810,7 +810,7 @@ IS
   v_cursor                   PLS_INTEGER;
   v_ignore_me                PLS_INTEGER;
   v_data_count               PLS_INTEGER := 0;
-  v_col_cnt                  PLS_INTEGER;
+  v_col_count                  PLS_INTEGER;
   v_desc_tab                 dbms_sql.desc_tab3;
   v_buffer_varchar2          VARCHAR2(32767 CHAR);
   v_buffer_clob              CLOB;
@@ -849,8 +849,8 @@ BEGIN
       dbms_sql.native);
     -- https://support.esri.com/en/technical-article/000010110
     -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
-    dbms_sql.describe_columns3(v_cursor, v_col_cnt, v_desc_tab);
-    FOR i IN 1..v_col_cnt LOOP
+    dbms_sql.describe_columns3(v_cursor, v_col_count, v_desc_tab);
+    FOR i IN 1..v_col_count LOOP
       IF v_desc_tab(i).col_type = c_clob THEN
         dbms_sql.define_column(v_cursor, i, v_buffer_clob);
       ELSIF v_desc_tab(i).col_type = c_xmltype THEN
@@ -867,7 +867,7 @@ BEGIN
 
     -- create header
     util_clob_append(p_header_prefix);
-    FOR i IN 1..v_col_cnt LOOP
+    FOR i IN 1..v_col_count LOOP
       IF i > 1 THEN
         util_clob_append(p_delimiter);
       END IF;
@@ -880,7 +880,7 @@ BEGIN
     -- create data
     LOOP
       EXIT WHEN dbms_sql.fetch_rows(v_cursor) = 0 OR v_data_count = p_max_rows;
-      FOR i IN 1..v_col_cnt LOOP
+      FOR i IN 1..v_col_count LOOP
         IF i > 1 THEN
           util_clob_append(p_delimiter);
         END IF;
@@ -939,13 +939,16 @@ IS
   v_cursor                   PLS_INTEGER;
   v_ignore_me                PLS_INTEGER;
   v_data_count               PLS_INTEGER := 0;
-  v_col_cnt                  PLS_INTEGER;
+  v_col_count                PLS_INTEGER;
   v_desc_tab                 dbms_sql.desc_tab3;
   v_table_insert_prefix      VARCHAR2(4000);
   v_nls_numeric_characters   VARCHAR2(30);
   v_nls_date_format          VARCHAR2(30);
   v_nls_timestamp_format     VARCHAR2(30);
   v_nls_timestamp_tz_format  VARCHAR2(30);
+  c_sqlplus_max_line_length    CONSTANT PLS_INTEGER := 4500;
+  v_line_cache               VARCHAR2(4998 CHAR);
+  v_line_size                PLS_INTEGER := 0;
   v_buffer_varchar2          VARCHAR2(32767 CHAR);
   v_buffer_clob              CLOB;
   v_buffer_xmltype           XMLTYPE;
@@ -986,46 +989,122 @@ IS
 
   ----------------------------------------
 
-  PROCEDURE process_varchar2_buffer(p_quote_string boolean default true) IS
-    c_single_quote constant varchar2(1) := q'[']';
-    c_double_quote constant varchar2(2) := q'['']';
+  FUNCTION quote_string (p_string VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
-    IF v_buffer_varchar2 IS NULL THEN
-      util_clob_append('NULL');
-    ELSE
-      IF p_quote_string THEN
-      -- if we have the single quote character in the string then we
-      -- have to double them
-      v_buffer_varchar2 := c_single_quote ||
-        case when instr(v_buffer_varchar2, c_single_quote) > 0
-          then replace(v_buffer_varchar2, c_single_quote, c_double_quote)
-          else v_buffer_varchar2
-        end || c_single_quote;
-      END IF;
-      util_clob_append(v_buffer_varchar2);
-    END IF;
+    if instr(p_string, '''') = 0 then
+      return '''' || p_string || '''';
+    --
+    elsif instr(p_string, '^''') = 0 then
+      return 'q''^' || p_string || '^''';
+    --
+    elsif instr(p_string, '`''') = 0 then
+      return 'q''`' || p_string || '`''';
+    --
+    elsif instr(p_string, '#''') = 0 then
+      return 'q''#' || p_string || '#''';
+    --
+    elsif instr(p_string, '|''') = 0 then
+      return 'q''|' || p_string || '|''';
+    --
+    elsif instr(p_string, '!''') = 0 then
+      return 'q''!' || p_string || '!''';
+    --
+    elsif instr(p_string, '}''') = 0 then
+      return 'q''{' || p_string || '}''';
+    --
+    elsif instr(p_string, ']''') = 0 then
+      return 'q''[' || p_string || ']''';
+    --
+    elsif instr(p_string, '>''') = 0 then
+      return 'q''<' || p_string || '>''';
+    --
+    elsif instr(p_string, ')''') = 0 then
+      return 'q''(' || p_string || ')''';
+    else
+      return '''' || replace(p_string, '''', '''''') || '''';
+    end if;
+  END quote_string;
+
+  ----------------------------------------
+
+  PROCEDURE line_append (p_content IN VARCHAR2) IS
+  BEGIN
+    v_line_cache := v_line_cache || p_content;
   EXCEPTION
     WHEN value_error THEN
-      v_buffer_varchar2 := 'Value skipped - escaped text larger then ' || c_vc2_max_size || ' characters';
+      util_clob_append(v_line_cache || c_crlf );
+      v_line_cache := p_content;
+  END line_append;
+
+  ----------------------------------------
+
+  PROCEDURE line_flush_cache IS
+  BEGIN
+    util_clob_append(v_line_cache || c_crlf);
+    v_line_cache := null;
+  END line_flush_cache;
+
+  ----------------------------------------
+
+  PROCEDURE process_varchar2_buffer(p_type varchar2) IS
+    v_length     PLS_INTEGER;
+    v_offset     PLS_INTEGER;
+  BEGIN
+    v_length := nvl(length(v_buffer_varchar2), 0);
+    IF v_length = 0 THEN
+      line_append('NULL');
+    ELSE
+      CASE p_type
+        WHEN 'NUMBER' THEN
+          line_append(v_buffer_varchar2);
+        WHEN 'STRING' THEN
+          if v_length <= c_sqlplus_max_line_length then
+            line_append(quote_string(v_buffer_varchar2));
+          else
+            v_offset := 1;
+            while v_offset <= v_length loop
+              line_append(quote_string(substr(v_buffer_varchar2, v_offset, c_sqlplus_max_line_length)));
+              v_offset := v_offset + c_sqlplus_max_line_length;
+            end loop;
+          end if;
+        WHEN 'RAW' THEN
+          if v_length <= c_sqlplus_max_line_length then
+            line_append('utl_raw.cast_to_raw(' || quote_string(v_buffer_varchar2) || ')');
+          else
+            v_offset := 1;
+            line_append ('utl_raw.cast_to_raw(');
+            while v_offset <= v_length loop
+              line_append( case when v_offset != 1 then '|| ' end || quote_string(substr(v_buffer_varchar2, v_offset, c_sqlplus_max_line_length)) );
+              v_offset := v_offset + c_sqlplus_max_line_length;
+            end loop;
+            line_append (')');
+          end if;
+        ELSE
+          line_append('ERROR: wrong p_type given for process_varchar2_buffer - allowed values are NUMBER, STRING, RAW.');
+      END CASE;
+    END IF;
   END process_varchar2_buffer;
 
   ----------------------------------------
 
   PROCEDURE process_clob_buffer IS
-    v_length     PLS_INTEGER;
-    v_offset     PLS_INTEGER := 1;
-    v_chunk_size PLS_INTEGER := 8000;
+    v_length     pls_integer;
+    v_offset     pls_integer := 1;
   BEGIN
-    v_length := length (v_buffer_clob);
-    IF v_length = 0 then
-      util_clob_append('NULL');
-    ELSE
-      while v_offset < v_length loop
-        v_buffer_varchar2 := substr(v_buffer_clob, v_offset, v_chunk_size);
-        v_offset := v_offset + v_chunk_size;
-        process_varchar2_buffer;
-      end loop;
-    END IF;
+    v_length := nvl(length(v_buffer_clob), 0);
+    if v_length = 0 then
+      line_append('NULL');
+    else
+      if v_length <= c_sqlplus_max_line_length then
+        line_append('to_clob(' || quote_string(substr(v_buffer_clob, 1, c_sqlplus_max_line_length)) || ')');
+      else
+        v_offset := 1;
+        while v_offset <= v_length loop
+          line_append(case when v_offset != 1 then '|| ' end || 'to_clob(' || quote_string(substr(v_buffer_clob, v_offset, c_sqlplus_max_line_length)) || ')' );
+          v_offset := v_offset + c_sqlplus_max_line_length;
+        end loop;
+      end if;
+    end if;
   END process_clob_buffer;
 
   ----------------------------------------
@@ -1090,16 +1169,12 @@ IS
       dbms_sql.native);
     -- https://support.esri.com/en/technical-article/000010110
     -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
-    dbms_sql.describe_columns3(v_cursor, v_col_cnt, v_desc_tab);
-    FOR i IN 1..v_col_cnt LOOP
+    dbms_sql.describe_columns3(v_cursor, v_col_count, v_desc_tab);
+    FOR i IN 1..v_col_count LOOP
       IF v_desc_tab(i).col_type = c_clob THEN
         dbms_sql.define_column(v_cursor, i, v_buffer_clob);
-      ELSIF v_desc_tab(i).col_type = c_xmltype THEN
-        dbms_sql.define_column(v_cursor, i, v_buffer_xmltype);
       ELSIF v_desc_tab(i).col_type = c_long THEN
         dbms_sql.define_column_long(v_cursor, i);
---      ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
---        NULL; --> we ignore binary data types
       ELSE
         dbms_sql.define_column(v_cursor, i, v_buffer_varchar2, c_vc2_max_size);
       END IF;
@@ -1107,7 +1182,7 @@ IS
     END LOOP;
     v_table_insert_prefix :=
       case when p_insert_all_size > 0
-        then '  into '
+        then 'into '
         else 'insert into '
       end || p_table_name || '(' || rtrim(v_table_insert_prefix, ',' ) || ') values (';
     v_ignore_me := dbms_sql.execute(v_cursor);
@@ -1142,62 +1217,36 @@ IS
       if p_insert_all_size > 0 and mod(v_data_count, p_insert_all_size) = 1 then
         util_clob_append('insert all' || c_crlf);
       end if;
-      util_clob_append(v_table_insert_prefix);
-
-      FOR i IN 1..v_col_cnt LOOP
+      line_append(v_table_insert_prefix);
+      --> process row
+      FOR i IN 1..v_col_count LOOP
         IF v_desc_tab(i).col_type = c_clob THEN
           dbms_sql.column_value(v_cursor, i, v_buffer_clob);
-          IF length(v_buffer_clob) <= c_vc2_max_size THEN
-            v_buffer_varchar2 := substr(v_buffer_clob, 1, c_vc2_max_size);
-            process_varchar2_buffer(p_quote_string => true);
-          ELSE
-            v_buffer_varchar2 := 'NULL/*CLOB value skipped - larger then ' || c_vc2_max_size || ' characters*/';
-            process_varchar2_buffer(p_quote_string => false);
-          END IF;
-        ELSIF v_desc_tab(i).col_type = c_xmltype THEN
-          dbms_sql.column_value(v_cursor, i, v_buffer_xmltype);
-          v_buffer_clob := v_buffer_xmltype.getclobval();
-          IF length(v_buffer_clob) <= c_vc2_max_size THEN
-            v_buffer_varchar2 := substr(v_buffer_clob, 1, c_vc2_max_size);
-            process_varchar2_buffer(p_quote_string => true);
-          ELSE
-            v_buffer_varchar2 := 'NULL/*XML value skipped - larger then ' || c_vc2_max_size || ' characters*/';
-            process_varchar2_buffer(p_quote_string => true);
-          END IF;
+          process_clob_buffer;
         ELSIF v_desc_tab(i).col_type = c_long THEN
           dbms_sql.column_value_long(v_cursor, i, c_vc2_max_size, 0, v_buffer_varchar2, v_buffer_long_length);
-          IF v_buffer_long_length <= c_vc2_max_size THEN
-            process_varchar2_buffer(p_quote_string => true);
-          ELSE
-            v_buffer_varchar2 := 'NULL/*LONG value skipped - larger then ' || c_vc2_max_size || ' characters*/';
-            process_varchar2_buffer(p_quote_string => false);
-          END IF;
-        ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
-          dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
-          if length(v_buffer_varchar2) = 0 then
-            v_buffer_varchar2 := 'NULL/*Binary data type skipped - too large*/';
-            process_varchar2_buffer(p_quote_string => false);
+          if v_buffer_long_length > c_vc2_max_size then
+            v_buffer_varchar2 := null;
           end if;
-          util_clob_append('utl_raw.cast_to_raw(q''{');
-          util_clob_append(v_buffer_varchar2);
-          util_clob_append('}'')');
-          --process_varchar2_buffer(p_quote_string => true);
+          process_varchar2_buffer('STRING');
         ELSE
           dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
-          process_varchar2_buffer(
-            p_quote_string =>
-              case when v_desc_tab(i).col_type in (c_number, c_binary_float, c_binary_double)
-                then false
-                else true
-              end);
+          IF v_desc_tab(i).col_type IN (c_number, c_binary_float, c_binary_double) THEN
+            process_varchar2_buffer('NUMBER');
+          ELSIF v_desc_tab(i).col_type IN (c_raw, c_long_raw, c_blob, c_bfile) THEN
+            process_varchar2_buffer('RAW');
+          ELSE
+            process_varchar2_buffer('STRING');
+          END IF;
         END IF;
-        if i != v_col_cnt  then
-          util_clob_append(',');
+        if i != v_col_count  then
+          line_append(',');
         else
-          util_clob_append(')' || case when p_insert_all_size < 1 then ';' end || c_crlf);
+          line_append(')' || case when p_insert_all_size < 1 then ';' end);
+          line_flush_cache;
         end if;
       END LOOP;
-
+      --< end process row
       if p_insert_all_size > 0 and mod(v_data_count, p_insert_all_size) = 0 then
         util_clob_append('select * from dual;' || c_crlf);
       end if;
