@@ -1,5 +1,5 @@
 timing start test_export
-set verify off feedback off heading off
+set verify off feedback off heading off serveroutput on
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 whenever oserror continue

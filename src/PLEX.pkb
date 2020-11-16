@@ -946,8 +946,8 @@ IS
   v_nls_date_format          VARCHAR2(30);
   v_nls_timestamp_format     VARCHAR2(30);
   v_nls_timestamp_tz_format  VARCHAR2(30);
-  c_sqlplus_max_line_length  CONSTANT PLS_INTEGER := 4500;
-  v_line_cache               VARCHAR2(4998 CHAR);
+  c_sqlplus_max_line_length  CONSTANT PLS_INTEGER := 2400;
+  v_line_cache               VARCHAR2(2498 CHAR);
   v_line_size                PLS_INTEGER := 0;
   v_buffer_varchar2          VARCHAR2(32767 CHAR);
   v_buffer_clob              CLOB;
@@ -992,46 +992,28 @@ IS
   FUNCTION quote_string (p_string VARCHAR2) RETURN VARCHAR2 IS
     v_string varchar2(5000 char);
   BEGIN
-    if instr(p_string, '''') = 0 then
-      v_string := '''' || p_string || '''';
-    --
-    elsif instr(p_string, '^''') = 0 then
-      v_string := 'q''^' || p_string || '^''';
-    --
-    elsif instr(p_string, '`''') = 0 then
-      v_string := 'q''`' || p_string || '`''';
-    --
-    elsif instr(p_string, '#''') = 0 then
-      v_string := 'q''#' || p_string || '#''';
-    --
-    elsif instr(p_string, '|''') = 0 then
-      v_string := 'q''|' || p_string || '|''';
-    --
-    elsif instr(p_string, '!''') = 0 then
-      v_string := 'q''!' || p_string || '!''';
-    --
-    elsif instr(p_string, '}''') = 0 then
-      v_string := 'q''{' || p_string || '}''';
-    --
-    elsif instr(p_string, ']''') = 0 then
-      v_string := 'q''[' || p_string || ']''';
-    --
-    elsif instr(p_string, '>''') = 0 then
-      v_string := 'q''<' || p_string || '>''';
-    --
-    elsif instr(p_string, ')''') = 0 then
-      v_string := 'q''(' || p_string || ')''';
+    case
+      when instr(p_string, '''')  = 0 then v_string := ''''   || p_string || '''';
+      when instr(p_string, '^''') = 0 then v_string := 'q''^' || p_string || '^''';
+      when instr(p_string, '`''') = 0 then v_string := 'q''`' || p_string || '`''';
+      when instr(p_string, '#''') = 0 then v_string := 'q''#' || p_string || '#''';
+      when instr(p_string, '|''') = 0 then v_string := 'q''|' || p_string || '|''';
+      when instr(p_string, '!''') = 0 then v_string := 'q''!' || p_string || '!''';
+      when instr(p_string, '}''') = 0 then v_string := 'q''{' || p_string || '}''';
+      when instr(p_string, ']''') = 0 then v_string := 'q''[' || p_string || ']''';
+      when instr(p_string, '>''') = 0 then v_string := 'q''<' || p_string || '>''';
+      when instr(p_string, ')''') = 0 then v_string := 'q''(' || p_string || ')''';
     else
       v_string := '''' || replace(p_string, '''', '''''') || '''';
-    end if;
+    end case;
 
     -- SQL*Plus specific:
     -- SQL Failed With ORA-1756 In Sqlplus But Works In SQL Developer
     -- (Doc ID 2377701.1, https://support.oracle.com/epmos/faces/DocumentDisplay?id=2377701.1)
-    if instr(v_string, ';'||chr(10)) = 0 then
+    if regexp_instr(v_string,';$',1,1,0,'m') = 0 then
       return v_string;
     else
-      return ('replace(' || replace(v_string, ';'||chr(10), ';!'||chr(10)) || ','';!''||chr(10),'';''||chr(10))');
+      return ('regexp_replace(' || regexp_replace(v_string, ';$',';!',1,0,'m') || ','';!$'','';'',1,0,''m'')');
     end if;
 
   END quote_string;
@@ -1074,7 +1056,7 @@ IS
           else
             v_offset := 1;
             while v_offset <= v_length loop
-              line_append(quote_string(substr(v_buffer_varchar2, v_offset, c_sqlplus_max_line_length)));
+              line_append(case when v_offset != 1 then '|| ' end || quote_string(substr(v_buffer_varchar2, v_offset, c_sqlplus_max_line_length)));
               v_offset := v_offset + c_sqlplus_max_line_length;
             end loop;
           end if;
@@ -1090,9 +1072,8 @@ IS
             end loop;
             line_append (')');
           end if;
-        ELSE
-          line_append('ERROR: wrong p_type given for process_varchar2_buffer - allowed values are NUMBER, STRING, RAW.');
       END CASE;
+      v_buffer_varchar2 := null;
     END IF;
   END process_varchar2_buffer;
 
@@ -1100,14 +1081,14 @@ IS
 
   PROCEDURE process_clob_buffer IS
     v_length     pls_integer;
-    v_offset     pls_integer := 1;
+    v_offset     pls_integer;
   BEGIN
     v_length := nvl(length(v_buffer_clob), 0);
     if v_length = 0 then
       line_append('NULL');
     else
       if v_length <= c_sqlplus_max_line_length then
-        line_append('to_clob(' || quote_string(substr(v_buffer_clob, 1, c_sqlplus_max_line_length)) || ')');
+        line_append(quote_string(substr(v_buffer_clob, 1, c_sqlplus_max_line_length)));
       else
         v_offset := 1;
         while v_offset <= v_length loop
@@ -1115,6 +1096,7 @@ IS
           v_offset := v_offset + c_sqlplus_max_line_length;
         end loop;
       end if;
+      v_buffer_clob := null;
     end if;
   END process_clob_buffer;
 
@@ -1245,6 +1227,10 @@ IS
             v_buffer_varchar2 := null;
           end if;
           process_varchar2_buffer('STRING');
+        ELSIF v_desc_tab(i).col_type = c_xmltype THEN
+          dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
+          v_buffer_varchar2 := regexp_replace(v_buffer_varchar2, '\s*$', null);
+          process_varchar2_buffer('STRING');
         ELSE
           dbms_sql.column_value(v_cursor, i, v_buffer_varchar2);
           IF v_desc_tab(i).col_type IN (c_number, c_binary_float, c_binary_double) THEN
@@ -1292,11 +1278,13 @@ IS
 
 BEGIN
   IF p_table_name IS NOT NULL THEN
+    --dbms_lob.createtemporary(v_buffer_clob, true);
     set_session_nls_params;
     parse_query_and_describe_columns;
     create_data;
     create_footer;
     recover_session_nls_params;
+    --dbms_lob.freetemporary(v_buffer_clob);
   END IF;
 END util_clob_table_to_insert;
 
