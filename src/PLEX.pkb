@@ -936,6 +936,7 @@ PROCEDURE util_clob_table_to_insert (
   p_max_rows        IN NUMBER DEFAULT 1000,
   p_insert_all_size IN NUMBER DEFAULT 10)
 IS
+  v_query                    VARCHAR2(32767);
   v_cursor                   PLS_INTEGER;
   v_ignore_me                PLS_INTEGER;
   v_data_count               PLS_INTEGER := 0;
@@ -1155,30 +1156,42 @@ IS
 
   PROCEDURE parse_query_and_describe_columns IS
   BEGIN
-    v_cursor := dbms_sql.open_cursor;
-    dbms_sql.parse(
-      v_cursor,
-      'select * from ' || p_table_name || ' as of scn ' || p_data_scn || ' order by ' || get_order_by_list,
-      dbms_sql.native);
-    -- https://support.esri.com/en/technical-article/000010110
-    -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
-    dbms_sql.describe_columns3(v_cursor, v_col_count, v_desc_tab);
-    FOR i IN 1..v_col_count LOOP
-      IF v_desc_tab(i).col_type = c_clob THEN
-        dbms_sql.define_column(v_cursor, i, v_buffer_clob);
-      ELSIF v_desc_tab(i).col_type = c_long THEN
-        dbms_sql.define_column_long(v_cursor, i);
-      ELSE
-        dbms_sql.define_column(v_cursor, i, v_buffer_varchar2, c_vc2_max_size);
-      END IF;
-      v_table_insert_prefix := v_table_insert_prefix || v_desc_tab(i).col_name || ',';
+    FOR i IN (
+      select 'select ' || listagg(column_name, ', ') within group (order by column_id) || ' from ' || table_name as query
+        from user_tab_cols
+      where table_name = p_table_name
+        and user_generated = 'YES'
+        and virtual_column = 'NO'
+      group by table_name
+    ) LOOP
+      v_query := i.query;
     END LOOP;
-    v_table_insert_prefix :=
-      case when p_insert_all_size > 0
-        then 'into '
-        else 'insert into '
-      end || p_table_name || '(' || rtrim(v_table_insert_prefix, ',' ) || ') values (';
-    v_ignore_me := dbms_sql.execute(v_cursor);
+    IF v_query IS NOT NULL THEN
+      v_cursor := dbms_sql.open_cursor;
+      dbms_sql.parse(
+        v_cursor,
+        v_query || ' as of scn ' || p_data_scn || ' order by ' || get_order_by_list,
+        dbms_sql.native);
+      -- https://support.esri.com/en/technical-article/000010110
+      -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
+      dbms_sql.describe_columns3(v_cursor, v_col_count, v_desc_tab);
+      FOR i IN 1..v_col_count LOOP
+        IF v_desc_tab(i).col_type = c_clob THEN
+          dbms_sql.define_column(v_cursor, i, v_buffer_clob);
+        ELSIF v_desc_tab(i).col_type = c_long THEN
+          dbms_sql.define_column_long(v_cursor, i);
+        ELSE
+          dbms_sql.define_column(v_cursor, i, v_buffer_varchar2, c_vc2_max_size);
+        END IF;
+        v_table_insert_prefix := v_table_insert_prefix || v_desc_tab(i).col_name || ',';
+      END LOOP;
+      v_table_insert_prefix :=
+        case when p_insert_all_size > 0
+          then 'into '
+          else 'insert into '
+        end || p_table_name || '(' || rtrim(v_table_insert_prefix, ',' ) || ') values (';
+      v_ignore_me := dbms_sql.execute(v_cursor);
+    END IF;
   END parse_query_and_describe_columns;
 
   ----------------------------------------
