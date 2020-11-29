@@ -46,6 +46,8 @@ INSTALLATION
 
 CHANGELOG
 
+- 2.3.0 (2020-11-29)
+  - Function BackApp: Rework table data export format INSERT - thanks to Connor McDonald for his blog post [Generating INSERT scripts that run fast!](https://connor-mcdonald.com/2019/05/17/hacking-together-faster-inserts/)
 - 2.2.0 (2020-10-25)
   - Function BackApp:
     - Fixed: #4 - plex.backapp throws "ORA-00904: DBMS_JAVA.LONGNAME: invalid identifier" in Oracle instances without a JVM
@@ -87,7 +89,7 @@ SIGNATURE
 ```sql
 PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.2.0.7';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.3.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';

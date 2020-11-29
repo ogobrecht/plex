@@ -896,14 +896,16 @@ BEGIN
           END IF;
         ELSIF v_desc_tab(i).col_type = c_xmltype THEN
           dbms_sql.column_value(v_cursor, i, v_buffer_xmltype);
-          v_buffer_clob := v_buffer_xmltype.getclobval();
-          IF length(v_buffer_clob) <= c_vc2_max_size THEN
-            v_buffer_varchar2 := substr(v_buffer_clob, 1, c_vc2_max_size);
-            escape_varchar2_buffer_for_csv;
-            util_clob_append(v_buffer_varchar2);
-          ELSE
-            v_buffer_varchar2 := 'XML value skipped - larger then ' || c_vc2_max_size || ' characters';
-            util_clob_append(v_buffer_varchar2);
+          IF v_buffer_xmltype IS NOT NULL THEN
+            v_buffer_clob := v_buffer_xmltype.getclobval();
+            IF length(v_buffer_clob) <= c_vc2_max_size THEN
+              v_buffer_varchar2 := substr(v_buffer_clob, 1, c_vc2_max_size);
+              escape_varchar2_buffer_for_csv;
+              util_clob_append(v_buffer_varchar2);
+            ELSE
+              v_buffer_varchar2 := 'XML value skipped - larger then ' || c_vc2_max_size || ' characters';
+              util_clob_append(v_buffer_varchar2);
+            END IF;
           END IF;
         ELSIF v_desc_tab(i).col_type = c_long THEN
           dbms_sql.column_value_long(v_cursor, i, c_vc2_max_size, 0, v_buffer_varchar2, v_buffer_long_length);
@@ -1103,7 +1105,7 @@ IS
 
   ----------------------------------------
 
-  FUNCTION get_order_by_list RETURN VARCHAR2 IS
+  FUNCTION get_order_by_clause RETURN VARCHAR2 IS
     v_return varchar2(4000);
   begin
     -- try to use pk column list ...
@@ -1149,8 +1151,8 @@ IS
       end loop;
     end if;
 
-    return v_return;
-  end;
+    return case when v_return is not null then ' order by ' || v_return else null end;
+  end get_order_by_clause;
 
   ----------------------------------------
 
@@ -1170,7 +1172,7 @@ IS
       v_cursor := dbms_sql.open_cursor;
       dbms_sql.parse(
         v_cursor,
-        v_query || ' as of scn ' || p_data_scn || ' order by ' || get_order_by_list,
+        v_query || ' as of scn ' || p_data_scn || get_order_by_clause,
         dbms_sql.native);
       -- https://support.esri.com/en/technical-article/000010110
       -- http://bluefrog-oracle.blogspot.com/2011/11/describing-ref-cursor-using-dbmssql-api.html
