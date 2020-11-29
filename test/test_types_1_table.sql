@@ -48,8 +48,8 @@ begin
         ptmd_timestamp               timestamp                                                                   ,
         ptmd_timestamp_tz            timestamp with time zone                                                    ,
         ptmd_timestamp_ltz           timestamp with local time zone                                              ,
-        ptmd_interval_day_to_second  interval day to second                                                      ,
-        ptmd_interval_year_to_month  interval year to month                                                      ,
+        ptmd_interval_day_to_second  interval day (2) to second (6)                                              ,
+        ptmd_interval_year_to_month  interval year (2) to month                                                  ,
         --
         primary key (ptmd_id)
       )

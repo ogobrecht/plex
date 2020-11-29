@@ -2561,7 +2561,8 @@ SELECT DISTINCT
       '{{BASE_PATH_APP_BACKEND}}/grants/' || p.privilege || '_on_' || p.table_name || '.sql' AS file_path
 FROM user_tab_privs p
 JOIN user_objects o ON p.table_name = o.object_name
-WHERE (#NAME_LIKE_EXPRESSIONS#)
+WHERE table_name not like 'SYS_PLSQL%'
+  AND (#NAME_LIKE_EXPRESSIONS#)
   AND (#NAME_NOT_LIKE_EXPRESSIONS#)
 ORDER BY
       privilege,
