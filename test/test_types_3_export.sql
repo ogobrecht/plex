@@ -1,25 +1,29 @@
 timing start test_export
-set verify off feedback off heading off timing on
+set verify off feedback off heading off serveroutput on
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 whenever oserror continue
 variable zip clob
 
 prompt
-prompt PLEX Test Export
-prompt ==================================================
+prompt PLEX Test Export Format INSERT With Multiple Data Types (export data)
+prompt =====================================================================
 
 prompt Run plex.backapp (this can take some time...)
 BEGIN
   :zip := plex.to_base64(plex.to_zip(plex.backapp(
-      p_app_id               => 100,
-      p_include_object_ddl   => true,
-      p_include_ords_modules => true,
+      p_app_id               => null, --100,
+      p_include_object_ddl   => false,
+      p_include_ords_modules => false,
       p_include_data         => true,
-      p_data_format          => 'csv,insert',
+      p_data_format          => 'csv,insert:20',
+      p_data_table_name_like => 'PLEX_TEST_MULTIPLE_DATATYPES',
       p_include_templates    => true)));
 END;
 /
+
+prompt Delete old zip file from previous test:
+host del app_100.zip
 
 set termout off
 spool "app_100.zip.base64"
@@ -40,7 +44,6 @@ prompt Windows, Mac, Linux: del app_100.zip.base64
 host del app_100.zip.base64
 
 timing stop
-prompt ==================================================
+prompt =======================================================
 prompt Done :-)
 prompt
-
