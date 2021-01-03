@@ -15,7 +15,7 @@ Also see this resources for more information:
 
 - [Blog post on how to getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
 - [PLEX project page on GitHub](https://github.com/ogobrecht/plex)
-  - [Changelog](https://github.com/ogobrecht/plex/CHANGELOG.md)
+  - [Changelog](https://github.com/ogobrecht/plex/blob/master/CHANGELOG.md)
   - [Give feedback](https://github.com/ogobrecht/plex/issues/new)
 
 
