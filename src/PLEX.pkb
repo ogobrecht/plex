@@ -70,10 +70,11 @@ TYPE tab_queries IS TABLE OF rec_queries INDEX BY BINARY_INTEGER;
 
 TYPE tab_file_list_lookup IS TABLE OF PLS_INTEGER INDEX BY VARCHAR2(256);
 
-TYPE rec_ddl_files IS RECORD (
+TYPE rec_files IS RECORD (
   ords_modules_    tab_vc1k,
   sequences_       tab_vc1k,
   tables_          tab_vc1k,
+  data_            tab_vc1k,
   ref_constraints_ tab_vc1k,
   indices_         tab_vc1k,
   views_           tab_vc1k,
@@ -88,6 +89,18 @@ TYPE rec_ddl_files IS RECORD (
   grants_          tab_vc1k,
   other_objects_   tab_vc1k);
 
+TYPE rec_path IS RECORD (
+  to_backend                   file_path,
+  to_frontend                  file_path,
+  to_web_services              file_path,
+  to_data                      file_path,
+  to_docs                      file_path,
+  to_tests                     file_path,
+  to_scripts                   file_path,
+  to_script_logs               file_path,
+  scripts_work_dir             file_path,
+  from_scripts_to_project_root file_path);
+
 g_clob    CLOB;
 g_cache   VARCHAR2(32767char);
 g_errlog  tab_errlog;
@@ -101,6 +114,7 @@ g_queries tab_queries;
 --------------------------------------------------------------------------------------------------------------------------------
 
 $if not $$utils_public $then
+
 FUNCTION util_bool_to_string (p_bool IN BOOLEAN) RETURN VARCHAR2;
 
 FUNCTION util_string_to_bool (
@@ -190,6 +204,10 @@ PROCEDURE util_clob_append (p_content IN VARCHAR2);
 
 PROCEDURE util_clob_append (p_content IN CLOB);
 
+PROCEDURE util_clob_replace (
+  p_search  VARCHAR2,
+  p_replace VARCHAR2);
+
 PROCEDURE util_clob_flush_cache;
 
 PROCEDURE util_clob_add_to_export_files (
@@ -213,7 +231,9 @@ PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_
 
 PROCEDURE util_clob_create_error_log (p_export_files IN OUT NOCOPY tab_export_files);
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files);
+PROCEDURE util_ensure_unique_file_names (
+  p_export_files    IN OUT NOCOPY tab_export_files,
+  p_path_to_scripts IN VARCHAR2 DEFAULT NULL);
 
 PROCEDURE util_log_init (p_module IN VARCHAR2);
 
@@ -229,6 +249,8 @@ FUNCTION util_log_get_runtime (
 RETURN NUMBER;
 
 PROCEDURE util_log_calc_runtimes;
+
+FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2;
 
 $end
 
@@ -590,7 +612,10 @@ END util_setup_dbms_metadata;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-PROCEDURE util_ensure_unique_file_names (p_export_files IN OUT NOCOPY tab_export_files) IS
+PROCEDURE util_ensure_unique_file_names (
+  p_export_files    IN OUT NOCOPY tab_export_files,
+  p_path_to_scripts IN            VARCHAR2 DEFAULT NULL)
+IS
   v_file_list_lookup     tab_file_list_lookup;
   v_apex_install_file_id PLS_INTEGER;
   v_file_name            VARCHAR2(256);
@@ -602,7 +627,7 @@ BEGIN
   $if $$apex_installed $then
   -- find apex install file
   FOR i IN 1..p_export_files.count LOOP
-    IF p_export_files(i).name = 'scripts/install_frontend_generated_by_apex.sql' THEN
+    IF p_export_files(i).name = p_path_to_scripts || '/install_frontend_generated_by_apex.sql' THEN
       v_apex_install_file_id := i;
     END IF;
   END LOOP;
@@ -631,11 +656,12 @@ BEGIN
         v_base_name || '_' || v_count);
       -- correct the apex install file
       IF v_apex_install_file_id IS NOT NULL THEN
-        p_export_files(v_apex_install_file_id).contents := regexp_replace(
-          p_export_files(v_apex_install_file_id).contents,
-          p_export_files(i).name || '$',
-          v_file_name,
-          1, 2, 'm');
+        p_export_files(v_apex_install_file_id).contents :=
+          regexp_replace(
+            p_export_files(v_apex_install_file_id).contents,
+            p_export_files(i).name || '$',
+            v_file_name,
+            1, 2, 'm');
       END IF;
       -- correct the file name itself
       p_export_files(i).name := v_file_name;
@@ -740,6 +766,13 @@ END util_log_calc_runtimes;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
+FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2 IS
+BEGIN
+  RETURN ltrim(rtrim(replace(p_base_path, '\', '/'),'/'),'/');
+END util_normalize_base_path;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
 PROCEDURE util_clob_append (p_content IN VARCHAR2) IS
 BEGIN
   g_cache := g_cache || p_content;
@@ -767,6 +800,7 @@ BEGIN
   END IF;
 END util_clob_append;
 
+
 --------------------------------------------------------------------------------------------------------------------------------
 
 PROCEDURE util_clob_flush_cache IS
@@ -780,6 +814,19 @@ BEGIN
     g_cache := NULL;
   END IF;
 END util_clob_flush_cache;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+PROCEDURE util_clob_replace (
+  p_search  VARCHAR2,
+  p_replace VARCHAR2)
+IS
+BEGIN
+  util_clob_flush_cache;
+  IF g_clob IS NOT NULL THEN
+    g_clob := replace(g_clob, p_search, p_replace);
+  END IF;
+END util_clob_replace;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -1198,7 +1245,7 @@ IS
 
   ----------------------------------------
 
-      -- SQL*Plus specific:
+    -- SQL*Plus specific:
     -- SQL Failed With ORA-1756 In Sqlplus But Works In SQL Developer
     -- (Doc ID 2377701.1, https://support.oracle.com/epmos/faces/DocumentDisplay?id=2377701.1)
 
@@ -1207,14 +1254,14 @@ IS
     util_clob_append('-- Script generated by PLEX version ' || c_plex_version || ' - more infos here: ' || c_plex_url || c_crlf);
     util_clob_append('-- Performance Hacks by Connor McDonald: https://connor-mcdonald.com/2019/05/17/hacking-together-faster-inserts/' || c_crlf);
     util_clob_append('-- For strange line end replacements a big thank to SQL*Plus: https://support.oracle.com/epmos/faces/DocumentDisplay?id=2377701.1 (SQL Failed With ORA-1756 In Sqlplus But Works In SQL Developer)' || c_crlf);
-    util_clob_append('prompt Insert into ' || p_table_name || c_crlf);
-    util_clob_append('timing start inserts' || c_crlf);
+    util_clob_append('prompt - insert xxx rows into ' || p_table_name || c_crlf);
     util_clob_append('set define off feedback off sqlblanklines on' || c_crlf);
     util_clob_append('alter session set cursor_sharing = force;' || c_crlf);
     util_clob_append(q'^alter session set nls_numeric_characters = '.,';^' || c_crlf);
     util_clob_append(q'^alter session set nls_date_format = 'yyyy-mm-dd hh24:mi:ss';^' || c_crlf);
     util_clob_append(q'^alter session set nls_timestamp_format = 'yyyy-mm-dd hh24:mi:ssxff';^' || c_crlf);
     util_clob_append(q'^alter session set nls_timestamp_tz_format = 'yyyy-mm-dd hh24:mi:ssxff tzr';^' || c_crlf);
+    util_clob_append('begin' || c_crlf);
   END create_header;
 
   ----------------------------------------
@@ -1282,12 +1329,22 @@ IS
       if p_insert_all_size > 0 and mod(v_data_count, p_insert_all_size) != 0 then
         util_clob_append('select * from dual;' || c_crlf);
       end if;
+      util_clob_append('end;' || c_crlf);
+      util_clob_append('/' || c_crlf);
       util_clob_append('commit;' || c_crlf);
       util_clob_append('alter session set cursor_sharing = exact;' || c_crlf);
-      util_clob_append('timing stop' || c_crlf);
+      util_clob_append('set define on' || c_crlf);
     end if;
     util_clob_append('' || c_crlf);
   END create_footer;
+
+  ----------------------------------------
+
+  PROCEDURE replace_number_rows_placeholder IS
+  BEGIN
+    util_clob_replace('prompt - insert xxx rows', 'prompt - insert '
+      || lpad(to_char(v_data_count), length(to_char(p_max_rows)), ' ') ||' rows');
+  END replace_number_rows_placeholder;
 
   ----------------------------------------
 
@@ -1299,6 +1356,7 @@ BEGIN
     create_data;
     create_footer;
     recover_session_nls_params;
+    replace_number_rows_placeholder;
     --dbms_lob.freetemporary(v_buffer_clob);
   END IF;
 END util_clob_table_to_insert;
@@ -1404,7 +1462,13 @@ FUNCTION backapp (
   p_base_path_backend           IN VARCHAR2 DEFAULT 'app_backend',
   p_base_path_frontend          IN VARCHAR2 DEFAULT 'app_frontend',
   p_base_path_web_services      IN VARCHAR2 DEFAULT 'app_web_services',
-  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data')
+  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data',
+  p_base_path_docs              IN VARCHAR2 DEFAULT 'docs',
+  p_base_path_tests             IN VARCHAR2 DEFAULT 'tests',
+  p_base_path_scripts           IN VARCHAR2 DEFAULT 'scripts',
+  p_base_path_script_logs       IN VARCHAR2 DEFAULT 'scripts/logs',
+  p_scripts_working_directory   IN VARCHAR2 DEFAULT 'scripts')
+
 RETURN tab_export_files IS
   v_apex_version     NUMBER;
   v_data_timestamp   TIMESTAMP;
@@ -1414,7 +1478,8 @@ RETURN tab_export_files IS
   v_app_workspace    user_objects.object_name%TYPE;
   v_app_owner        user_objects.object_name%TYPE;
   v_app_alias        user_objects.object_name%TYPE;
-  v_ddl_files        rec_ddl_files;
+  v_files            rec_files;
+  v_path             rec_path;
   v_contents         CLOB;
   v_export_files     tab_export_files;
   v_file_list_lookup tab_file_list_lookup;
@@ -1424,8 +1489,8 @@ RETURN tab_export_files IS
 
   FUNCTION util_get_script_line (p_file_path VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
-    RETURN 'prompt --' || replace(p_file_path, '.sql', NULL)
-      || c_lf || '@' || '../' || p_file_path || c_lf || c_lf;
+    RETURN 'prompt --' || p_file_path || c_lf
+      || '@' || v_path.from_scripts_to_project_root || p_file_path || c_lf;
   END util_get_script_line;
 
   PROCEDURE init IS
@@ -1438,6 +1503,21 @@ RETURN tab_export_files IS
     util_log_start('init');
     v_export_files := NEW tab_export_files();
     v_current_user := sys_context('USERENV', 'CURRENT_USER');
+    v_path.to_backend                   := util_normalize_base_path(p_base_path_backend);
+    v_path.to_frontend                  := util_normalize_base_path(p_base_path_frontend);
+    v_path.to_web_services              := util_normalize_base_path(p_base_path_web_services);
+    v_path.to_data                      := util_normalize_base_path(p_base_path_data);
+    v_path.to_docs                      := util_normalize_base_path(p_base_path_docs);
+    v_path.to_tests                     := util_normalize_base_path(p_base_path_tests);
+    v_path.to_scripts                   := util_normalize_base_path(p_base_path_scripts);
+    v_path.to_script_logs               := util_normalize_base_path(p_base_path_script_logs);
+    v_path.scripts_work_dir             := util_normalize_base_path(p_scripts_working_directory);
+    for i in 1..regexp_count(
+      nvl(v_path.scripts_work_dir || case when v_path.scripts_work_dir is not null then '/' end, 'dummy'),
+      '/')
+    loop
+      v_path.from_scripts_to_project_root := v_path.from_scripts_to_project_root || '../';
+    end loop;
     util_log_stop;
   END init;
 
@@ -1478,7 +1558,7 @@ RETURN tab_export_files IS
     v_clob       CLOB;
   BEGIN
     -- save as individual files
-    util_log_start(p_base_path_frontend || '/APEX_EXPORT:individual_files');
+    util_log_start(v_path.to_frontend || '/APEX_EXPORT:individual_files');
     v_apex_files := apex_export.get_application(
       p_application_id          => p_app_id,
       p_split                   => true,
@@ -1498,15 +1578,15 @@ RETURN tab_export_files IS
       v_export_files(i).name := replace(
         v_apex_files(i).name,
         'f' || p_app_id || '/application/',
-        p_base_path_frontend || '/');
+        v_path.to_frontend || '/');
       -- correct prompts for relocation
       v_export_files(i).contents := replace(
         v_apex_files(i).contents,
         'prompt --application/',
-        'prompt --' || p_base_path_frontend || '/');
+        'prompt --' || v_path.to_frontend || '/');
       -- special handling for install file
       IF v_export_files(i).name = 'f' || p_app_id || '/install.sql' THEN
-        v_export_files(i).name := 'scripts/install_frontend_generated_by_apex.sql';
+        v_export_files(i).name := v_path.to_scripts || '/install_frontend_generated_by_apex.sql';
         -- We need the clob as temporary container.
         -- When we use v_export_files(i).contents := 'someText' || replace(replace(v_export_files(i).contents, ...) ...),
         -- then Oracle 19.6 will raise "ORA-03113: end-of-file on communication channel".
@@ -1514,12 +1594,12 @@ RETURN tab_export_files IS
         v_clob := '-- DO NOT TOUCH THIS FILE - IT WILL BE OVERWRITTEN ON NEXT PLEX BACKAPP CALL'
           || c_lf || c_lf
           || replace(replace(v_export_files(i).contents,
-              '@application/', '@../' || p_base_path_frontend || '/'),
+              '@application/', '@' || v_path.from_scripts_to_project_root || v_path.to_frontend || '/'),
               'prompt --install', 'prompt --install_frontend_generated_by_apex');
         v_export_files(i).contents := v_clob;
       END IF;
       -- handle build status RUN_ONLY
-      IF v_export_files(i).name = p_base_path_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
+      IF v_export_files(i).name = v_path.to_frontend || '/create_application.sql' AND p_app_build_status_run_only THEN
         v_export_files(i).contents := util_set_build_status_run_only(v_export_files(i).contents);
       END IF;
       v_apex_files.DELETE(i);
@@ -1529,7 +1609,7 @@ RETURN tab_export_files IS
     IF p_app_include_single_file THEN
       -- save as single file
       v_apex_files.DELETE;
-      util_log_start(p_base_path_frontend || '/APEX_EXPORT:single_file');
+      util_log_start(v_path.to_frontend || '/APEX_EXPORT:single_file');
       v_apex_files := apex_export.get_application(
         p_application_id          => p_app_id,
         p_split                   => false,
@@ -1549,7 +1629,7 @@ RETURN tab_export_files IS
       util_clob_append(v_apex_files(1).contents);
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
-        p_name         => p_base_path_frontend || '/' || v_apex_files(1).name);
+        p_name         => v_path.to_frontend || '/' || v_apex_files(1).name);
       v_apex_files.DELETE;
       util_log_stop;
     END IF;
@@ -1597,7 +1677,7 @@ RETURN tab_export_files IS
 
     PROCEDURE process_user IS
     BEGIN
-      v_file_path := p_base_path_backend || '/_user/' || v_current_user || '.sql';
+      v_file_path := v_path.to_backend || '/_user/' || v_current_user || '.sql';
       util_log_start(v_file_path);
       util_setup_dbms_metadata(p_sqlterminator => false);
       util_clob_append(util_multi_replace(q'^BEGIN
@@ -1629,7 +1709,7 @@ END;
 
     PROCEDURE process_roles IS
     BEGIN
-      v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_roles.sql';
+      v_file_path := v_path.to_backend || '/_user/' || v_current_user || '_roles.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_role_privs) LOOP
         util_clob_append(regexp_replace(
@@ -1649,7 +1729,7 @@ END;
 
     PROCEDURE process_system_privileges IS
     BEGIN
-      v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_system_privileges.sql';
+      v_file_path := v_path.to_backend || '/_user/' || v_current_user || '_system_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT username FROM user_sys_privs) LOOP
         util_clob_append(regexp_replace(
@@ -1669,7 +1749,7 @@ END;
 
     PROCEDURE process_object_privileges IS
     BEGIN
-      v_file_path := p_base_path_backend || '/_user/' || v_current_user || '_object_privileges.sql';
+      v_file_path := v_path.to_backend || '/_user/' || v_current_user || '_object_privileges.sql';
       util_log_start(v_file_path);
       FOR i IN (SELECT DISTINCT grantee FROM user_tab_privs WHERE grantee = v_current_user) LOOP
         util_clob_append(regexp_replace(
@@ -1703,7 +1783,7 @@ END;
     no_comments_found EXCEPTION;
     PRAGMA EXCEPTION_INIT(no_comments_found, -31608);
   BEGIN
-    util_log_start(p_base_path_backend || '/open_objects_cursor');
+    util_log_start(v_path.to_backend || '/open_objects_cursor');
     v_query   := q'^
 --https://stackoverflow.com/questions/10886450/how-to-generate-entire-ddl-of-an-oracle-schema-scriptable
 --https://stackoverflow.com/questions/3235300/oracles-dbms-metadata-get-ddl-for-object-type-job
@@ -1802,7 +1882,7 @@ SELECT object_type,
     v_query := replace(
       v_query,
       '{{BASE_PATH_APP_BACKEND}}',
-      p_base_path_backend);
+      v_path.to_backend);
     replace_query_like_expressions(
       p_like_list          => p_object_type_like,
       p_not_like_list      => p_object_type_not_like,
@@ -1823,31 +1903,31 @@ SELECT object_type,
         util_log_start(v_rec.file_path);
         CASE v_rec.object_type
           WHEN 'SEQUENCE' THEN
-            v_ddl_files.sequences_(v_ddl_files.sequences_.count + 1) := v_rec.file_path;
+            v_files.sequences_(v_files.sequences_.count + 1) := v_rec.file_path;
           WHEN 'TABLE' THEN
-            v_ddl_files.tables_(v_ddl_files.tables_.count + 1) := v_rec.file_path;
+            v_files.tables_(v_files.tables_.count + 1) := v_rec.file_path;
           WHEN 'INDEX' THEN
-            v_ddl_files.indices_(v_ddl_files.indices_.count + 1) := v_rec.file_path;
+            v_files.indices_(v_files.indices_.count + 1) := v_rec.file_path;
           WHEN 'VIEW' THEN
-            v_ddl_files.views_(v_ddl_files.views_.count + 1) := v_rec.file_path;
+            v_files.views_(v_files.views_.count + 1) := v_rec.file_path;
           WHEN 'MATERIALIZED_VIEW' THEN
-            v_ddl_files.mviews_(v_ddl_files.mviews_.count + 1) := v_rec.file_path;
+            v_files.mviews_(v_files.mviews_.count + 1) := v_rec.file_path;
           WHEN 'TYPE_SPEC' THEN
-            v_ddl_files.types_(v_ddl_files.types_.count + 1) := v_rec.file_path;
+            v_files.types_(v_files.types_.count + 1) := v_rec.file_path;
           WHEN 'TYPE_BODY' THEN
-            v_ddl_files.type_bodies_(v_ddl_files.type_bodies_.count + 1) := v_rec.file_path;
+            v_files.type_bodies_(v_files.type_bodies_.count + 1) := v_rec.file_path;
           WHEN 'TRIGGER' THEN
-            v_ddl_files.triggers_(v_ddl_files.triggers_.count + 1) := v_rec.file_path;
+            v_files.triggers_(v_files.triggers_.count + 1) := v_rec.file_path;
           WHEN 'FUNCTION' THEN
-            v_ddl_files.functions_(v_ddl_files.functions_.count + 1) := v_rec.file_path;
+            v_files.functions_(v_files.functions_.count + 1) := v_rec.file_path;
           WHEN 'PROCEDURE' THEN
-            v_ddl_files.procedures_(v_ddl_files.procedures_.count + 1) := v_rec.file_path;
+            v_files.procedures_(v_files.procedures_.count + 1) := v_rec.file_path;
           WHEN 'PACKAGE_SPEC' THEN
-            v_ddl_files.packages_(v_ddl_files.packages_.count + 1) := v_rec.file_path;
+            v_files.packages_(v_files.packages_.count + 1) := v_rec.file_path;
           WHEN 'PACKAGE_BODY' THEN
-            v_ddl_files.package_bodies_(v_ddl_files.package_bodies_.count + 1) := v_rec.file_path;
+            v_files.package_bodies_(v_files.package_bodies_.count + 1) := v_rec.file_path;
           ELSE
-            v_ddl_files.other_objects_(v_ddl_files.other_objects_.count + 1) := v_rec.file_path;
+            v_files.other_objects_(v_files.other_objects_.count + 1) := v_rec.file_path;
         END CASE;
         CASE
           WHEN v_rec.object_type = 'VIEW' AND p_object_view_remove_col_list THEN
@@ -1913,7 +1993,7 @@ END;
       file_path   VARCHAR2(512));
     v_rec obj_rec_typ;
   BEGIN
-    util_log_start(p_base_path_backend || '/grants:open_cursor');
+    util_log_start(v_path.to_backend || '/grants:open_cursor');
     v_query   := q'^
 SELECT DISTINCT
       p.grantor,
@@ -1932,7 +2012,7 @@ ORDER BY
     v_query := replace(
       v_query,
       '{{BASE_PATH_APP_BACKEND}}',
-      p_base_path_backend);
+      v_path.to_backend);
     replace_query_like_expressions(
       p_like_list          => p_object_name_like,
       p_not_like_list      => p_object_name_not_like,
@@ -1946,7 +2026,7 @@ ORDER BY
       BEGIN
         util_log_start(v_rec.file_path);
         util_clob_append(ltrim(dbms_metadata.get_dependent_ddl('OBJECT_GRANT', v_rec.object_name, v_rec.grantor), c_space_crlf));
-        v_ddl_files.grants_(v_ddl_files.grants_.count + 1) := v_rec.file_path;
+        v_files.grants_(v_files.grants_.count + 1) := v_rec.file_path;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
           p_name         => v_rec.file_path);
@@ -1966,7 +2046,7 @@ ORDER BY
       file_path         VARCHAR2(512));
     v_rec obj_rec_typ;
   BEGIN
-    util_log_start(p_base_path_backend || '/ref_constraints:open_cursor');
+    util_log_start(v_path.to_backend || '/ref_constraints:open_cursor');
     v_query   := q'^
 SELECT table_name,
       constraint_name,
@@ -1982,7 +2062,7 @@ ORDER BY
     v_query := replace(
       v_query,
       '{{BASE_PATH_APP_BACKEND}}',
-      p_base_path_backend);
+      v_path.to_backend);
     replace_query_like_expressions(
       p_like_list          => p_object_name_like,
       p_not_like_list      => p_object_name_not_like,
@@ -2017,7 +2097,7 @@ END;
           '{{/}}',
           c_slash));
         util_setup_dbms_metadata;
-        v_ddl_files.ref_constraints_(v_ddl_files.ref_constraints_.count + 1) := v_rec.file_path;
+        v_files.ref_constraints_(v_files.ref_constraints_.count + 1) := v_rec.file_path;
         util_clob_add_to_export_files(
           p_export_files => v_export_files,
           p_name         => v_rec.file_path);
@@ -2033,7 +2113,7 @@ END;
 
   PROCEDURE create_backend_install_file IS
   BEGIN
-    v_file_path := 'scripts/install_backend_generated_by_plex.sql';
+    v_file_path := v_path.to_scripts || '/install_backend_generated_by_plex.sql';
     util_log_start(v_file_path);
     util_clob_append('/* A T T E N T I O N
 DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_object_ddl
@@ -2048,50 +2128,50 @@ whenever sqlerror exit sql.sqlcode rollback
 prompt --install_backend_generated_by_plex
 
 '   );
-    FOR i IN 1..v_ddl_files.sequences_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.sequences_(i)));
+    FOR i IN 1..v_files.sequences_.count LOOP
+      util_clob_append(util_get_script_line(v_files.sequences_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.tables_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.tables_(i)));
+    FOR i IN 1..v_files.tables_.count LOOP
+      util_clob_append(util_get_script_line(v_files.tables_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.ref_constraints_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.ref_constraints_(i)));
+    FOR i IN 1..v_files.ref_constraints_.count LOOP
+      util_clob_append(util_get_script_line(v_files.ref_constraints_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.types_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.types_(i)));
+    FOR i IN 1..v_files.types_.count LOOP
+      util_clob_append(util_get_script_line(v_files.types_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.packages_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.packages_(i)));
+    FOR i IN 1..v_files.packages_.count LOOP
+      util_clob_append(util_get_script_line(v_files.packages_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.views_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.views_(i)));
+    FOR i IN 1..v_files.views_.count LOOP
+      util_clob_append(util_get_script_line(v_files.views_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.mviews_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.mviews_(i)));
+    FOR i IN 1..v_files.mviews_.count LOOP
+      util_clob_append(util_get_script_line(v_files.mviews_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.indices_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.indices_(i)));
+    FOR i IN 1..v_files.indices_.count LOOP
+      util_clob_append(util_get_script_line(v_files.indices_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.type_bodies_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.type_bodies_(i)));
+    FOR i IN 1..v_files.type_bodies_.count LOOP
+      util_clob_append(util_get_script_line(v_files.type_bodies_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.functions_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.functions_(i)));
+    FOR i IN 1..v_files.functions_.count LOOP
+      util_clob_append(util_get_script_line(v_files.functions_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.procedures_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.procedures_(i)));
+    FOR i IN 1..v_files.procedures_.count LOOP
+      util_clob_append(util_get_script_line(v_files.procedures_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.package_bodies_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.package_bodies_(i)));
+    FOR i IN 1..v_files.package_bodies_.count LOOP
+      util_clob_append(util_get_script_line(v_files.package_bodies_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.triggers_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.triggers_(i)));
+    FOR i IN 1..v_files.triggers_.count LOOP
+      util_clob_append(util_get_script_line(v_files.triggers_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.grants_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.grants_(i)));
+    FOR i IN 1..v_files.grants_.count LOOP
+      util_clob_append(util_get_script_line(v_files.grants_(i)));
     END LOOP;
-    FOR i IN 1..v_ddl_files.other_objects_.count LOOP
-      util_clob_append(util_get_script_line(v_ddl_files.other_objects_(i)));
+    FOR i IN 1..v_files.other_objects_.count LOOP
+      util_clob_append(util_get_script_line(v_files.other_objects_(i)));
     END LOOP;
     util_clob_add_to_export_files(
       p_export_files => v_export_files,
@@ -2105,7 +2185,7 @@ prompt --install_backend_generated_by_plex
     --
     PROCEDURE export_ords_modules IS
     BEGIN
-      util_log_start(p_base_path_web_services || '/open_modules_cursor');
+      util_log_start(v_path.to_web_services || '/open_modules_cursor');
       OPEN v_cur FOR 'select name from user_ords_modules';
       util_log_stop;
       --
@@ -2113,13 +2193,13 @@ prompt --install_backend_generated_by_plex
         FETCH v_cur INTO v_module_name;
         EXIT WHEN v_cur%notfound;
         BEGIN
-          v_file_path := p_base_path_web_services || '/' || v_module_name || '.sql';
+          v_file_path := v_path.to_web_services || '/' || v_module_name || '.sql';
           util_log_start(v_file_path);
           util_clob_append(ords_export.export_module(p_module_name => v_module_name) || chr(10) || '/');
           util_clob_add_to_export_files(
             p_export_files => v_export_files,
             p_name         => v_file_path);
-          v_ddl_files.ords_modules_(v_ddl_files.ords_modules_.count + 1) := v_file_path;
+          v_files.ords_modules_(v_files.ords_modules_.count + 1) := v_file_path;
           util_log_stop;
         EXCEPTION
           WHEN OTHERS THEN
@@ -2131,7 +2211,7 @@ prompt --install_backend_generated_by_plex
     --
     PROCEDURE create_ords_install_file IS
     BEGIN
-      v_file_path := 'scripts/install_web_services_generated_by_ords.sql';
+      v_file_path := v_path.to_scripts || '/install_web_services_generated_by_ords.sql';
       util_log_start(v_file_path);
       util_clob_append('/* A T T E N T I O N
 DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_ords_modules
@@ -2145,8 +2225,8 @@ whenever sqlerror exit sql.sqlcode rollback
 prompt --install_web_services_generated_by_ords
 
 '   );
-      FOR i IN 1..v_ddl_files.ords_modules_.count LOOP
-        util_clob_append(util_get_script_line(v_ddl_files.ords_modules_(i)));
+      FOR i IN 1..v_files.ords_modules_.count LOOP
+        util_clob_append(util_get_script_line(v_files.ords_modules_(i)));
       END LOOP;
       util_clob_add_to_export_files(
         p_export_files => v_export_files,
@@ -2156,7 +2236,7 @@ prompt --install_web_services_generated_by_ords
 
   BEGIN
     export_ords_modules;
-    IF v_ddl_files.ords_modules_.count > 0 THEN
+    IF v_files.ords_modules_.count > 0 THEN
       create_ords_install_file;
     END IF;
   END process_ords_modules;
@@ -2168,7 +2248,7 @@ prompt --install_web_services_generated_by_ords
       pk_columns VARCHAR2(4000));
     v_rec obj_rec_typ;
   BEGIN
-    util_log_start(p_base_path_data || '/open_tables_cursor');
+    util_log_start(v_path.to_data || '/open_tables_cursor');
     v_query            := q'^
 SELECT table_name,
        (SELECT LISTAGG(column_name, ', ') WITHIN GROUP(ORDER BY position)
@@ -2195,7 +2275,7 @@ SELECT table_name,
     OPEN v_cur FOR v_query;
     util_log_stop;
     --
-    util_log_start(p_base_path_data || '/get_scn');
+    util_log_start(v_path.to_data || '/get_scn');
     v_data_timestamp := util_calc_data_timestamp(nvl(p_data_as_of_minutes_ago, 0));
     v_data_scn       := timestamp_to_scn(v_data_timestamp);
     util_log_stop;
@@ -2206,7 +2286,7 @@ SELECT table_name,
       -- csv file
       IF upper(p_data_format) LIKE '%CSV%' THEN
         BEGIN
-          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.csv';
+          v_file_path := v_path.to_data || '/' || v_rec.table_name || '.csv';
           util_log_start(v_file_path);
           util_clob_query_to_csv(
             p_query    => 'SELECT * FROM ' || v_rec.table_name || ' AS OF SCN ' || v_data_scn ||
@@ -2229,7 +2309,7 @@ SELECT table_name,
       -- insert script
       IF upper(p_data_format) LIKE '%INSERT%' THEN
         BEGIN
-          v_file_path := p_base_path_data || '/' || v_rec.table_name || '.sql';
+          v_file_path := v_path.to_data || '/' || v_rec.table_name || '.sql';
           util_log_start(v_file_path);
           util_clob_table_to_insert(
             p_table_name      => v_rec.table_name,
@@ -2239,6 +2319,7 @@ SELECT table_name,
           util_clob_add_to_export_files(
             p_export_files => v_export_files,
             p_name         => v_file_path);
+          v_files.data_(v_files.data_.count + 1) := v_file_path;
           util_log_stop;
         EXCEPTION
           WHEN OTHERS THEN
@@ -2249,6 +2330,31 @@ SELECT table_name,
     CLOSE v_cur;
 
   END process_data;
+
+  PROCEDURE create_load_data_file IS
+  BEGIN
+    v_file_path := v_path.to_scripts || '/load_data_generated_by_plex.sql';
+    util_log_start(v_file_path);
+    util_clob_append('/* A T T E N T I O N
+DO NOT TOUCH THIS FILE or set the PLEX.BackApp parameter p_include_data
+to false - otherwise your changes would be overwritten on next PLEX.BackApp
+call.
+*/
+
+set define off verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+
+prompt --load_data_generated_by_plex
+
+'   );
+    FOR i IN 1..v_files.data_.count LOOP
+      util_clob_append('@' || v_path.from_scripts_to_project_root || v_files.data_(i) || c_crlf );
+    END LOOP;
+    util_clob_add_to_export_files(
+      p_export_files => v_export_files,
+      p_name         => v_file_path);
+    util_log_stop;
+  END create_load_data_file;
 
   PROCEDURE create_template_files IS
     v_file_template VARCHAR2(32767 CHAR);
@@ -2383,7 +2489,7 @@ rem Remove "pause" for fully automated setup:
 pause
 if %errorlevel% neq 0 exit /b %errorlevel%
 ^'    ;
-      v_file_path := 'scripts/templates/1_export_app_from_DEV.bat';
+      v_file_path := v_path.to_scripts || '/templates/1_export_app_from_DEV.bat';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
         v_file_template,
@@ -2487,7 +2593,13 @@ BEGIN
     p_include_error_log         => true,
     p_base_path_backend         => 'app_backend',
     p_base_path_frontend        => 'app_frontend',
-    p_base_path_data            => 'app_data')));
+    p_base_path_web_services    => 'app_web_services',
+    p_base_path_data            => 'app_data',
+    p_base_path_docs            => 'docs',
+    p_base_path_tests           => 'tests',
+    p_base_path_scripts         => 'scripts',
+    p_base_path_script_logs     => 'scripts/logs',
+    p_scripts_working_directory => 'scripts')));
 END;
 {{/}}
 
@@ -2503,7 +2615,7 @@ prompt =========================================================================
 prompt Export DONE :-)
 prompt
 ^'    ;
-      v_file_path := 'scripts/templates/export_app_custom_code.sql';
+      v_file_path := v_path.to_scripts || '/templates/export_app_custom_code.sql';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
         v_file_template,
@@ -2564,7 +2676,7 @@ rem Remove "pause" for fully automated setup:
 pause
 if %errorlevel% neq 0 exit /b %errorlevel%
 ^'    ;
-      v_file_path := 'scripts/templates/2_install_app_into_INT.bat';
+      v_file_path := v_path.to_scripts || '/templates/2_install_app_into_INT.bat';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
         v_file_template,
@@ -2583,7 +2695,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         p_name         => v_file_path);
       util_log_stop;
 
-      v_file_path := 'scripts/templates/3_install_app_into_PROD.bat';
+      v_file_path := v_path.to_scripts || '/templates/3_install_app_into_PROD.bat';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
         v_file_template,
@@ -2656,6 +2768,9 @@ prompt =========================================================================
 prompt Install Backend
 {{@}}install_backend_generated_by_plex.sql
 
+--prompt Load Initial Data
+--{{@}}load_data_generated_by_plex.sql
+
 prompt Compile Invalid Objects
 BEGIN
   dbms_utility.compile_schema(
@@ -2702,7 +2817,7 @@ prompt =========================================================================
 prompt Installation DONE :-)
 prompt
 ^'    ;
-      v_file_path := 'scripts/templates/install_app_custom_code.sql';
+      v_file_path := v_path.to_scripts || '/templates/install_app_custom_code.sql';
       util_log_start(v_file_path);
       util_clob_append(util_multi_replace(
         v_file_template,
@@ -2727,7 +2842,7 @@ prompt
   PROCEDURE create_directory_keepers IS
     v_the_point VARCHAR2(30) := '. < this is the point ;-)';
   BEGIN
-    v_file_path := 'docs/_save_your_docs_here.txt';
+    v_file_path := v_path.to_docs || '/_save_your_docs_here.txt';
     util_log_start(v_file_path);
     util_clob_append(v_the_point);
     util_clob_add_to_export_files(
@@ -2735,7 +2850,7 @@ prompt
       p_name         => v_file_path);
     util_log_stop;
     --
-    v_file_path   := 'scripts/logs/_spool_your_script_logs_here.txt';
+    v_file_path   := v_path.to_script_logs || '/_spool_your_script_logs_here.txt';
     util_log_start(v_file_path);
     util_clob_append(v_the_point);
     util_clob_add_to_export_files(
@@ -2743,7 +2858,7 @@ prompt
       p_name         => v_file_path);
     util_log_stop;
     --
-    v_file_path   := 'tests/_save_your_tests_here.txt';
+    v_file_path   := v_path.to_tests || '/_save_your_tests_here.txt';
     util_log_start(v_file_path);
     util_clob_append(v_the_point);
     util_clob_add_to_export_files(
@@ -2754,7 +2869,7 @@ prompt
 
   PROCEDURE finish IS
   BEGIN
-    util_ensure_unique_file_names(v_export_files);
+    util_ensure_unique_file_names(v_export_files, v_path.to_scripts);
     IF p_include_error_log THEN
       util_clob_create_error_log(v_export_files);
     END IF;
@@ -2788,6 +2903,9 @@ BEGIN
   $end
   IF p_include_data THEN
     process_data;
+    if upper(p_data_format) LIKE '%INSERT%' then
+      create_load_data_file;
+    end if;
   END IF;
   IF p_include_templates THEN
     create_template_files;

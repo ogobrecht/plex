@@ -23,7 +23,8 @@ Also see this resources for more information:
 
 - [Blog post on how to getting started](https://ogobrecht.github.io/posts/2018-08-26-plex-plsql-export-utilities)
 - [PLEX project page on GitHub](https://github.com/ogobrecht/plex)
-- [Give feedback on GitHub](https://github.com/ogobrecht/plex/issues/new).
+  - [Changelog](https://github.com/ogobrecht/plex/blob/master/CHANGELOG.md)
+  - [Give feedback](https://github.com/ogobrecht/plex/issues/new)
 
 
 DEPENDENCIES
@@ -43,53 +44,12 @@ INSTALLATION
 - To install PLEX run the provided install script `plex_install.sql` (script provides compiler flags)
 - To uninstall PLEX run the provided script `plex_uninstall.sql` or drop the package manually
 
-
-CHANGELOG
-
-- 2.3.0 (2020-11-29)
-  - Function BackApp: Rework table data export format INSERT - thanks to Connor McDonald for his blog post [Generating INSERT scripts that run fast!](https://connor-mcdonald.com/2019/05/17/hacking-together-faster-inserts/)
-- 2.2.0 (2020-10-25)
-  - Function BackApp:
-    - Fixed: #4 - plex.backapp throws "ORA-00904: DBMS_JAVA.LONGNAME: invalid identifier" in Oracle instances without a JVM
-    - Fixed: #5 - plex.backapp throws "ORA-03113: end-of-file on communication channel" in Oracle 19.6
-    - Table data can now be exported in two formats: CSV and INSERT (p_data_format)
-- 2.1.0 (2019-12-30)
-  - Function BackApp:
-    - New parameter to include ORDS modules (p_include_ords_modules)
-    - New parameter to remove the outer column list on views, which is added by the compiler (p_object_view_remove_col_list); this was done in the past implicitly and can now be switched off; thanks to twitter.com/JKaschuba for the hint
-    - Object DDL: Comments for tables and views are now included
-    - Script templates: Improved export speed by using a base64 encoded zip file instead of a global temporary table to unload the files
-    - Fixed: Unable to export JAVA objects on systems with 30 character object names; thanks to twitter.com/JKaschuba for the hint
-    - Fixed: Views appears two times in resulting collection, each double file is postfixed with "_2" and empty
-    - Fixed: Tables and indices of materialized view definitions are exported (should be hidden)
-  - New function to_base64: convert BLOB into base64 encoded CLOB - this is helpful to download a BLOB file (like a zip file) with SQL*Plus
-- 2.0.2 (2019-08-16)
-  - Fixed: Function BackApp throws error on large APEX UI install files (ORA-06502: PL/SQL: numeric or value error: character string buffer too small)
-- 2.0.1 (2019-07-09)
-  - Fixed: Compile error when DB version is lower then 18.1 (PLS-00306: wrong number or types of arguments in call to 'REC_EXPORT_FILE')
-- 2.0.0 (2019-06-20)
-  - Package is now independend from APEX to be able to export schema object DDL and table data without an APEX installation
-    - ATTENTION: The return type of functions BackApp and Queries_to_CSV has changed from `apex_t_export_files` to `plex.tab_export_files`
-  - Function BackApp:
-    - New parameters to filter for object types
-    - New parameters to change base paths for backend, frontend and data
-- 1.2.1 (2019-03-13)
-  - Fixed: Script templates for function BackApp used old/invalid parameters
-  - Add install and uninstall scripts for PLEX itself
-- 1.2.0 (2018-10-31)
-  - Function BackApp: All like/not like parameters are now translated internally with the escape character set to backslash like so `... like 'YourExpression' escape '\'`
-  - Function Queries_to_CSV: Binary data type columns (raw, long_raw, blob, bfile) should no longer break the export
-- 1.1.0 (2018-09-23)
-  - Function BackApp: Change filter parameter from regular expression to list of like expressions for easier handling
-- 1.0.0 (2018-08-26)
-  - First public release
-
 SIGNATURE
 
 ```sql
 PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.3.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.4.0';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -153,6 +113,7 @@ EXAMPLE ZIP FILE SQL
 ```sql
 -- Inline function because of boolean parameters (needs Oracle 12c or higher).
 -- Alternative create a helper function and call that in a SQL context.
+-- Will throw ORA-14552 when p_data_format is set to 'insert' because of changing session parameters (you need to run this then inside PL/SQL)
 WITH
   FUNCTION backapp RETURN BLOB IS
   BEGIN
@@ -234,7 +195,7 @@ FUNCTION backapp (
   p_data_max_rows               IN NUMBER   DEFAULT 1000,  -- Maximum number of rows per table.
   p_data_table_name_like        IN VARCHAR2 DEFAULT null,  -- A comma separated list of like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name like 'EMP%' escape '\' or table_name like 'DEPT%' escape '\').
   p_data_table_name_not_like    IN VARCHAR2 DEFAULT null,  -- A comma separated list of not like expressions to filter the tables - example: 'EMP%,DEPT%' will be translated to: where ... and (table_name not like 'EMP%' escape '\' and table_name not like 'DEPT%' escape '\').
-  p_data_format                 IN VARCHAR2 DEFAULT 'csv', -- A comma separated list of formats - currently supported formats are CSV and INSERT - example: 'csv,insert' will export for each table a csv file and a sql file with insert statements. For insert you can also give the number of rows per "insert all" statement (defaults to 20) - example: 'csv,insert:10' or 'insert:5' .
+  p_data_format                 IN VARCHAR2 DEFAULT 'csv', -- A comma separated list of formats - currently supported formats are CSV and INSERT - example: 'csv,insert' will export for each table a csv file and a sql file with insert statements. For insert you can also give the number of rows per "insert all" statement (defaults to 20) - example: 'csv,insert:10' or 'insert:5'.
   -- General Options:
   p_include_templates           IN BOOLEAN  DEFAULT true,  -- If true, include templates for README.md, export and install scripts.
   p_include_runtime_log         IN BOOLEAN  DEFAULT true,  -- If true, generate file plex_runtime_log.md with detailed runtime infos.
@@ -242,7 +203,12 @@ FUNCTION backapp (
   p_base_path_backend           IN VARCHAR2 DEFAULT 'app_backend',      -- The base path in the project root for the Schema objects.
   p_base_path_frontend          IN VARCHAR2 DEFAULT 'app_frontend',     -- The base path in the project root for the APEX app.
   p_base_path_web_services      IN VARCHAR2 DEFAULT 'app_web_services', -- The base path in the project root for the ORDS modules.
-  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data')         -- The base path in the project root for the table data.
+  p_base_path_data              IN VARCHAR2 DEFAULT 'app_data',         -- The base path in the project root for the table data.
+  p_base_path_docs              IN VARCHAR2 DEFAULT 'docs',             -- The base path in the project root for the docs.
+  p_base_path_tests             IN VARCHAR2 DEFAULT 'tests',            -- The base path in the project root for the tests.
+  p_base_path_scripts           IN VARCHAR2 DEFAULT 'scripts',          -- The base path in the project root for the generated deploy scripts.
+  p_base_path_script_logs       IN VARCHAR2 DEFAULT 'scripts/logs',     -- The base path in the project root for the deploy script log files.
+  p_scripts_working_directory   IN VARCHAR2 DEFAULT 'scripts')          -- The working directory of the shell (relative to the project root) where deploy scripts will be called. Set this to null if you run the deploy scripts from the project root.
 RETURN tab_export_files;
 ```
 

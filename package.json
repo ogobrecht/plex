@@ -11,12 +11,12 @@
     "build":             "node src/build.js",
     "postbuild":         "echo exit | sqlplus -S /@playground @plex_install.sql",
     "watch":             "chokidar src/PLEX.pks src/PLEX.pkb src/plex_install.sql --initial -c \"npm run build\"",
-    "test-ccflags":      "cd test && echo exit | sqlplus -S /@playground @test_ccflags.sql           && cd ..",
-    "test-export":       "cd test && echo exit | sqlplus -S /@playground @test_export.sql            && cd ..",
-    "test-types-table":  "cd test && echo exit | sqlplus -S /@playground @test_types_1_table.sql     && cd ..",
-    "test-types-data":   "cd test && echo exit | sqlplus -S /@playground @test_types_2_data.sql 100  && cd ..",
-    "test-types-export": "cd test && echo exit | sqlplus -S /@playground @test_types_3_export.sql    && cd ..",
-    "test-types-import": "cd test && echo exit | sqlplus -S /@playground @test_types_4_import.sql    && cd .."
+    "test-ccflags":      "cd test && echo exit | sqlplus -S /@playground @test_ccflags.sql          && cd ..",
+    "test-export":       "cd test && echo exit | sqlplus -S /@playground @test_export.sql           && cd ..",
+    "test-types-table":  "cd test && echo exit | sqlplus -S /@playground @test_types_1_table.sql    && cd ..",
+    "test-types-data":   "cd test && echo exit | sqlplus -S /@playground @test_types_2_data.sql 100 && cd ..",
+    "test-types-export": "cd test && echo exit | sqlplus -S /@playground @test_types_3_export.sql   && cd ..",
+    "test-types-import": "cd test && echo exit | sqlplus -S /@playground @test_types_4_import.sql   && cd .."
   },
   "devDependencies": {
     "chokidar-cli": "^2.1.0",
