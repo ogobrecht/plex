@@ -1,6 +1,6 @@
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.4.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.4.1';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -18,15 +18,13 @@ Also see this resources for more information:
   - [Changelog](https://github.com/ogobrecht/plex/blob/master/CHANGELOG.md)
   - [Give feedback](https://github.com/ogobrecht/plex/issues/new)
 
-
 DEPENDENCIES
 
 The package itself is independend, but functionality varies on the following conditions:
 
 - For APEX app export: APEX >= 5.1.4 installed
 - For ORDS modules export: ORDS >= 18.3 installed (I think package ords_export is included since this version, but I don't know it)
-    - ATTENTION: There seems to be a bug in ORDS 19.2 which prevents you to export ORDS modules via the package ords_export: https://community.oracle.com/thread/4292776; please see plex_error_log.md, if you miss your ORDS modules after an export - this is no problem of PLEX
-
+  - ATTENTION: There seems to be a [bug in ORDS 19.2](https://community.oracle.com/thread/4292776) which prevents you to export ORDS modules via the package ords_export. Please see plex_error_log.md, if you miss your ORDS modules after an export - this is no problem of PLEX.
 
 INSTALLATION
 
@@ -180,7 +178,6 @@ EXAMPLE ZIP FILE SQL
 ```sql
 -- Inline function because of boolean parameters (needs Oracle 12c or higher).
 -- Alternative create a helper function and call that in a SQL context.
--- Will throw ORA-14552 when p_data_format is set to 'insert' because of changing session parameters (you need to run this then inside PL/SQL)
 WITH
   FUNCTION backapp RETURN BLOB IS
   BEGIN
@@ -564,8 +561,6 @@ FUNCTION util_log_get_runtime (
 RETURN NUMBER;
 
 PROCEDURE util_log_calc_runtimes;
-
-FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2;
 
 $end
 

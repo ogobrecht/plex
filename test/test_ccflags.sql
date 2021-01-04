@@ -3,8 +3,8 @@ set define off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 
 prompt
-prompt PLEX Test Conditional Compiler Flags
-prompt ==================================================
+prompt Test Conditional Compiler Flags
+prompt ================================================================================
 
 prompt Show unset compiler flags as errors (results for example in errors like "PLW-06003: unknown inquiry directive '$$UTILS_PUBLIC'"
 alter session set plsql_warnings = 'ENABLE:6003';
@@ -102,6 +102,6 @@ rem compile with correct flags
 
 prompt
 timing stop
-prompt ==================================================
+prompt ================================================================================
 prompt Done :-)
 prompt

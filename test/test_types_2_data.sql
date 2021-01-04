@@ -1,4 +1,4 @@
-timing start test_export
+timing start test_data
 set verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
@@ -6,8 +6,8 @@ whenever oserror continue
 variable zip clob
 
 prompt
-prompt PLEX Test Export Format INSERT With Multiple Data Types (create data)
-prompt =====================================================================
+prompt Test Data Export: Create Data
+prompt ================================================================================
 
 prompt Truncate table plex_test_multiple_datatypes
 truncate table PLEX_TEST_MULTIPLE_DATATYPES;
@@ -28,6 +28,6 @@ end;
 /
 
 timing stop
-prompt =======================================================
+prompt ================================================================================
 prompt Done :-)
 prompt

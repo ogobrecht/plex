@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.1 (2021-01-04)
+
+- Function BackApp:
+  - Fixed: #10 - Function BackApp throws ORA-14552 in SQL context when p_data_format is set to 'insert'
+
 ## 2.4.0 (2021-01-03)
 
 - Function BackApp:
