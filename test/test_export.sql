@@ -1,13 +1,19 @@
 timing start test_export
-set verify off feedback off heading off timing on
+set verify off feedback off heading off
 set trimout on trimspool on pagesize 0 linesize 5000 long 100000000 longchunksize 32767
 whenever sqlerror exit sql.sqlcode rollback
 whenever oserror continue
 variable zip clob
 
 prompt
-prompt PLEX Test Export
-prompt ==================================================
+prompt Test Export App Into ZIP File
+prompt ================================================================================
+
+prompt Set NLS parameters
+alter session set nls_numeric_characters  = '.,';
+alter session set nls_date_format         = 'yyyy-mm-dd hh24:mi:ss';
+alter session set nls_timestamp_format    = 'yyyy-mm-dd hh24:mi:ssxff';
+alter session set nls_timestamp_tz_format = 'yyyy-mm-dd hh24:mi:ssxff tzr';
 
 prompt Run plex.backapp (this can take some time...)
 BEGIN
@@ -56,7 +62,7 @@ prompt Windows, Mac, Linux: del app_100.zip.base64
 host del app_100.zip.base64
 
 timing stop
-prompt ==================================================
+prompt ================================================================================
 prompt Done :-)
 prompt
 

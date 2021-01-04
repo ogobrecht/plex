@@ -47,7 +47,7 @@ END;
 prompt Compile package plex (spec)
 CREATE OR REPLACE PACKAGE PLEX AUTHID current_user IS
 c_plex_name        CONSTANT VARCHAR2(30 CHAR) := 'PLEX - PL/SQL Export Utilities';
-c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.4.0';
+c_plex_version     CONSTANT VARCHAR2(10 CHAR) := '2.4.1';
 c_plex_url         CONSTANT VARCHAR2(40 CHAR) := 'https://github.com/ogobrecht/plex';
 c_plex_license     CONSTANT VARCHAR2(10 CHAR) := 'MIT';
 c_plex_license_url CONSTANT VARCHAR2(60 CHAR) := 'https://github.com/ogobrecht/plex/blob/master/LICENSE.txt';
@@ -65,15 +65,13 @@ Also see this resources for more information:
   - [Changelog](https://github.com/ogobrecht/plex/blob/master/CHANGELOG.md)
   - [Give feedback](https://github.com/ogobrecht/plex/issues/new)
 
-
 DEPENDENCIES
 
 The package itself is independend, but functionality varies on the following conditions:
 
 - For APEX app export: APEX >= 5.1.4 installed
 - For ORDS modules export: ORDS >= 18.3 installed (I think package ords_export is included since this version, but I don't know it)
-    - ATTENTION: There seems to be a bug in ORDS 19.2 which prevents you to export ORDS modules via the package ords_export: https://community.oracle.com/thread/4292776; please see plex_error_log.md, if you miss your ORDS modules after an export - this is no problem of PLEX
-
+  - ATTENTION: There seems to be a [bug in ORDS 19.2](https://community.oracle.com/thread/4292776) which prevents you to export ORDS modules via the package ords_export. Please see plex_error_log.md, if you miss your ORDS modules after an export - this is no problem of PLEX.
 
 INSTALLATION
 
@@ -227,7 +225,6 @@ EXAMPLE ZIP FILE SQL
 ```sql
 -- Inline function because of boolean parameters (needs Oracle 12c or higher).
 -- Alternative create a helper function and call that in a SQL context.
--- Will throw ORA-14552 when p_data_format is set to 'insert' because of changing session parameters (you need to run this then inside PL/SQL)
 WITH
   FUNCTION backapp RETURN BLOB IS
   BEGIN
@@ -612,8 +609,6 @@ RETURN NUMBER;
 
 PROCEDURE util_log_calc_runtimes;
 
-FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2;
-
 $end
 
 END plex;
@@ -723,6 +718,12 @@ TYPE rec_path IS RECORD (
   to_script_logs               file_path,
   scripts_work_dir             file_path,
   from_scripts_to_project_root file_path);
+
+TYPE rec_nls IS RECORD (
+  numeric_characters  varchar2(100),
+  date_format         varchar2(100),
+  timestamp_format    varchar2(100),
+  timestamp_tz_format varchar2(100));
 
 g_clob    CLOB;
 g_cache   VARCHAR2(32767char);
@@ -872,8 +873,6 @@ FUNCTION util_log_get_runtime (
 RETURN NUMBER;
 
 PROCEDURE util_log_calc_runtimes;
-
-FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2;
 
 $end
 
@@ -1389,13 +1388,6 @@ END util_log_calc_runtimes;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2 IS
-BEGIN
-  RETURN ltrim(rtrim(replace(p_base_path, '\', '/'),'/'),'/');
-END util_normalize_base_path;
-
---------------------------------------------------------------------------------------------------------------------------------
-
 PROCEDURE util_clob_append (p_content IN VARCHAR2) IS
 BEGIN
   g_cache := g_cache || p_content;
@@ -1608,6 +1600,7 @@ PROCEDURE util_clob_table_to_insert (
   p_max_rows        IN NUMBER DEFAULT 1000,
   p_insert_all_size IN NUMBER DEFAULT 10)
 IS
+  v_nls                      rec_nls;
   v_query                    VARCHAR2(32767);
   v_cursor                   PLS_INTEGER;
   v_ignore_me                PLS_INTEGER;
@@ -1615,10 +1608,6 @@ IS
   v_col_count                PLS_INTEGER;
   v_desc_tab                 dbms_sql.desc_tab3;
   v_table_insert_prefix      VARCHAR2(4000);
-  v_nls_numeric_characters   VARCHAR2(30);
-  v_nls_date_format          VARCHAR2(30);
-  v_nls_timestamp_format     VARCHAR2(30);
-  v_nls_timestamp_tz_format  VARCHAR2(30);
   c_sqlplus_max_line_length  CONSTANT PLS_INTEGER := 2400;
   v_line_cache               VARCHAR2(2498 CHAR);
   v_line_size                PLS_INTEGER := 0;
@@ -1628,39 +1617,24 @@ IS
 --  v_buffer_long              LONG;
   v_buffer_long_length       PLS_INTEGER;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
-  PROCEDURE set_session_nls_params IS
+  PROCEDURE get_session_nls_params IS
   BEGIN
     -- Save current values.
     for i in (SELECT parameter, value FROM nls_session_parameters) loop
       case i.parameter
-        when 'NLS_NUMERIC_CHARACTERS'  then v_nls_numeric_characters  := i.value;
-        when 'NLS_DATE_FORMAT'         then v_nls_date_format         := i.value;
-        when 'NLS_TIMESTAMP_FORMAT'    then v_nls_timestamp_format    := i.value;
-        when 'NLS_TIMESTAMP_TZ_FORMAT' then v_nls_timestamp_tz_format := i.value;
+        when 'NLS_NUMERIC_CHARACTERS'  then v_nls.numeric_characters  := i.value;
+        when 'NLS_DATE_FORMAT'         then v_nls.date_format         := i.value;
+        when 'NLS_TIMESTAMP_FORMAT'    then v_nls.timestamp_format    := i.value;
+        when 'NLS_TIMESTAMP_TZ_FORMAT' then v_nls.timestamp_tz_format := i.value;
       else
         null;
       end case;
     end loop;
-    -- Set new values.
-    dbms_session.set_nls('nls_numeric_characters' , '''.,''');
-    dbms_session.set_nls('nls_date_format'        , '''yyyy-mm-dd hh24:mi:ss''');
-    dbms_session.set_nls('nls_timestamp_format'   , '''yyyy-mm-dd hh24:mi:ssxff''');
-    dbms_session.set_nls('nls_timestamp_tz_format', '''yyyy-mm-dd hh24:mi:ssxff tzr''');
-  END set_session_nls_params;
+  END get_session_nls_params;
 
-  ----------------------------------------
-
-  PROCEDURE recover_session_nls_params IS
-  BEGIN
-    dbms_session.set_nls('nls_numeric_characters' , '''' || v_nls_numeric_characters || '''');
-    dbms_session.set_nls('nls_date_format'        , '''' || v_nls_date_format || '''');
-    dbms_session.set_nls('nls_timestamp_format'   , '''' || v_nls_timestamp_format || '''');
-    dbms_session.set_nls('nls_timestamp_tz_format', '''' || v_nls_timestamp_tz_format || '''');
-  END recover_session_nls_params;
-
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   FUNCTION quote_string (p_string VARCHAR2) RETURN VARCHAR2 IS
     v_string varchar2(5000 char);
@@ -1691,7 +1665,7 @@ IS
 
   END quote_string;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE line_append (p_content IN VARCHAR2) IS
   BEGIN
@@ -1702,7 +1676,7 @@ IS
       v_line_cache := p_content;
   END line_append;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE line_flush_cache IS
   BEGIN
@@ -1710,7 +1684,7 @@ IS
     v_line_cache := null;
   END line_flush_cache;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE process_varchar2_buffer(p_type varchar2) IS
     v_length     PLS_INTEGER;
@@ -1750,7 +1724,7 @@ IS
     END IF;
   END process_varchar2_buffer;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE process_clob_buffer IS
     v_length     pls_integer;
@@ -1773,7 +1747,7 @@ IS
     end if;
   END process_clob_buffer;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   FUNCTION get_order_by_clause RETURN VARCHAR2 IS
     v_return varchar2(4000);
@@ -1824,7 +1798,7 @@ IS
     return case when v_return is not null then ' order by ' || v_return else null end;
   end get_order_by_clause;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE parse_query_and_describe_columns IS
   BEGIN
@@ -1866,7 +1840,7 @@ IS
     END IF;
   END parse_query_and_describe_columns;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
     -- SQL*Plus specific:
     -- SQL Failed With ORA-1756 In Sqlplus But Works In SQL Developer
@@ -1877,17 +1851,17 @@ IS
     util_clob_append('-- Script generated by PLEX version ' || c_plex_version || ' - more infos here: ' || c_plex_url || c_crlf);
     util_clob_append('-- Performance Hacks by Connor McDonald: https://connor-mcdonald.com/2019/05/17/hacking-together-faster-inserts/' || c_crlf);
     util_clob_append('-- For strange line end replacements a big thank to SQL*Plus: https://support.oracle.com/epmos/faces/DocumentDisplay?id=2377701.1 (SQL Failed With ORA-1756 In Sqlplus But Works In SQL Developer)' || c_crlf);
-    util_clob_append('prompt - insert xxx rows into ' || p_table_name || c_crlf);
+    util_clob_append('prompt - insert xxx rows into ' || p_table_name || ' (exported ' || to_char(systimestamp,'YYYY-MM-DD hh24:mi:ssxff TZR') || ')' || c_crlf);
     util_clob_append('set define off feedback off sqlblanklines on' || c_crlf);
-    util_clob_append('alter session set cursor_sharing = force;' || c_crlf);
-    util_clob_append(q'^alter session set nls_numeric_characters = '.,';^' || c_crlf);
-    util_clob_append(q'^alter session set nls_date_format = 'yyyy-mm-dd hh24:mi:ss';^' || c_crlf);
-    util_clob_append(q'^alter session set nls_timestamp_format = 'yyyy-mm-dd hh24:mi:ssxff';^' || c_crlf);
-    util_clob_append(q'^alter session set nls_timestamp_tz_format = 'yyyy-mm-dd hh24:mi:ssxff tzr';^' || c_crlf);
+    util_clob_append('alter session set cursor_sharing          = force;' || c_crlf);
+    util_clob_append('alter session set nls_numeric_characters  = ''' || v_nls.numeric_characters  || ''';' || c_crlf);
+    util_clob_append('alter session set nls_date_format         = ''' || v_nls.date_format         || ''';' || c_crlf);
+    util_clob_append('alter session set nls_timestamp_format    = ''' || v_nls.timestamp_format    || ''';' || c_crlf);
+    util_clob_append('alter session set nls_timestamp_tz_format = ''' || v_nls.timestamp_tz_format || ''';' || c_crlf);
     util_clob_append('begin' || c_crlf);
   END create_header;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE create_data IS
   BEGIN
@@ -1942,7 +1916,7 @@ IS
     dbms_sql.close_cursor(v_cursor);
   END create_data;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE create_footer IS
   BEGIN
@@ -1961,7 +1935,7 @@ IS
     util_clob_append('' || c_crlf);
   END create_footer;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
   PROCEDURE replace_number_rows_placeholder IS
   BEGIN
@@ -1969,16 +1943,15 @@ IS
       || lpad(to_char(v_data_count), length(to_char(p_max_rows)), ' ') ||' rows');
   END replace_number_rows_placeholder;
 
-  ----------------------------------------
+  ----------------------------------------------------------------
 
 BEGIN
   IF p_table_name IS NOT NULL THEN
     --dbms_lob.createtemporary(v_buffer_clob, true);
-    set_session_nls_params;
+    get_session_nls_params;
     parse_query_and_describe_columns;
     create_data;
     create_footer;
-    recover_session_nls_params;
     replace_number_rows_placeholder;
     --dbms_lob.freetemporary(v_buffer_clob);
   END IF;
@@ -2110,11 +2083,22 @@ RETURN tab_export_files IS
   v_cur              obj_cur_typ;
   v_query            VARCHAR2(32767);
 
+  ----------------------------------------------------------------
+
   FUNCTION util_get_script_line (p_file_path VARCHAR2) RETURN VARCHAR2 IS
   BEGIN
     RETURN 'prompt --' || p_file_path || c_lf
       || '@' || v_path.from_scripts_to_project_root || p_file_path || c_lf;
   END util_get_script_line;
+
+  ----------------------------------------------------------------
+
+  FUNCTION util_normalize_base_path (p_base_path VARCHAR2) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN ltrim(rtrim(replace(p_base_path, '\', '/'),'/'),'/');
+  END util_normalize_base_path;
+
+  ----------------------------------------------------------------
 
   PROCEDURE init IS
   BEGIN
@@ -2143,6 +2127,8 @@ RETURN tab_export_files IS
     end loop;
     util_log_stop;
   END init;
+
+  ----------------------------------------------------------------
 
   $if $$apex_installed $then
   PROCEDURE check_owner IS
@@ -2174,6 +2160,8 @@ RETURN tab_export_files IS
     util_log_stop;
   END check_owner;
   $end
+
+  ----------------------------------------------------------------
 
   $if $$apex_installed $then
   PROCEDURE process_apex_app IS
@@ -2259,6 +2247,8 @@ RETURN tab_export_files IS
   END process_apex_app;
   $end
 
+  ----------------------------------------------------------------
+
   PROCEDURE replace_query_like_expressions (
     p_like_list          VARCHAR2,
     p_not_like_list      VARCHAR2,
@@ -2296,7 +2286,11 @@ RETURN tab_export_files IS
     $end
   END replace_query_like_expressions;
 
+  ----------------------------------------------------------------
+
   PROCEDURE process_user_ddl IS
+
+    --------------------------------
 
     PROCEDURE process_user IS
     BEGIN
@@ -2330,6 +2324,8 @@ END;
         util_log_error(v_file_path);
     END process_user;
 
+    --------------------------------
+
     PROCEDURE process_roles IS
     BEGIN
       v_file_path := v_path.to_backend || '/_user/' || v_current_user || '_roles.sql';
@@ -2349,6 +2345,8 @@ END;
       WHEN OTHERS THEN
         util_log_error(v_file_path);
     END process_roles;
+
+    --------------------------------
 
     PROCEDURE process_system_privileges IS
     BEGIN
@@ -2370,6 +2368,8 @@ END;
         util_log_error(v_file_path);
     END process_system_privileges;
 
+    --------------------------------
+
     PROCEDURE process_object_privileges IS
     BEGIN
       v_file_path := v_path.to_backend || '/_user/' || v_current_user || '_object_privileges.sql';
@@ -2390,12 +2390,16 @@ END;
         util_log_error(v_file_path);
     END process_object_privileges;
 
+    --------------------------------
+
   BEGIN
     process_user;
     process_roles;
     process_system_privileges;
     process_object_privileges;
   END process_user_ddl;
+
+  ----------------------------------------------------------------
 
   PROCEDURE process_object_ddl IS
     TYPE obj_rec_typ IS RECORD (
@@ -2608,6 +2612,8 @@ END;
     CLOSE v_cur;
   END process_object_ddl;
 
+  ----------------------------------------------------------------
+
   PROCEDURE process_object_grants IS
     TYPE obj_rec_typ IS RECORD (
       grantor     VARCHAR2(128),
@@ -2661,6 +2667,8 @@ ORDER BY
     END LOOP;
     CLOSE v_cur;
   END process_object_grants;
+
+  ----------------------------------------------------------------
 
   PROCEDURE process_ref_constraints IS
     TYPE obj_rec_typ IS RECORD (
@@ -2734,6 +2742,8 @@ END;
     CLOSE v_cur;
   END process_ref_constraints;
 
+  ----------------------------------------------------------------
+
   PROCEDURE create_backend_install_file IS
   BEGIN
     v_file_path := v_path.to_scripts || '/install_backend_generated_by_plex.sql';
@@ -2802,10 +2812,14 @@ prompt --install_backend_generated_by_plex
     util_log_stop;
   END create_backend_install_file;
 
+  ----------------------------------------------------------------
+
   $if $$ords_installed $then
   PROCEDURE process_ords_modules IS
     v_module_name user_ords_modules.name%type;
-    --
+
+    --------------------------------
+
     PROCEDURE export_ords_modules IS
     BEGIN
       util_log_start(v_path.to_web_services || '/open_modules_cursor');
@@ -2831,7 +2845,9 @@ prompt --install_backend_generated_by_plex
       END LOOP;
       CLOSE v_cur;
     END export_ords_modules;
-    --
+
+    --------------------------------
+
     PROCEDURE create_ords_install_file IS
     BEGIN
       v_file_path := v_path.to_scripts || '/install_web_services_generated_by_ords.sql';
@@ -2857,6 +2873,8 @@ prompt --install_web_services_generated_by_ords
       util_log_stop;
     END create_ords_install_file;
 
+    --------------------------------
+
   BEGIN
     export_ords_modules;
     IF v_files.ords_modules_.count > 0 THEN
@@ -2864,6 +2882,8 @@ prompt --install_web_services_generated_by_ords
     END IF;
   END process_ords_modules;
   $end
+
+  ----------------------------------------------------------------
 
   PROCEDURE process_data IS
     TYPE obj_rec_typ IS RECORD (
@@ -2954,6 +2974,8 @@ SELECT table_name,
 
   END process_data;
 
+  ----------------------------------------------------------------
+
   PROCEDURE create_load_data_file IS
   BEGIN
     v_file_path := v_path.to_scripts || '/load_data_generated_by_plex.sql';
@@ -2979,7 +3001,12 @@ prompt --load_data_generated_by_plex
     util_log_stop;
   END create_load_data_file;
 
+  ----------------------------------------------------------------
+
   PROCEDURE create_template_files IS
+
+    --------------------------------
+
     v_file_template VARCHAR2(32767 CHAR);
     PROCEDURE readme_file IS
     BEGIN
@@ -3034,6 +3061,8 @@ and modify it to your needs. Doing it this way your changes are overwrite save.
         p_name         => v_file_path);
       util_log_stop;
     END readme_file;
+
+    --------------------------------
 
     PROCEDURE export_batch_file IS
     BEGIN
@@ -3129,6 +3158,8 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         p_name         => v_file_path);
       util_log_stop;
     END export_batch_file;
+
+    --------------------------------
 
     PROCEDURE export_sq_file IS
     BEGIN
@@ -3252,6 +3283,8 @@ prompt
       util_log_stop;
     END export_sq_file;
 
+    --------------------------------
+
     PROCEDURE install_batch_files IS
     BEGIN
       v_file_template := q'^rem Template generated by PLEX version {{PLEX_VERSION}}
@@ -3337,6 +3370,8 @@ if %errorlevel% neq 0 exit /b %errorlevel%
         p_name         => v_file_path);
       util_log_stop;
     END install_batch_files;
+
+    --------------------------------
 
     PROCEDURE install_sql_file IS
     BEGIN
@@ -3454,6 +3489,8 @@ prompt
       util_log_stop;
     END install_sql_file;
 
+    --------------------------------
+
   BEGIN
     readme_file;
     export_batch_file;
@@ -3461,6 +3498,8 @@ prompt
     install_batch_files;
     install_sql_file;
   END create_template_files;
+
+  ----------------------------------------------------------------
 
   PROCEDURE create_directory_keepers IS
     v_the_point VARCHAR2(30) := '. < this is the point ;-)';
@@ -3490,6 +3529,8 @@ prompt
     util_log_stop;
   END create_directory_keepers;
 
+  ----------------------------------------------------------------
+
   PROCEDURE finish IS
   BEGIN
     util_ensure_unique_file_names(v_export_files, v_path.to_scripts);
@@ -3500,6 +3541,8 @@ prompt
       util_clob_create_runtime_log(v_export_files);
     END IF;
   END finish;
+
+  ----------------------------------------------------------------
 
 BEGIN
   init;
@@ -3564,6 +3607,8 @@ FUNCTION queries_to_csv (
 RETURN tab_export_files IS
   v_export_files tab_export_files;
 
+  ----------------------------------------------------------------
+
   PROCEDURE init IS
   BEGIN
     IF g_queries.count = 0 THEN
@@ -3576,6 +3621,8 @@ RETURN tab_export_files IS
     v_export_files := NEW tab_export_files();
     util_log_stop;
   END init;
+
+  ----------------------------------------------------------------
 
   PROCEDURE process_queries IS
   BEGIN
@@ -3599,6 +3646,8 @@ RETURN tab_export_files IS
     END LOOP;
   END process_queries;
 
+  ----------------------------------------------------------------
+
   PROCEDURE finish IS
   BEGIN
     g_queries.DELETE;
@@ -3610,6 +3659,8 @@ RETURN tab_export_files IS
       util_clob_create_runtime_log(v_export_files);
     END IF;
   END finish;
+
+  ----------------------------------------------------------------
 
 BEGIN
   init;
