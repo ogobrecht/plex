@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.2 (2021-01-05)
+
+- Function BackApp:
+  - Fixed: #12 - Identifiers longer then 30 characters - compile error on older DB versions or campatibility settings
+
 ## 2.4.1 (2021-01-04)
 
 - Function BackApp:

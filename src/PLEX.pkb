@@ -1182,7 +1182,7 @@ IS
 
   ----------------------------------------------------------------
 
-  PROCEDURE parse_query_and_describe_columns IS
+  PROCEDURE parse_query_and_describe_cols IS
   BEGIN
     FOR i IN (
       select 'select ' || listagg(column_name, ', ') within group (order by column_id) || ' from ' || table_name as query
@@ -1220,7 +1220,7 @@ IS
         end || p_table_name || '(' || rtrim(v_table_insert_prefix, ',' ) || ') values (';
       v_ignore_me := dbms_sql.execute(v_cursor);
     END IF;
-  END parse_query_and_describe_columns;
+  END parse_query_and_describe_cols;
 
   ----------------------------------------------------------------
 
@@ -1319,11 +1319,11 @@ IS
 
   ----------------------------------------------------------------
 
-  PROCEDURE replace_number_rows_placeholder IS
+  PROCEDURE replace_num_rows_placeholder IS
   BEGIN
     util_clob_replace('prompt - insert xxx rows', 'prompt - insert '
       || lpad(to_char(v_data_count), length(to_char(p_max_rows)), ' ') ||' rows');
-  END replace_number_rows_placeholder;
+  END replace_num_rows_placeholder;
 
   ----------------------------------------------------------------
 
@@ -1331,10 +1331,10 @@ BEGIN
   IF p_table_name IS NOT NULL THEN
     --dbms_lob.createtemporary(v_buffer_clob, true);
     get_session_nls_params;
-    parse_query_and_describe_columns;
+    parse_query_and_describe_cols;
     create_data;
     create_footer;
-    replace_number_rows_placeholder;
+    replace_num_rows_placeholder;
     --dbms_lob.freetemporary(v_buffer_clob);
   END IF;
 END util_clob_table_to_insert;
