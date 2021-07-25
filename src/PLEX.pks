@@ -534,10 +534,13 @@ PROCEDURE util_clob_query_to_csv (
   p_header_prefix IN VARCHAR2 DEFAULT NULL);
 
 PROCEDURE util_clob_table_to_insert (
-  p_table_name      IN VARCHAR2,
-  p_data_scn        IN NUMBER,
-  p_max_rows        IN NUMBER DEFAULT 1000,
-  p_insert_all_size IN NUMBER DEFAULT 10);
+  p_table_name            IN VARCHAR2,
+  p_data_scn              IN NUMBER,
+  p_max_rows              IN NUMBER   DEFAULT 1000,
+  p_insert_style          IN VARCHAR2 DEFAULT 'INSERT', -- can be INSERT or OM_TAPIGEN
+  p_insert_all_size       IN NUMBER   DEFAULT 10,
+  p_exclude_columns_list  IN VARCHAR2 DEFAULT NULL      -- a colon separated list of columns that should be excluded for the insert operation (for example audit columns which are populated automatically) FIXME: support the auto detection of an column prefix
+);
 
 PROCEDURE util_clob_create_runtime_log (p_export_files IN OUT NOCOPY tab_export_files);
 
