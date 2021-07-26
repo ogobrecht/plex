@@ -3628,7 +3628,7 @@ BEGIN
   $end
   IF p_include_data THEN
     process_data;
-    if upper(p_data_format) LIKE '%INSERT%' then
+    if upper(p_data_format) LIKE '%INSERT%' or upper(p_data_format) LIKE '%OM_TAPIGEN%' then
       create_load_data_file;
     end if;
   END IF;
