@@ -3148,6 +3148,37 @@ END;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
+PROCEDURE download (
+    p_blob IN BLOB,
+    p_name IN VARCHAR2 )
+IS
+    -- we need to avoid PLS-00363: expression 'P_BLOB' cannot be used as an assignment target
+    v_blob blob := p_blob;
+BEGIN
+    owa_util.mime_header('application/octet', false);
+    htp.p('Content-length:' || dbms_lob.getlength(v_blob));
+    htp.p('Content-Disposition: attachment; filename="' || p_name || '"');
+
+    -- the browser should not cache the file
+    htp.p('Cache-Control: must-revalidate, max-age=0');
+    htp.p('Expires: Thu, 01 Jan 1970 01:00:00 CET');
+
+    owa_util.http_header_close;
+    wpg_docload.download_file(v_blob);
+END download;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+PROCEDURE download (
+    p_clob IN CLOB,
+    p_name IN VARCHAR2 )
+IS
+BEGIN
+    download(util_clob_to_blob(p_clob), p_name);
+END download;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
 FUNCTION view_error_log RETURN tab_error_log PIPELINED IS
 BEGIN
   FOR i IN 1..g_errlog.count LOOP

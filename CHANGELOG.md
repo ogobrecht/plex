@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.0 (2022-xx-xx)
+
+- Add file download procedure
+
 ## 2.4.2 (2021-01-05)
 
 - Function BackApp:

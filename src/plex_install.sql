@@ -1,4 +1,10 @@
-set define off feedback off
+set define off
+set serveroutput on
+set verify off
+set feedback off
+set linesize 240
+set trimout on
+set trimspool on
 whenever sqlerror exit sql.sqlcode rollback
 
 prompt
@@ -45,11 +51,11 @@ END;
 /
 
 prompt Compile package plex (spec)
-@plex.pks
+@PLEX.pks
 show errors
 
 prompt Compile package plex (body)
-@plex.pkb
+@PLEX.pkb
 show errors
 
 prompt ============================================================

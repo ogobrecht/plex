@@ -224,7 +224,6 @@ set termout on
 **/
 
 
-
 PROCEDURE add_query (
   p_query     IN VARCHAR2,                -- The query itself
   p_file_name IN VARCHAR2,                -- File name like 'Path/to/your/file-without-extension'.
@@ -243,7 +242,6 @@ END;
 {{/}}
 ```
 **/
-
 
 
 FUNCTION queries_to_csv (
@@ -359,7 +357,6 @@ spool off
 **/
 
 
-
 FUNCTION to_zip (
   p_file_collection IN tab_export_files) -- The file collection to zip.
 RETURN BLOB;
@@ -380,6 +377,7 @@ END;
 ```
 **/
 
+
 FUNCTION to_base64(
   p_blob IN BLOB) -- The BLOB to convert.
 RETURN CLOB;
@@ -397,6 +395,27 @@ BEGIN
 END;
 ```
 **/
+
+
+PROCEDURE download (
+   p_blob IN BLOB,
+   p_name IN VARCHAR2 );
+/**
+
+Download a file based on a BLOB.
+
+**/
+
+
+PROCEDURE download (
+   p_clob IN CLOB,
+   p_name IN VARCHAR2 );
+/**
+
+Download a file based on a CLOB.
+
+**/
+
 
 FUNCTION view_error_log RETURN tab_error_log PIPELINED;
 /**

@@ -10,6 +10,8 @@ PL/SQL Export Utilities
 - [Function queries_to_csv](#queries_to_csv)
 - [Function to_zip](#to_zip)
 - [Function to_base64](#to_base64)
+- [Procedure download](#download)
+- [Procedure download](#download)
 - [Function view_error_log](#view_error_log)
 - [Function view_runtime_log](#view_runtime_log)
 
@@ -404,6 +406,34 @@ SIGNATURE
 FUNCTION to_base64(
   p_blob IN BLOB) -- The BLOB to convert.
 RETURN CLOB;
+```
+
+
+<h2><a id="download"></a>Procedure download</h2>
+<!--------------------------------------------->
+
+Download a file based on a BLOB.
+
+SIGNATURE
+
+```sql
+PROCEDURE download (
+   p_blob IN BLOB,
+   p_name IN VARCHAR2 );
+```
+
+
+<h2><a id="download"></a>Procedure download</h2>
+<!--------------------------------------------->
+
+Download a file based on a CLOB.
+
+SIGNATURE
+
+```sql
+PROCEDURE download (
+   p_clob IN CLOB,
+   p_name IN VARCHAR2 );
 ```
 
 

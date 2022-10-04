@@ -1,4 +1,10 @@
-set define off feedback off
+set define off
+set serveroutput on
+set verify off
+set feedback off
+set linesize 240
+set trimout on
+set trimspool on
 whenever sqlerror exit sql.sqlcode rollback
 
 prompt
@@ -271,7 +277,6 @@ set termout on
 **/
 
 
-
 PROCEDURE add_query (
   p_query     IN VARCHAR2,                -- The query itself
   p_file_name IN VARCHAR2,                -- File name like 'Path/to/your/file-without-extension'.
@@ -290,7 +295,6 @@ END;
 {{/}}
 ```
 **/
-
 
 
 FUNCTION queries_to_csv (
@@ -406,7 +410,6 @@ spool off
 **/
 
 
-
 FUNCTION to_zip (
   p_file_collection IN tab_export_files) -- The file collection to zip.
 RETURN BLOB;
@@ -427,6 +430,7 @@ END;
 ```
 **/
 
+
 FUNCTION to_base64(
   p_blob IN BLOB) -- The BLOB to convert.
 RETURN CLOB;
@@ -444,6 +448,27 @@ BEGIN
 END;
 ```
 **/
+
+
+PROCEDURE download (
+   p_blob IN BLOB,
+   p_name IN VARCHAR2 );
+/**
+
+Download a file based on a BLOB.
+
+**/
+
+
+PROCEDURE download (
+   p_clob IN CLOB,
+   p_name IN VARCHAR2 );
+/**
+
+Download a file based on a CLOB.
+
+**/
+
 
 FUNCTION view_error_log RETURN tab_error_log PIPELINED;
 /**
@@ -3766,6 +3791,37 @@ BEGIN
   util_log_calc_runtimes;
   RETURN v_bas64;
 END;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+PROCEDURE download (
+    p_blob IN BLOB,
+    p_name IN VARCHAR2 )
+IS
+    -- we need to avoid PLS-00363: expression 'P_BLOB' cannot be used as an assignment target
+    v_blob blob := p_blob;
+BEGIN
+    owa_util.mime_header('application/octet', false);
+    htp.p('Content-length:' || dbms_lob.getlength(v_blob));
+    htp.p('Content-Disposition: attachment; filename="' || p_name || '"');
+
+    -- the browser should not cache the file
+    htp.p('Cache-Control: must-revalidate, max-age=0');
+    htp.p('Expires: Thu, 01 Jan 1970 01:00:00 CET');
+
+    owa_util.http_header_close;
+    wpg_docload.download_file(v_blob);
+END download;
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+PROCEDURE download (
+    p_clob IN CLOB,
+    p_name IN VARCHAR2 )
+IS
+BEGIN
+    download(util_clob_to_blob(p_clob), p_name);
+END download;
 
 --------------------------------------------------------------------------------------------------------------------------------
 
